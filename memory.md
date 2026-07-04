@@ -1,51 +1,51 @@
-# Memory — Feature 01 Monorepo Scaffold
+# Memory — Feature 02 Database Schema
 
 Last updated: 2026-07-04
 
 ## What was built
 
-Full monorepo scaffold, verified booting end to end:
+All 13 app-specific tables from `architecture.md`'s Database Schema section, created via 5 grouped migrations in `backend/migrations/`, run through the existing `pnpm migrate` runner from Feature 01:
 
-- Root: `.gitignore`, `README.md`.
-- `backend/` — Express + TypeScript. `src/config/env.ts` (zod-validated env), `src/config/db.ts` (pg pool), `src/app.ts` + `src/server.ts`, `GET /health` via the full `routes → controllers` pattern, `src/middlewares/errorHandler.ts`. Custom migration runner at `src/config/migrate.ts` (`pnpm migrate`), tracked via a `schema_migrations` table, reading `migrations/*.sql` in order. First migration `migrations/0001_enable_postgis.sql`.
-- `frontend/` — Next.js 16 App Router + TypeScript + Tailwind v4 + shadcn/ui. Full `ui-tokens.md` token block wired into `app/globals.css`. All `features/*` and `components/*` folders scaffolded per `architecture.md`. `lib/api-client.ts` stubbed.
-- `frontend-admin/` — Vite + React + TypeScript + Tailwind v4 + shadcn/ui. Same token block in `src/index.css`. Redux Toolkit store (`src/app/store.ts`, empty reducer), `react-router-dom` with placeholder `/login` and `/` routes, `src/lib/apiBaseQuery.ts`. All `features/*` folders scaffolded.
-- `context/progress-tracker.md` updated: Feature 01 marked complete, decisions logged, session note added.
-- `context/code-standards.md` updated: added `react-redux` to the `frontend-admin/` approved-dependency list.
+- `0002_create_hotels.sql` — `hotels`, `hotel_images`, `amenities`, `hotel_amenities`
+- `0003_create_room_types.sql` — `meal_plans`, `room_types`, `room_features`, `room_type_features`, `room_type_images`, `rate_overrides`
+- `0004_create_bookings_reviews.sql` — `bookings`, `reviews`
+- `0005_create_favorites_recent_searches.sql` — `favorites`, `recent_searches`
+- `0006_hotels_location_gist_index.sql` — GiST index on `hotels.location`
+
+better-auth's own tables (`user`/`session`/`account`/`verification`, `admin_user`/`admin_session`) were **not** created — out of scope, they arrive with Features 03/04.
+
+`backend/src/config/seed.ts` (new, run via `pnpm seed`, added to `backend/package.json` scripts) — truncates and re-inserts demo data: 8 amenities, 5 room features, 4 meal plans, and 5 hotels (Hotel Marais Charme + Le Louvre Riverside in Paris, Shibuya Sky Hotel + Asakusa Ryokan Inn in Tokyo, Midtown Manhattan Hotel in New York), each with 2 room types, real geography points, images, and amenity/feature links.
+
+`context/progress-tracker.md` updated: Feature 02 marked complete, 5 architecture decisions logged, session note added, status moved to Feature 03.
 
 ## Decisions made
 
-- No Docker — `backend/.env`'s `DATABASE_URL` points at whatever Postgres instance the developer already has (local install or cloud). No `docker-compose.yml` exists in this repo.
-- Package manager is `pnpm`, used independently per app folder — no root workspace file, apps stay fully independent per `architecture.md`.
-- Design tokens (`ui-tokens.md`) and shadcn/ui init happen in scaffold (Feature 01), not deferred to Feature 05 (Homepage UI).
-- Schema changes go through the custom migration runner introduced here (`backend/migrations/000X_*.sql` + `schema_migrations` table) — Feature 02 must extend this same mechanism, not invent a new one.
-- Backend uses CommonJS (`module: "CommonJS"`, no `"type": "module"`) instead of `NodeNext`, to avoid forcing `.js` extensions on relative imports — keeps imports matching every example in `code-standards.md`/`library-docs.md`.
+- **Deferred user FKs**: `bookings.user_id`, `reviews.user_id`, `favorites.user_id`, `recent_searches.user_id` are plain `uuid` columns with no `REFERENCES` clause — the `user` table doesn't exist until Feature 03 (better-auth generates it). Feature 03 must add the FK constraints via `ALTER TABLE` once that table exists.
+- **RESTRICT vs CASCADE**: `ON DELETE RESTRICT` on `bookings`/`reviews`' FKs to `hotels`/`room_types` (financial/historical records never silently disappear) — a hotel with any booking/review history can't be hard-deleted. `ON DELETE CASCADE` everywhere else (structurally-owned child rows: images, join tables, `rate_overrides`, `room_types` under `hotels`, `favorites`/`recent_searches.hotel_id`). `ON DELETE SET NULL` on `room_types.meal_plan_id` (a lookup reference, not ownership).
+- **UUIDs**: `gen_random_uuid()` (built into Postgres 13+ core) — no `uuid-ossp`/`pgcrypto` extension needed.
+- **Status fields**: `hotels.status`/`bookings.status` are `text` + `CHECK (... IN (...))` constraints, not native Postgres `ENUM` types — readable in query output, DB-enforced, no `ALTER TYPE` ceremony to add a value later.
+- **Migration granularity**: 5 files grouped by domain (not one giant file, not one-per-table) — matches Feature 01's one-migration-per-logical-change precedent.
+- **Seed tooling**: TS script (`seed.ts`, `pnpm seed`) matching `migrate.ts`'s pattern, not a raw `.sql` seed migration — truncate-then-insert so it's safely re-runnable in local dev. Scoped to hotels/room types/amenities/lookups only, no bookings/reviews/favorites (those need real users).
 
 ## Problems solved
 
-- `shadcn@latest init` injects its own dark-mode `.dark` block, a Geist font, and a default oklch color palette in both frontends — all removed/remapped by hand. Dark mode block and `@custom-variant dark` deleted (product is light-mode only per `ui-rules.md`). Geist font import removed, kept only Inter + JetBrains Mono. shadcn's semantic tokens (`background`, `foreground`, `card`, `primary`, `secondary`, `muted`, `accent`, `destructive`, `border`, `input`, `ring`, `chart-*`, `sidebar-*`) remapped onto the actual Stayzy palette instead of shadcn's defaults, so any shadcn primitive renders on-brand.
-- shadcn's `--radius-*` scale (calc chain off `--radius`) was deliberately left intact rather than reverted to plain Tailwind radius, because `components/ui/button.tsx` references `--radius-md` directly — removing it breaks the generated primitive. Net effect: ~12.5% radius delta on `rounded-2xl`/etc. vs vanilla Tailwind. Flagged in `progress-tracker.md` to revisit if it's ever visually significant.
-- `frontend-admin`'s shadcn CLI run mis-resolved the `@/` alias and wrote generated files into a literal `./@/` folder at the project root instead of `src/` — moved manually, stray folder deleted.
-- Vite's `create-vite` template did not enable TypeScript strict mode in `tsconfig.app.json`/`tsconfig.node.json`, contradicting `code-standards.md`'s "strict mode always" rule — added by hand, along with `noUncheckedIndexedAccess`.
-- `react-redux` had to be added as an explicit dependency in `frontend-admin/` — `@reduxjs/toolkit` alone has no React bindings (`Provider`, `useSelector`, `useDispatch`). Not in the original approved-deps list; `code-standards.md` updated to include it.
+- `tsc` rejected `backend/src/config/seed.ts`'s `insertLookupTable` helper: passing `Record<string, string>[]` rows meant `row.name` typed as `string | undefined` under `noUncheckedIndexedAccess` (mandated in `code-standards.md`), even though `name` is always present. Fixed by replacing the generic `Record<string, string>` param with an explicit `LookupRow { name: string; icon?: string }` interface. **Worth remembering for future generic "iterate arbitrary key/value rows" code in this codebase** — prefer named interfaces over `Record<string, T>` whenever `noUncheckedIndexedAccess` is on and a field is guaranteed to exist.
+- Enforced "exactly one `is_main = true` per hotel/room type" (a note in `architecture.md`, not just a column comment) via partial unique indexes (`hotel_images_one_main_per_hotel_idx`, `room_type_images_one_main_per_room_type_idx`) rather than relying on app-layer discipline.
 
 ## Current state
 
-All three apps verified booting independently:
-- `backend`: `GET /health` → 200, `{ success: true, data: { status: "ok" } }`.
-- `frontend`: boots on :3000, serves 200.
-- `frontend-admin`: boots on :5173, serves 200.
+Migrations applied and seed data inserted against the developer's real local Postgres instance (`backend/.env`'s `DATABASE_URL`, not a scratch DB this time — it was left in place, not dropped). Verified:
+- All 16 tables (13 app tables + `schema_migrations` + `spatial_ref_sys` + PostGIS system table) exist via `\dt`.
+- `hotels_location_gist_idx` exists and is actually used by the query planner (`EXPLAIN` on an `ST_DWithin` query shows an Index Scan).
+- `pnpm seed` run twice back-to-back with no errors or duplicate rows (5 hotels, 8 amenities each time).
+- `pnpm build` (tsc) typechecks clean with zero errors.
 
-Migration runner verified end-to-end against a real local Postgres instance (a scratch `stayzy` database was created, migrated, confirmed via `\dx` that `postgis 3.5.2` is installed, then dropped afterward — it was throwaway, not meant to persist).
-
-No `.env` or `.env.local` files exist anywhere in the repo — only `.env.example` (backend, frontend, frontend-admin). A developer must create their own before running anything.
-
-`progress-tracker.md` current status: Phase 1 — Foundation, Feature 01 complete, next up is Feature 02 Database Schema.
+A developer starting Feature 03 can build directly against this database — no need to re-run `pnpm migrate`/`pnpm seed` first, though re-running `pnpm seed` is always safe (it truncates and re-inserts).
 
 ## Next session starts with
 
-Feature 02 Database Schema (see `build-plan.md`): migrations for every table listed in `architecture.md` (`hotels`, `hotel_images`, `amenities`, `hotel_amenities`, `room_features`, `meal_plans`, `room_types`, `room_type_features`, `room_type_images`, `rate_overrides`, `bookings`, `reviews`, `favorites`, `recent_searches`), a GiST index on `hotels.location`, and a seed script with demo data — all added as new numbered `.sql` files under `backend/migrations/`, run via the existing `pnpm migrate`. Before starting, the developer needs a real `backend/.env` with `DATABASE_URL` pointing at their own Postgres instance (the verification database from this session was dropped).
+Feature 03 User Authentication (see `build-plan.md`): configure a better-auth instance for `frontend/` — email/password + Google OAuth, email verification flow (unverified accounts can browse but not book), password reset flow. `/login`, `/signup`, `/verify-email` pages. Once the `user` table exists, add the deferred FK constraints (`ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY (user_id) REFERENCES "user"(id)`) to `bookings`, `reviews`, `favorites`, `recent_searches` as part of the same feature's migration.
 
 ## Open questions
 
-None outstanding — all Feature 01 decisions were confirmed with the developer before implementation (see `/architect` session this same day).
+None outstanding — all Feature 02 decisions were confirmed with the developer before implementation (see `/architect` session this same day).
