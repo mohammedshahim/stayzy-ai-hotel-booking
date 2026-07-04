@@ -35,9 +35,11 @@ The page background is a warm ivory, never pure white — it makes cards feel li
 
 | Role           | CSS Variable       | Hex       | Tailwind Class   |
 | -------------- | ------------------ | --------- | ---------------- |
-| Default border | `--border-default` | `#E8E0D0` | `border-default` |
-| Subtle border  | `--border-subtle`  | `#D9CEB5` | `border-subtle`  |
-| Strong border  | `--border-strong`  | `#C7B896` | `border-strong`  |
+| Default border | `--border-default` | `#E8E0D0` | `border-border-default` |
+| Subtle border  | `--border-subtle`  | `#D9CEB5` | `border-border-subtle`  |
+| Strong border  | `--border-strong`  | `#C7B896` | `border-border-strong`  |
+
+The class name doubles the category prefix (`border-border-default`, not `border-default`) because the registered color token key already includes `border-` (`--color-border-default`) — same reason text tokens are `text-text-primary`, not `text-primary`. Verified by compiling the actual Tailwind output; the short form silently resolves to nothing or the wrong color.
 
 ### Text
 

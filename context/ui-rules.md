@@ -43,7 +43,7 @@ There is no authenticated sidebar shell on the user side — every page, logged 
 <AppShell>
   <Sidebar />                      → Dashboard, Hotels, Bookings
   <div> bg-base min-h-screen
-    <Topbar /> sticky top-0 h-16 bg-surface border-b border-default
+    <Topbar /> sticky top-0 h-16 bg-surface border-b border-border-default
     <div> max-w-7xl mx-auto px-4 py-8 lg:px-6 lg:py-10
       {page content}
 ```
@@ -62,7 +62,7 @@ Cards and panels:                    no fixed width — flex or grid driven
 ### Navbar (`frontend/`)
 
 ```
-Background:   bg-surface border-b border-default
+Background:   bg-surface border-b border-border-default
 Height:       h-16
 Padding:      px-6
 Logo:         left aligned, text-primary font-semibold
@@ -75,7 +75,7 @@ CTA/account:  right aligned, primary button style when logged out ("Log in")
 
 ```
 Position:     fixed bottom-4 inset-x-0, centered, max-w-3xl mx-auto
-Wrapper:      bg-surface rounded-2xl border border-default shadow-elevated px-5 py-4
+Wrapper:      bg-surface rounded-2xl border border-border-default shadow-elevated px-5 py-4
 Content:      flex items-center gap-3 — thumbnail stack + "N hotels selected" + Compare button + dismiss (x)
 Visibility:   renders only when compareSelection.length >= 1; hidden entirely otherwise
 Persistence:  client-side state (local storage), rehydrated on every page load
@@ -84,10 +84,10 @@ Persistence:  client-side state (local storage), rehydrated on every page load
 ### Admin Sidebar
 
 ```
-Sidebar:      w-64 border-r border-default bg-surface
+Sidebar:      w-64 border-r border-border-default bg-surface
 Nav item:     h-10 rounded-xl px-3 text-text-secondary hover:bg-subtle hover:text-text-primary
 Active item:  border border-accent-border bg-accent-dim text-accent-text
-Footer item:  account/logout, h-9 rounded-xl border border-default bg-elevated px-3
+Footer item:  account/logout, h-9 rounded-xl border border-border-default bg-elevated px-3
 ```
 
 ---
@@ -111,8 +111,8 @@ Spacing:  followed by grid gap-6 or section spacing
 Used for hotel cards, favorite cards, compare cards, stat cards, and any repeated item.
 
 ```
-bg-elevated rounded-2xl border border-default p-5 shadow-card
-Hover state (if interactive): hover:border-subtle hover:shadow-elevated transition-colors
+bg-elevated rounded-2xl border border-border-default p-5 shadow-card
+Hover state (if interactive): hover:border-border-subtle hover:shadow-elevated transition-colors
 ```
 
 Never use `bg-base` for cards — cards must be visually elevated above the warm page background. Never place a card inside another card.
@@ -122,8 +122,8 @@ Never use `bg-base` for cards — cards must be visually elevated above the warm
 Used for the filter sidebar, checkout summary, admin data tables, and other self-contained tools.
 
 ```
-bg-surface rounded-2xl border border-default
-Panel header: px-5 py-4 border-b border-default
+bg-surface rounded-2xl border border-border-default
+Panel header: px-5 py-4 border-b border-border-default
 Panel body:   p-5
 ```
 
@@ -132,7 +132,7 @@ Panels may contain tables, lists, forms, or repeated item cards. Never stack a p
 ### Inputs
 
 ```
-bg-subtle border border-default rounded-xl h-10 px-3
+bg-subtle border border-border-default rounded-xl h-10 px-3
 text-primary placeholder:text-muted
 focus:border-accent-border focus:ring-1 focus:ring-accent-border
 transition-colors outline-none
@@ -155,7 +155,7 @@ Accent glow on hover: hover:shadow-accent (primary CTA only)
 
 ```
 bg-elevated hover:bg-subtle
-border border-default hover:border-subtle
+border border-border-default hover:border-border-subtle
 text-secondary hover:text-primary
 h-9 px-4 rounded-xl
 transition-colors
@@ -241,7 +241,7 @@ Same Card pattern as the hotel card, but with a `border-accent-border` 1px inset
 
 ```
 Wrapper:      Panel pattern, sticky top-20 (below navbar), w-72
-Section:      border-b border-default py-4 last:border-0
+Section:      border-b border-border-default py-4 last:border-0
 Section title: text-sm font-medium text-text-primary mb-3
 Checkbox row: flex items-center gap-2 text-sm text-text-secondary
 Price range:  dual-handle slider using accent-primary for the active track
@@ -259,28 +259,28 @@ Remove icon (if removable): h-3 w-3 text-accent-text hover:text-text-primary cur
 ### Compare Table
 
 ```
-Table wrapper:  bg-surface rounded-2xl border border-default overflow-x-auto
+Table wrapper:  bg-surface rounded-2xl border border-border-default overflow-x-auto
 First two hotels: shown inline, columns min-w-[16rem]
 Third+ hotels:    same column width, revealed via horizontal scroll — never wrap or shrink columns to fit
 Row label column: sticky left-0 bg-surface text-sm font-medium text-text-secondary
-AI summary slot:  reserved bottom section, bg-elevated rounded-2xl border border-default p-5, hidden until the AI phase ships
+AI summary slot:  reserved bottom section, bg-elevated rounded-2xl border border-border-default p-5, hidden until the AI phase ships
 ```
 
 ### Table (admin — hotels list, bookings list)
 
 ```
-Table wrapper:  bg-surface rounded-2xl border border-default overflow-hidden
-Header row:     bg-subtle border-b border-default
+Table wrapper:  bg-surface rounded-2xl border border-border-default overflow-hidden
+Header row:     bg-subtle border-b border-border-default
 Header cell:    px-4 py-3 text-xs text-text-muted uppercase tracking-wide font-medium text-left
-Body row:       border-b border-default last:border-0 hover:bg-elevated transition-colors cursor-pointer
+Body row:       border-b border-border-default last:border-0 hover:bg-elevated transition-colors cursor-pointer
 Body cell:      px-4 py-3 text-sm text-text-secondary
-Expandable row: bg-subtle border-t border-default px-4 py-4
+Expandable row: bg-subtle border-t border-border-default px-4 py-4
 ```
 
 ### Stats Cards (admin dashboard)
 
 ```
-bg-elevated rounded-2xl border border-default p-5 shadow-card
+bg-elevated rounded-2xl border border-border-default p-5 shadow-card
 Stat number:  text-2xl font-bold text-text-primary
 Stat label:   text-xs text-text-muted uppercase tracking-wide mt-1
 Trend/icon:   text-accent-primary (positive) or text-state-error (negative)
@@ -355,12 +355,12 @@ Homepage is the only page with a footer and marketing-style sections on the user
 ```
 Hero section:
   mx-auto grid min-h-[calc(100svh-4rem)] max-w-7xl items-center gap-10 px-6 py-14
-  Search widget: bg-surface rounded-2xl border border-default shadow-elevated p-5, overlapping the hero visual on desktop
+  Search widget: bg-surface rounded-2xl border border-border-default shadow-elevated p-5, overlapping the hero visual on desktop
   Headline: text-4xl md:text-5xl xl:text-6xl font-semibold leading-tight text-text-primary
   Subheadline: text-base leading-7 text-text-secondary max-w-xl mt-5
 
 Trending destinations:
-  Section shell: bg-surface border-y border-default
+  Section shell: bg-surface border-y border-border-default
   Content: max-w-7xl mx-auto px-6 py-24
   Cards grid: mt-10 grid gap-6 md:grid-cols-4
   Destination card: aspect-[3/4] rounded-2xl overflow-hidden relative, city name overlaid bottom-left on a gradient scrim
@@ -376,7 +376,7 @@ Sidebar:      w-72 shrink-0 (Filter Sidebar pattern)
 Results:      flex-1 flex flex-col gap-4
 Active chips: flex flex-wrap gap-2 mb-2
 Toolbar row:  flex items-center justify-between — result count (left), Sort dropdown + List/Grid/Map view toggle (right)
-Sort dropdown: Input pattern sizing, h-10 rounded-xl border border-default bg-subtle, options: Recommended, Price low to high, Price high to low, Guest rating, Star rating, Distance from center
+Sort dropdown: Input pattern sizing, h-10 rounded-xl border border-border-default bg-subtle, options: Recommended, Price low to high, Price high to low, Guest rating, Star rating, Distance from center
 Grid view:    grid gap-5 sm:grid-cols-2 xl:grid-cols-3
 List view:    flex flex-col gap-4, cards render as a horizontal layout (image left, details right) instead of the vertical grid card
 Map view:     grid grid-cols-[1fr_28rem] gap-0 — left column is a scrollable card list (List view card style), right column is a sticky Mapbox map with a pin per result; selecting a card pans to and highlights its pin, and vice versa

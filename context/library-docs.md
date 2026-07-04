@@ -30,19 +30,35 @@ Two completely independent instances exist in this project — never let them sh
 
 ```typescript
 import { betterAuth } from "better-auth";
-import { Pool } from "pg";
+import { db } from "./db";
+import { env } from "./env";
+import { sendPasswordResetEmail, sendVerificationEmail } from "../services/email.service";
 
 export const auth = betterAuth({
-  database: new Pool({ connectionString: process.env.DATABASE_URL }),
-  secret: process.env.BETTER_AUTH_SECRET!,
+  database: db,
+  secret: env.BETTER_AUTH_SECRET,
+  baseURL: `${env.APP_URL}/api/auth`,
+  trustedOrigins: [env.APP_URL],
   emailAndPassword: {
     enabled: true,
-    requireEmailVerification: true,
+    // false, not true: sign-up must still create a session immediately so an
+    // unverified user can browse. true blocks sign-up from creating a session at
+    // all (and blocks sign-in) — verification is enforced only at booking creation.
+    requireEmailVerification: false,
+    sendResetPassword: async ({ user, url }) => {
+      await sendPasswordResetEmail(user.email, url);
+    },
+  },
+  emailVerification: {
+    sendVerificationEmail: async ({ user, url }) => {
+      await sendVerificationEmail(user.email, url);
+    },
+    sendOnSignUp: true,
   },
   socialProviders: {
     google: {
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      clientId: env.GOOGLE_CLIENT_ID ?? "",
+      clientSecret: env.GOOGLE_CLIENT_SECRET ?? "",
     },
   },
   user: {
@@ -52,6 +68,8 @@ export const auth = betterAuth({
   },
 });
 ```
+
+`baseURL` points at the path the *browser* actually hits (`APP_URL` is the frontend's origin), not the raw backend port — see the local-dev proxy note below.
 
 ### Admin Instance (`backend/src/config/auth-admin.ts`)
 
@@ -75,26 +93,29 @@ export const authAdmin = betterAuth({
 - Mount the user instance's handler under `/api/auth/*` and the admin instance's handler under `/api/admin/auth/*` — never the same path
 - `requireAuth` middleware checks the user instance's session; `requireAdmin` middleware checks the admin instance's session — never cross-check one against the other
 - A booking-creation route also checks `session.user.emailVerified` — verification is enforced at the booking step, not globally
-- Frontend and backend must share a top-level domain (e.g. `stayzy.com` / `api.stayzy.com`) so better-auth's cookie is sent cross-subdomain; CORS on the backend must set `credentials: true` and an explicit `origin`, never `*`, when auth cookies are involved
+- Frontend and backend must share a top-level domain in production (e.g. `stayzy.com` / `api.stayzy.com`) so better-auth's cookie is sent cross-subdomain; CORS on the backend must set `credentials: true` and an explicit `origin`, never `*`, when auth cookies are involved
+- **Local dev has no shared domain** (`localhost:3000` vs `localhost:4000`), so `frontend/next.config.ts` proxies `/api/auth/:path*` to the backend via `rewrites()`. The browser only ever talks to `localhost:3000`, so the session cookie is same-origin with no `SameSite`/CORS gymnastics — this mirrors the production subdomain setup instead of fighting it. Any future auth-adjacent route (e.g. the admin instance in Feature 04) needs the same rewrite if it's called from a browser during local dev.
 
 ### Client Usage (`frontend/lib/auth-client.ts`)
 
 ```typescript
 import { createAuthClient } from "better-auth/react";
 
-export const authClient = createAuthClient({
-  baseURL: process.env.NEXT_PUBLIC_API_BASE_URL,
-});
+// No baseURL: defaults to same-origin "/api/auth", proxied to backend/ via next.config.ts rewrites.
+export const authClient = createAuthClient();
 
 // Email/password sign up
-await authClient.signUp.email({ email, password, name });
+await authClient.signUp.email({ email, password, name, callbackURL: "/verify-email?verified=true" });
 
 // Google OAuth
-await authClient.signIn.social({ provider: "google" });
+await authClient.signIn.social({ provider: "google", callbackURL: "/" });
 
 // Get session in a Server Component
 import { headers } from "next/headers";
 const session = await authClient.getSession({ fetchOptions: { headers: await headers() } });
+
+// Route protection for logged-in-only pages: frontend/proxy.ts (Next.js 16 renamed
+// "middleware" to "proxy") checks getSessionCookie() presence only, no network call
 ```
 
 ---

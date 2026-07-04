@@ -38,7 +38,32 @@ Notes:      [any important pattern notes, especially deviations that turned out 
 
 ## Components Built
 
-_Empty. The first entry gets added here after Feature 01 (Monorepo Scaffold) produces the first real component — likely `Navbar` or `AppShell`._
+### AuthCard
+
+File: frontend/features/auth/components/AuthCard.tsx
+App: frontend
+Last updated: 2026-07-04
+
+Wrapper: `flex min-h-screen items-center justify-center bg-base px-6 py-12` (page-level centering)
+Card: `w-full max-w-md gap-4 rounded-2xl border border-border-default bg-elevated p-6 shadow-card`
+Header: `h1` — `text-xl font-semibold text-text-primary`; optional description — `text-sm text-text-muted`
+Text: title `text-xl font-semibold text-text-primary`; description `text-sm text-text-muted`
+Interactive: none — static wrapper, children supply all interactivity
+Notes: The single shared "centered auth card" used by all 5 auth pages (`/login`, `/signup`, `/verify-email`, `/forgot-password`, `/reset-password`) per `build-plan.md`. Built on the shadcn `Card` primitive (`components/ui/card.tsx`) with a `className` override to match the locked Card pattern exactly, rather than using shadcn's `CardHeader`/`CardContent` sub-components — those carry their own `--card-spacing` CSS-variable padding that would double up with a manual `p-6` override. `max-w-md` (28rem) is specific to this narrow, single-column card — do not assume it for wider content cards (hotel cards, panels).
+
+### Auth Form Layout
+
+File: frontend/features/auth/components/{LoginForm,SignupForm,ForgotPasswordForm,ResetPasswordForm}.tsx
+App: frontend
+Last updated: 2026-07-04
+
+Wrapper: `<form className="flex flex-col gap-4">`
+Field: `<div className="flex flex-col gap-1.5">` wrapping a `Label` + `Input` — matches `ui-rules.md`'s "Form Fields" pattern exactly
+Error text: `text-xs text-state-error`, directly below the last field, above the submit button
+Divider (between the email form and Google button): `flex items-center gap-3 text-xs text-text-faint`, with `h-px flex-1 bg-border-default` rules flanking the literal word "or"
+Footer link line: `text-center text-sm text-text-muted`, link itself `text-accent-text hover:underline`
+Interactive: submit button uses the Primary Button pattern plus `disabled:opacity-70` while submitting, with the label swapped to a present-continuous string (e.g. "Logging in...")
+Notes: `GoogleSignInButton` reuses the Secondary Button pattern verbatim (plus `w-full`) — no new button variant was introduced. See the corrected Input pattern below — this was the first real usage of it and it needed a fix.
 
 ---
 
@@ -55,7 +80,7 @@ bg-accent-primary hover:bg-accent-hover text-white font-medium h-9 px-4 rounded-
 ### Secondary Button
 
 ```
-bg-elevated hover:bg-subtle border border-default hover:border-subtle text-text-secondary hover:text-text-primary h-9 px-4 rounded-xl transition-colors
+bg-elevated hover:bg-subtle border border-border-default hover:border-border-subtle text-text-secondary hover:text-text-primary h-9 px-4 rounded-xl transition-colors
 ```
 
 ### Ghost Button (icon only)
@@ -73,22 +98,24 @@ bg-state-error-dim hover:bg-state-error/20 border border-state-error/25 text-sta
 ### Card
 
 ```
-bg-elevated rounded-2xl border border-default p-5 shadow-card
+bg-elevated rounded-2xl border border-border-default p-5 shadow-card
 ```
 
 ### Panel
 
 ```
-bg-surface rounded-2xl border border-default
-Panel header: px-5 py-4 border-b border-default
+bg-surface rounded-2xl border border-border-default
+Panel header: px-5 py-4 border-b border-border-default
 Panel body:   p-5
 ```
 
 ### Input
 
 ```
-bg-subtle border border-default rounded-xl h-10 px-3 text-text-primary placeholder:text-text-muted focus:border-accent-border focus:ring-1 focus:ring-accent-border transition-colors outline-none
+h-10 rounded-xl border-border-default bg-subtle px-3 text-text-primary placeholder:text-text-muted focus-visible:border-accent-border focus-visible:ring-accent-border
 ```
+
+Corrected 2026-07-04 (first real usage, in `AuthForm` above): the shadcn/base-ui `Input` primitive (`components/ui/input.tsx`) applies its own focus ring via `focus-visible:`, not `focus:` — the originally pre-approved pattern used `focus:` and `ring-1`, which never actually triggers on this primitive. Only override the color (`focus-visible:border-accent-border focus-visible:ring-accent-border`); leave the primitive's own `ring-3`/`outline-none`/`transition-colors` base classes alone rather than re-declaring them.
 
 ### Booking Status Badge — Confirmed
 
@@ -145,7 +172,7 @@ inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-accent-dim 
 ### Stat Card
 
 ```
-bg-elevated rounded-2xl border border-default p-5 shadow-card
+bg-elevated rounded-2xl border border-border-default p-5 shadow-card
 Number: text-2xl font-bold text-text-primary
 Label:  text-xs text-text-muted uppercase tracking-wide mt-1
 ```
@@ -153,13 +180,13 @@ Label:  text-xs text-text-muted uppercase tracking-wide mt-1
 ### Table Wrapper
 
 ```
-bg-surface rounded-2xl border border-default overflow-hidden
+bg-surface rounded-2xl border border-border-default overflow-hidden
 ```
 
 ### Table Header Row
 
 ```
-bg-subtle border-b border-default
+bg-subtle border-b border-border-default
 ```
 
 ### Table Header Cell
@@ -171,7 +198,7 @@ px-4 py-3 text-xs text-text-muted uppercase tracking-wide font-medium text-left
 ### Table Body Row
 
 ```
-border-b border-default last:border-0 hover:bg-elevated transition-colors
+border-b border-border-default last:border-0 hover:bg-elevated transition-colors
 ```
 
 ### Table Body Cell
@@ -205,5 +232,5 @@ h-4 w-4 border-2 border-accent-border border-t-accent-primary rounded-full anima
 
 ```
 fixed bottom-4 inset-x-0 mx-auto max-w-3xl
-bg-surface rounded-2xl border border-default shadow-elevated px-5 py-4
+bg-surface rounded-2xl border border-border-default shadow-elevated px-5 py-4
 ```
