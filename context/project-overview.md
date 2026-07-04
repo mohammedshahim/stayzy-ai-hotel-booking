@@ -29,6 +29,8 @@ For the business side, the admin panel gives hotel operations staff a single pla
 /login                         → Login
 /signup                        → Sign up
 /verify-email                  → Email verification notice / handler
+/forgot-password               → Request a password reset email
+/reset-password                → Set a new password from a reset link
 /checkout/[bookingId]          → Booking checkout + Stripe payment
 /booking-confirmation/[bookingId] → Post-payment confirmation
 /bookings                      → My bookings (list)
