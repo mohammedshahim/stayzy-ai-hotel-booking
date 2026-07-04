@@ -24,10 +24,10 @@ After completing any feature:
 ## Current Status
 
 **Phase:** 1 — Foundation
-**Current feature:** 03 User Authentication
-**Next up:** 03 User Authentication — better-auth instance for `frontend/` (email/password + Google OAuth), email verification, password reset. Once the `user` table exists, add the deferred FK constraints on `bookings.user_id`, `reviews.user_id`, `favorites.user_id`, `recent_searches.user_id` (see Architecture Decisions below).
+**Current feature:** 04 Admin Authentication
+**Next up:** 04 Admin Authentication — separate better-auth instance for `frontend-admin/` (email/password only, no public sign-up), seeded initial admin account, admin route guard. `frontend-admin/` is Vite, not Next.js, so it has no `rewrites()` equivalent for Feature 03's same-origin-proxy trick — decide the local-dev cross-origin cookie strategy for it explicitly (Vite dev server proxy, or plain CORS + verifying `SameSite=Lax` actually behaves as expected across `localhost` ports) before building the admin auth UI.
 **Blocking issues:** None
-**Latest completed addition:** 02 Database Schema — 2026-07-04
+**Latest completed addition:** 03 User Authentication — 2026-07-04
 
 ---
 
@@ -37,7 +37,7 @@ After completing any feature:
 
 - [x] 01 Monorepo scaffold
 - [x] 02 Database schema
-- [ ] 03 User authentication
+- [x] 03 User authentication
 - [ ] 04 Admin authentication
 
 ### Phase 2 — Homepage + Search Foundation
@@ -103,6 +103,9 @@ Not broken into features yet — planning starts after Phase 9 is complete and s
 
 ## Completed Features
 
+### ✅ 03 User Authentication — completed 2026-07-04
+Notes: better-auth user instance (`backend/src/config/auth.ts`) with email/password + Google OAuth, mounted at `/api/auth/*` (before `express.json()`, since better-auth parses its own raw body). `frontend/next.config.ts` proxies `/api/auth/:path*` to the backend so the session cookie is same-origin in local dev; `frontend/proxy.ts` (Next 16 renamed `middleware.ts` → `proxy.ts`) gates `/checkout`, `/bookings`, `/profile` on session-cookie presence only. 5 pages built: `/login`, `/signup`, `/verify-email` (single page, two states via `?verified=true`), `/forgot-password`, `/reset-password` (new routes, not in the original page list). Real email delivery via Resend (`backend/src/services/email.service.ts`) for verification + password reset — no console-log placeholder. better-auth's own schema (`user`/`session`/`account`/`verification`) generated via `@better-auth/cli generate` and hand-adapted into `migrations/0007_create_auth_tables.sql`; `migrations/0008_add_user_fk_constraints.sql` retypes the four deferred `user_id` columns from `uuid` to `text` (better-auth ids are text, not uuid) and adds the FK constraints. Verified end-to-end against the real local Postgres instance: signup creates a session immediately, get-session round-trips through the proxy, full password-reset flow (request → DB token → reset → login with new password) completed via curl, Google OAuth URL generation confirmed, `tsc`/`next build` both clean, all 5 pages render 200 in a production build.
+
 ### ✅ 02 Database Schema — completed 2026-07-04
 Notes: All 13 app-specific tables from `architecture.md` created via 5 grouped migrations (`0002_create_hotels.sql`, `0003_create_room_types.sql`, `0004_create_bookings_reviews.sql`, `0005_create_favorites_recent_searches.sql`, `0006_hotels_location_gist_index.sql`), run through the existing `pnpm migrate` runner from Feature 01. better-auth's own tables (`user`/`session`/`account`/`verification`, `admin_user`/`admin_session`) are intentionally **not** created here — they arrive with Features 03/04. `backend/src/config/seed.ts` (run via `pnpm seed`) truncates and re-inserts a small demo dataset: 8 amenities, 5 room features, 4 meal plans, 5 hotels across Paris/Tokyo/New York with 2 room types each. Verified end-to-end against a real local Postgres instance: all tables + GiST index exist with correct constraints, `pnpm seed` run twice back-to-back with no errors or duplicates, `EXPLAIN` confirms `hotels_location_gist_idx` is actually used for `ST_DWithin` queries, `pnpm build` typechecks clean.
 
@@ -123,6 +126,36 @@ Decision: [what was decided]
 Reason: [why]
 Impact: [what files or components this affects]
 ```
+
+### 03 User Authentication — 2026-07-04
+Decision: Local dev uses a Next.js `rewrites()` proxy (`/api/auth/:path*` → backend) instead of direct cross-origin `fetch` calls from `frontend/` to `backend/`.
+Reason: `localhost:3000`/`localhost:4000` have no shared top-level domain the way production subdomains will. Proxying makes the browser see everything as same-origin, sidestepping `SameSite`/CORS cookie edge cases entirely and mirroring the production topology instead of relying on nuanced cross-port-but-same-site browser behavior.
+Impact: `frontend/next.config.ts`, `frontend/lib/auth-client.ts` (no `baseURL`, defaults to same-origin `/api/auth`). Any future browser-facing backend route needs the same rewrite treatment locally.
+
+### 03 User Authentication — 2026-07-04
+Decision: `frontend/middleware.ts` was written then immediately renamed to `frontend/proxy.ts` (function renamed `middleware` → `proxy`).
+Reason: this Next.js version (16.2.10) deprecated the `middleware` file convention in favor of `proxy` — see `frontend/AGENTS.md`'s warning that this isn't the Next.js most training data reflects. Caught only after the dev server logged a deprecation warning; `node_modules/next/dist/docs/` should be checked before writing Next.js-version-sensitive code, not after.
+Impact: `frontend/proxy.ts`. Worth remembering for any future feature touching Next.js file conventions in this repo.
+
+### 03 User Authentication — 2026-07-04
+Decision: `library-docs.md`'s original better-auth snippet (`requireEmailVerification: true`) was wrong and has been corrected to `false`.
+Reason: better-auth's actual behavior — verified by reading its source — is that `requireEmailVerification: true` prevents sign-up from creating a session at all (and blocks sign-in for unverified users), which contradicts the agreed design ("unverified accounts can browse but not book," confirmed with the developer before implementation). `false` + `emailVerification.sendOnSignUp: true` still sends the verification email on sign-up without gating login.
+Impact: `backend/src/config/auth.ts`, `context/library-docs.md`. Booking creation (Feature 19) is the only place that should ever check `session.user.emailVerified`.
+
+### 03 User Authentication — 2026-07-04
+Decision: Real email delivery via Resend from the start, not a console-log placeholder.
+Reason: developer preference — see the `/architect` session this same day. `backend/src/services/email.service.ts` constructs the `Resend` client lazily (inside the send function, not at module load) so the module can still be imported — and `@better-auth/cli generate` can still run — before a `RESEND_API_KEY` exists.
+Impact: `backend/src/services/email.service.ts`, `backend/src/config/auth.ts`, `RESEND_API_KEY`/`EMAIL_FROM` in `.env`/`.env.example`. `EMAIL_FROM` defaults to Resend's `onboarding@resend.dev` sandbox sender until a verified domain exists.
+
+### 03 User Authentication — 2026-07-04
+Decision: `bookings.user_id`, `reviews.user_id`, `favorites.user_id`, `recent_searches.user_id` were retyped from `uuid` to `text` before adding the deferred FK constraints, instead of adding the FKs directly.
+Reason: better-auth generates `text` ids (not `uuid`) for the `user` table by default. Postgres FK constraints require matching column types with no implicit cast between `uuid` and `text`, so the FK could not be added without this retype. `architecture.md`'s schema table already flagged this ambiguity (`text/uuid`) rather than assuming — this feature resolves it in favor of `text`, matching better-auth's convention rather than fighting it.
+Impact: `backend/migrations/0008_add_user_fk_constraints.sql`. `ON DELETE RESTRICT` on `bookings`/`reviews` (financial/historical records, consistent with the Feature 02 hotel/room_type FK reasoning), `ON DELETE CASCADE` on `favorites`/`recent_searches` (convenience data, not ownership).
+
+### 03 User Authentication — 2026-07-04
+Decision: Fixed a systemic bug in the design tokens: `ui-tokens.md`/`ui-rules.md`/`ui-registry.md` documented `border-default`/`border-subtle`/`border-strong` as Tailwind classes, but the actual generated classes are `border-border-default`/`border-border-subtle`/`border-border-strong` (same doubled-prefix pattern already used correctly for `text-text-primary` etc.).
+Reason: verified by compiling the real Tailwind output — the short form for `border-default` silently did nothing (rode on a coincidental global shadcn reset that happened to look right), and `border-subtle` silently resolved to the wrong color (collided with the unrelated `bg-subtle` token). Found while building the first real component (`AuthCard`) to use a border color token; no prior feature had exercised it. Confirmed with the developer before fixing.
+Impact: `context/ui-tokens.md`, `context/ui-rules.md`, `context/ui-registry.md` (all three corrected), plus every new component in `frontend/features/auth/components/`. Any component built before this fix that used the short form should be checked, but none existed yet.
 
 ### 02 Database Schema — 2026-07-04
 Decision: `bookings.user_id`, `reviews.user_id`, `favorites.user_id`, `recent_searches.user_id` are plain `uuid` columns with no `REFERENCES` clause.
@@ -208,3 +241,8 @@ Next session starts with: Feature 02 Database Schema — read `build-plan.md`'s 
 Built: Feature 02 Database Schema, in full — 5 grouped migrations covering all 13 app-specific tables + the `hotels.location` GiST index, plus `backend/src/config/seed.ts` (`pnpm seed`) seeding demo amenities/room features/meal plans and 5 hotels across 3 cities. See Architecture Decisions above for the deferred user FKs, the RESTRICT/CASCADE split, `gen_random_uuid()` choice, status-as-text-plus-CHECK, and the `noUncheckedIndexedAccess`-vs-`Record<string,string>` gotcha in the seed script.
 Left off: Ran against the developer's real local `backend/.env` `DATABASE_URL` (not a scratch DB this time — it was left seeded, not dropped). All migrations applied, `pnpm seed` run twice back-to-back with no errors, `pnpm build` typechecks clean. Database currently has the Feature 01 + Feature 02 schema plus seed data in place — a developer starting Feature 03 can build against it directly without re-running `pnpm migrate`/`pnpm seed` (though re-running `pnpm seed` is always safe).
 Next session starts with: Feature 03 User Authentication — read `build-plan.md`'s section for it, configure better-auth for `frontend/` (email/password + Google OAuth, email verification, password reset), then add the deferred FK constraints on `bookings.user_id`/`reviews.user_id`/`favorites.user_id`/`recent_searches.user_id` once the `user` table exists.
+
+### Session — 2026-07-04 (3)
+Built: Feature 03 User Authentication, in full — see Completed Features and Architecture Decisions above for the full breakdown (proxy-based local dev cookie strategy, `middleware.ts` → `proxy.ts` rename, the `requireEmailVerification` fix, real Resend email delivery, the `uuid`→`text` user FK retype, and the border-token doc bug fix).
+Left off: Both dev servers running locally (`backend/` on :4000, `frontend/` on :3000) against the developer's real local Postgres instance. Full flow verified via curl end-to-end (signup creates a session immediately, password reset request → DB-extracted token → reset → login with new password, Google OAuth URL generation) since no browser automation tool was available this session. `RESEND_API_KEY` is still empty in `backend/.env` — real verification/reset emails will fail silently (logged, not thrown) until the developer adds one; everything else works without it. Test users created during verification were deleted from the `user` table afterward; the seeded hotel data from Feature 02 is untouched.
+Next session starts with: Feature 04 Admin Authentication — read `build-plan.md`'s section for it. `frontend-admin/` is Vite, not Next.js, so the Feature 03 rewrite-proxy trick doesn't carry over as-is; decide its local-dev cross-origin cookie strategy explicitly before building the admin login UI.
