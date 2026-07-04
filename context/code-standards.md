@@ -366,7 +366,7 @@ Never install a new package without a clear reason. Before installing anything c
 
 Approved dependencies:
 
-**backend/** — `express`, `pg`, `better-auth`, `stripe`, `@aws-sdk/client-s3`, `zod`, `dotenv`
+**backend/** — `express`, `pg`, `better-auth`, `resend` (verification + password reset emails), `stripe`, `@aws-sdk/client-s3`, `zod`, `dotenv`
 
 **frontend/** — `next`, `react`, `better-auth` (client), `@stripe/stripe-js`, `@stripe/react-stripe-js`, `tailwindcss`, `shadcn/ui` components, `lucide-react`
 
