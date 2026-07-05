@@ -23,11 +23,11 @@ After completing any feature:
 
 ## Current Status
 
-**Phase:** 1 — Foundation
-**Current feature:** 04 Admin Authentication
-**Next up:** 04 Admin Authentication — separate better-auth instance for `frontend-admin/` (email/password only, no public sign-up), seeded initial admin account, admin route guard. `frontend-admin/` is Vite, not Next.js, so it has no `rewrites()` equivalent for Feature 03's same-origin-proxy trick — decide the local-dev cross-origin cookie strategy for it explicitly (Vite dev server proxy, or plain CORS + verifying `SameSite=Lax` actually behaves as expected across `localhost` ports) before building the admin auth UI.
+**Phase:** 2 — Homepage + Search Foundation
+**Current feature:** 05 Homepage UI
+**Next up:** 05 Homepage UI — Navbar, hero search widget, trending destinations section (static placeholder data), footer. Read `build-plan.md`'s section for it before starting.
 **Blocking issues:** None
-**Latest completed addition:** 03 User Authentication — 2026-07-04
+**Latest completed addition:** 04 Admin Authentication — 2026-07-05
 
 ---
 
@@ -38,7 +38,7 @@ After completing any feature:
 - [x] 01 Monorepo scaffold
 - [x] 02 Database schema
 - [x] 03 User authentication
-- [ ] 04 Admin authentication
+- [x] 04 Admin authentication
 
 ### Phase 2 — Homepage + Search Foundation
 
@@ -103,6 +103,9 @@ Not broken into features yet — planning starts after Phase 9 is complete and s
 
 ## Completed Features
 
+### ✅ 04 Admin Authentication — completed 2026-07-05
+Notes: Second, fully independent better-auth instance (`backend/src/config/auth-admin.ts`) with its own `admin_user`/`admin_session`/`admin_account`/`admin_verification` tables (`migrations/0009_create_admin_auth_tables.sql`), email/password only, no social providers, no sign-up route ever mounted. Mounted at `/api/admin/auth/*` (before `express.json()`, same reasoning as the user instance). `requireAdmin` middleware (`backend/src/middlewares/requireAdmin.ts`) mirrors `requireAuth` exactly, checking the admin instance's session. `backend/src/config/seed-admin.ts` (`pnpm seed:admin`) creates the one initial admin account via `authAdmin.api.signUpEmail` server-side (never a raw SQL insert, so the password hash always matches better-auth's own hasher), reading credentials from `ADMIN_SEED_EMAIL`/`ADMIN_SEED_PASSWORD`, skipping safely if that email already exists. `frontend-admin/` has no better-auth client SDK — `features/auth/authApi.ts` is a plain RTK Query slice calling the admin instance's REST endpoints (`sign-in/email`, `get-session`, `sign-out`) directly, per the approved-dependency list and the "all admin calls go through RTK Query" rule. Local dev uses direct cross-origin calls (CORS + `credentials: "include"`), not a Vite proxy — `backend/src/middlewares/cors.ts` now echoes back whichever of `APP_URL`/`ADMIN_APP_URL` sent the request. `features/auth/components/ProtectedRoute.tsx` is a React Router layout route wrapping `useGetSessionQuery`, redirecting to `/login?returnTo=...` when there's no session. `AuthCard`/`LoginForm` ported verbatim from `frontend/`'s Feature 03 patterns (same tokens, same primitives) minus Google/signup/forgot-password, since admin has none of those. Verified end-to-end against the real local Postgres instance: migration applied, admin seeded and idempotent on re-run, login round-trips a session cookie cross-origin with the correct CORS headers, `get-session` returns `null` when logged out and the full session when logged in, `requireAdmin` correctly 401s with no cookie and passes through with one (tested via a throwaway route, removed after), both frontend and backend `tsc`/`vite build` clean.
+
 ### ✅ 03 User Authentication — completed 2026-07-04
 Notes: better-auth user instance (`backend/src/config/auth.ts`) with email/password + Google OAuth, mounted at `/api/auth/*` (before `express.json()`, since better-auth parses its own raw body). `frontend/next.config.ts` proxies `/api/auth/:path*` to the backend so the session cookie is same-origin in local dev; `frontend/proxy.ts` (Next 16 renamed `middleware.ts` → `proxy.ts`) gates `/checkout`, `/bookings`, `/profile` on session-cookie presence only. 5 pages built: `/login`, `/signup`, `/verify-email` (single page, two states via `?verified=true`), `/forgot-password`, `/reset-password` (new routes, not in the original page list). Real email delivery via Resend (`backend/src/services/email.service.ts`) for verification + password reset — no console-log placeholder. better-auth's own schema (`user`/`session`/`account`/`verification`) generated via `@better-auth/cli generate` and hand-adapted into `migrations/0007_create_auth_tables.sql`; `migrations/0008_add_user_fk_constraints.sql` retypes the four deferred `user_id` columns from `uuid` to `text` (better-auth ids are text, not uuid) and adds the FK constraints. Verified end-to-end against the real local Postgres instance: signup creates a session immediately, get-session round-trips through the proxy, full password-reset flow (request → DB token → reset → login with new password) completed via curl, Google OAuth URL generation confirmed, `tsc`/`next build` both clean, all 5 pages render 200 in a production build.
 
@@ -126,6 +129,26 @@ Decision: [what was decided]
 Reason: [why]
 Impact: [what files or components this affects]
 ```
+
+### 04 Admin Authentication — 2026-07-05
+Decision: Admin auth uses direct cross-origin calls (CORS + `credentials: "include"`) instead of a Vite dev-server proxy, even though `library-docs.md` originally suggested Feature 04 would need the same rewrite trick as Feature 03.
+Reason: `frontend-admin/src/lib/apiBaseQuery.ts` already had `credentials: "include"` and `backend/src/middlewares/cors.ts` already had `Access-Control-Allow-Credentials: true` from Feature 01's scaffold — both only make sense for direct cross-origin calls, not a proxy (a proxied same-origin request wouldn't need either). `localhost:5173`/`localhost:4000` are same-site (same registrable domain, different port), so no `SameSite` issues arise.
+Impact: `backend/src/middlewares/cors.ts` (now checks the request `Origin` against `[APP_URL, ADMIN_APP_URL]` and echoes back whichever matches, instead of a single hardcoded origin), new `ADMIN_APP_URL`/`API_URL` env vars, `auth-admin.ts`'s `baseURL`/`trustedOrigins` point at the backend's own address and the admin frontend's real origin (not a proxy path). `library-docs.md`'s stale rewrite-proxy guidance for the admin instance was corrected.
+
+### 04 Admin Authentication — 2026-07-05
+Decision: `auth-admin.ts` sets `advanced.cookiePrefix: "admin"`.
+Reason: better-auth's default cookie name is `better-auth.session_token` regardless of instance — since both instances are mounted on the same backend host, they would silently overwrite each other's session cookie (same name, same domain, same `Path=/`) without a distinct prefix. Found and fixed during end-to-end verification, confirmed by logging into both instances in the same cookie jar before and after the fix.
+Impact: `backend/src/config/auth-admin.ts`. Any further better-auth instances added to this backend must set their own distinct `cookiePrefix` too.
+
+### 04 Admin Authentication — 2026-07-05
+Decision: `frontend-admin/` has no better-auth client library; `features/auth/authApi.ts` is a plain RTK Query slice calling the admin instance's REST endpoints directly (`/api/admin/auth/sign-in/email`, `/get-session`, `/sign-out`).
+Reason: `code-standards.md`'s approved-dependency list for `frontend-admin/` never included better-auth, and `architecture.md` mandates all admin API calls go through RTK Query with no ad hoc fetch calls. better-auth's REST endpoints are stable and documented, so no client SDK is needed to call them.
+Impact: `frontend-admin/src/features/auth/authApi.ts`, `app/store.ts`. `get-session` returns `null` (HTTP 200) when logged out, not a 4xx — `ProtectedRoute.tsx` checks `data`, not `error`, for that reason.
+
+### 04 Admin Authentication — 2026-07-05
+Decision: The initial admin account is created by `backend/src/config/seed-admin.ts` calling `authAdmin.api.signUpEmail(...)` server-side directly, from `ADMIN_SEED_EMAIL`/`ADMIN_SEED_PASSWORD` env vars, skipping if that email already exists — never a raw SQL insert.
+Reason: Guarantees the password hash always matches exactly what better-auth's own hasher produces, with no risk of a hand-rolled hash silently mismatching at login time.
+Impact: `backend/src/config/seed-admin.ts`, new `pnpm seed:admin` script, `ADMIN_SEED_EMAIL`/`ADMIN_SEED_PASSWORD` in `.env`/`.env.example`.
 
 ### 03 User Authentication — 2026-07-04
 Decision: Local dev uses a Next.js `rewrites()` proxy (`/api/auth/:path*` → backend) instead of direct cross-origin `fetch` calls from `frontend/` to `backend/`.
@@ -246,3 +269,8 @@ Next session starts with: Feature 03 User Authentication — read `build-plan.md
 Built: Feature 03 User Authentication, in full — see Completed Features and Architecture Decisions above for the full breakdown (proxy-based local dev cookie strategy, `middleware.ts` → `proxy.ts` rename, the `requireEmailVerification` fix, real Resend email delivery, the `uuid`→`text` user FK retype, and the border-token doc bug fix).
 Left off: Both dev servers running locally (`backend/` on :4000, `frontend/` on :3000) against the developer's real local Postgres instance. Full flow verified via curl end-to-end (signup creates a session immediately, password reset request → DB-extracted token → reset → login with new password, Google OAuth URL generation) since no browser automation tool was available this session. `RESEND_API_KEY` is still empty in `backend/.env` — real verification/reset emails will fail silently (logged, not thrown) until the developer adds one; everything else works without it. Test users created during verification were deleted from the `user` table afterward; the seeded hotel data from Feature 02 is untouched.
 Next session starts with: Feature 04 Admin Authentication — read `build-plan.md`'s section for it. `frontend-admin/` is Vite, not Next.js, so the Feature 03 rewrite-proxy trick doesn't carry over as-is; decide its local-dev cross-origin cookie strategy explicitly before building the admin login UI.
+
+### Session — 2026-07-05
+Built: Feature 04 Admin Authentication, in full — see Completed Features and Architecture Decisions above for the full breakdown (CORS-over-proxy decision, the cookie-prefix collision fix, RTK-Query-only admin auth client, and the seed-via-server-API decision).
+Left off: Verified end-to-end against the developer's real local Postgres instance and the already-running local backend dev server: migration `0009` applied, `pnpm seed:admin` created and safely re-skips the seeded account, login/get-session/sign-out round-trip a session cookie cross-origin with correct CORS headers, `requireAdmin` tested directly (401 with no cookie, passes through with one) via a throwaway route that was removed afterward, both instances' session cookies confirmed to coexist without collision after the `cookiePrefix` fix (tested with a throwaway signup user, deleted afterward). Both `backend` and `frontend-admin` `tsc`/build are clean. No browser automation tool was available this session, so the admin login UI itself was verified via `vite build` + curl against the dev server, not visually in a browser — worth a quick visual pass next session if convenient. Noticed (but did not touch) several stray crash-looping `tsx watch` processes from past sessions competing for port 4000; harmless but worth a manual `pkill` if the developer wants to tidy up.
+Next session starts with: Feature 05 Homepage UI — read `build-plan.md`'s section for it (Navbar, hero search widget, trending destinations with static placeholder data, footer).
