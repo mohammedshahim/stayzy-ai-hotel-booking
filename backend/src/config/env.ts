@@ -5,9 +5,14 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(4000),
   DATABASE_URL: z.string().url(),
   APP_URL: z.string().url().default("http://localhost:3000"),
+  ADMIN_APP_URL: z.string().url().default("http://localhost:5173"),
+  API_URL: z.string().url().default("http://localhost:4000"),
 
   BETTER_AUTH_SECRET: z.string().optional(),
   BETTER_AUTH_ADMIN_SECRET: z.string().optional(),
+
+  ADMIN_SEED_EMAIL: z.string().email().optional(),
+  ADMIN_SEED_PASSWORD: z.string().min(8).optional(),
 
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
