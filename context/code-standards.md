@@ -319,8 +319,12 @@ Never hardcode any key, URL, or secret anywhere in the codebase. Each app has it
 | Variable                             | App              | Used In                          |
 | ------------------------------------- | ----------------- | ---------------------------------- |
 | `DATABASE_URL`                        | backend           | `config/db.ts`                    |
+| `APP_URL`                             | backend           | `config/auth.ts`, `middlewares/cors.ts` |
+| `ADMIN_APP_URL`                       | backend           | `config/auth-admin.ts`, `middlewares/cors.ts` |
+| `API_URL`                             | backend           | `config/auth-admin.ts` (admin instance's own `baseURL`, since it's called cross-origin, not proxied) |
 | `BETTER_AUTH_SECRET`                  | backend           | `config/auth.ts`                  |
 | `BETTER_AUTH_ADMIN_SECRET`            | backend           | `config/auth-admin.ts`            |
+| `ADMIN_SEED_EMAIL` / `ADMIN_SEED_PASSWORD` | backend      | `config/seed-admin.ts`            |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | backend      | `config/auth.ts`                  |
 | `STRIPE_SECRET_KEY`                   | backend           | `config/stripe.ts`                |
 | `STRIPE_WEBHOOK_SECRET`               | backend           | `webhooks/stripe.webhook.ts`      |

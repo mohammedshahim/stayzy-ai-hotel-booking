@@ -75,16 +75,29 @@ export const auth = betterAuth({
 
 ```typescript
 import { betterAuth } from "better-auth";
-import { Pool } from "pg";
+import { db } from "./db";
+import { env } from "./env";
 
 export const authAdmin = betterAuth({
-  database: new Pool({ connectionString: process.env.DATABASE_URL }),
-  secret: process.env.BETTER_AUTH_ADMIN_SECRET!,
+  database: db,
+  secret: env.BETTER_AUTH_ADMIN_SECRET,
+  basePath: "/api/admin/auth",
+  baseURL: `${env.API_URL}/api/admin/auth`,
+  trustedOrigins: [env.ADMIN_APP_URL],
   emailAndPassword: {
     enabled: true,
     requireEmailVerification: false,
   },
   // No socialProviders — admin sign-in is email/password only, no public sign-up route is ever mounted
+  user: {
+    modelName: "admin_user",
+    additionalFields: {
+      role: { type: "string", required: false, defaultValue: "admin" },
+    },
+  },
+  session: { modelName: "admin_session" },
+  account: { modelName: "admin_account" },
+  verification: { modelName: "admin_verification" },
 });
 ```
 
@@ -94,7 +107,8 @@ export const authAdmin = betterAuth({
 - `requireAuth` middleware checks the user instance's session; `requireAdmin` middleware checks the admin instance's session — never cross-check one against the other
 - A booking-creation route also checks `session.user.emailVerified` — verification is enforced at the booking step, not globally
 - Frontend and backend must share a top-level domain in production (e.g. `stayzy.com` / `api.stayzy.com`) so better-auth's cookie is sent cross-subdomain; CORS on the backend must set `credentials: true` and an explicit `origin`, never `*`, when auth cookies are involved
-- **Local dev has no shared domain** (`localhost:3000` vs `localhost:4000`), so `frontend/next.config.ts` proxies `/api/auth/:path*` to the backend via `rewrites()`. The browser only ever talks to `localhost:3000`, so the session cookie is same-origin with no `SameSite`/CORS gymnastics — this mirrors the production subdomain setup instead of fighting it. Any future auth-adjacent route (e.g. the admin instance in Feature 04) needs the same rewrite if it's called from a browser during local dev.
+- **Local dev has no shared domain** (`localhost:3000` vs `localhost:4000`), so `frontend/next.config.ts` proxies `/api/auth/:path*` to the backend via `rewrites()`. The browser only ever talks to `localhost:3000`, so the session cookie is same-origin with no `SameSite`/CORS gymnastics — this mirrors the production subdomain setup instead of fighting it.
+- **The admin instance (Feature 04) deliberately does not use this proxy trick.** `frontend-admin/` is Vite, not Next.js, and calls the backend directly cross-origin via `lib/apiBaseQuery.ts`'s `credentials: "include"`. `localhost:5173` and `localhost:4000` are same-site (same registrable domain, different port), so no `SameSite` issues arise — `backend/src/middlewares/cors.ts` just needs to echo back whichever of `APP_URL`/`ADMIN_APP_URL` sent the request (never `*`) with `Access-Control-Allow-Credentials: true`. Because there's no proxy, `baseURL`/`trustedOrigins` above point at the backend's own address (`API_URL`) and the admin frontend's real origin (`ADMIN_APP_URL`), not a frontend-facing proxy path like the user instance's `APP_URL`.
 
 ### Client Usage (`frontend/lib/auth-client.ts`)
 
@@ -117,6 +131,23 @@ const session = await authClient.getSession({ fetchOptions: { headers: await hea
 // Route protection for logged-in-only pages: frontend/proxy.ts (Next.js 16 renamed
 // "middleware" to "proxy") checks getSessionCookie() presence only, no network call
 ```
+
+### Admin Client Usage (`frontend-admin/`)
+
+No better-auth client library — `frontend-admin/`'s approved-dependency list (`code-standards.md`) doesn't include one, and `architecture.md` mandates every admin API call go through RTK Query. `features/auth/authApi.ts` calls the admin instance's REST endpoints directly instead:
+
+```typescript
+login: builder.mutation<{ user: AdminUser }, { email: string; password: string }>({
+  query: (body) => ({ url: "/api/admin/auth/sign-in/email", method: "POST", body }),
+  invalidatesTags: ["AdminSession"],
+}),
+getSession: builder.query<{ user: AdminUser; session: object } | null, void>({
+  query: () => "/api/admin/auth/get-session",
+  providesTags: ["AdminSession"],
+}),
+```
+
+`getSession` returns `null` (HTTP 200) when there's no session — not a 4xx — so RTK Query surfaces it as `data: null`, not `error`. The route guard (`features/auth/components/ProtectedRoute.tsx`) checks `data` for that reason, not `error`.
 
 ---
 
