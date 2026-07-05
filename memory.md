@@ -1,53 +1,41 @@
-# Memory — Feature 04 Admin Authentication
+# Memory — Feature 05 Homepage UI
 
 Last updated: 2026-07-05
 
 ## What was built
 
-**Backend:**
-- `backend/src/config/auth-admin.ts` — second, fully independent better-auth instance for `frontend-admin/`: email/password only, no social providers, no sign-up route ever mounted. Own `admin_user`/`admin_session`/`admin_account`/`admin_verification` tables via `modelName` overrides. Mounted at `/api/admin/auth/*` (before `express.json()`) via `backend/src/routes/admin/auth.routes.ts`.
-- `backend/src/middlewares/requireAdmin.ts` — mirrors `requireAuth.ts`, checks the admin instance's session, attaches `req.adminUser`.
-- `backend/src/config/seed-admin.ts` (`pnpm seed:admin`) — creates the one initial admin account via `authAdmin.api.signUpEmail` server-side (not a raw SQL insert), reads `ADMIN_SEED_EMAIL`/`ADMIN_SEED_PASSWORD`, skips safely if that email already exists.
-- `backend/migrations/0009_create_admin_auth_tables.sql` — generated via `@better-auth/cli generate` against a throwaway re-export config, hand-adapted into this project's migration style.
-- `backend/src/middlewares/cors.ts` — now checks the request `Origin` against `[APP_URL, ADMIN_APP_URL]` and echoes back whichever matches (never `*`), instead of a single hardcoded origin.
-- New env vars: `ADMIN_APP_URL`, `API_URL`, `ADMIN_SEED_EMAIL`, `ADMIN_SEED_PASSWORD` (added to `env.ts` and `.env.example`).
-- `backend/src/types/express.d.ts` — adds `Request.adminUser`.
-
-**Frontend-admin:**
-- `frontend-admin/src/features/auth/authApi.ts` — RTK Query slice calling the admin instance's REST endpoints directly (`sign-in/email`, `get-session`, `sign-out`) — no better-auth client SDK.
-- `frontend-admin/src/features/auth/components/` — `AuthCard`, `LoginForm`, `LoginPage` (ported from `frontend/`'s Feature 03 patterns, minus Google/signup/forgot-password), and `ProtectedRoute` (new pattern: React Router layout route wrapping `useGetSessionQuery`, loading state → `<Outlet />` or `<Navigate to="/login?returnTo=...">`).
-- `frontend-admin/src/components/ui/{card,input,label}.tsx` — ported byte-for-byte from `frontend/`, since both apps share the same `@base-ui/react` primitives and token remapping.
-- `frontend-admin/src/router/routes.tsx` / `app/store.ts` — wired `/login` to `LoginPage`, everything else behind `ProtectedRoute`; `authApi` registered in the store.
-- `frontend-admin/.env.local` created (`VITE_API_BASE_URL=http://localhost:4000`, gitignored).
-
-**Docs updated:** `library-docs.md` (admin better-auth snippet completed with `baseURL`/`trustedOrigins`/`modelName`/`cookiePrefix`, corrected the stale "needs a rewrite proxy" guidance, added "Admin Client Usage" section), `code-standards.md` (env var table), `ui-registry.md` (new "Admin AuthCard / Login Form" and "Route Guard (ProtectedRoute)" entries), `progress-tracker.md` (Feature 04 marked complete with full decision log).
+**`frontend/` homepage and shared page shell:**
+- `app/layout.tsx` — added `<Navbar />` + `<main className="pt-16 min-h-screen bg-base">` per `ui-rules.md`'s Page Structure.
+- `app/page.tsx` — hero section (headline, subheadline, hero visual placeholder, `HeroSearchWidget`), `TrendingDestinations`, `Footer`.
+- `components/layout/Navbar.tsx` — Server Component, logo + login/account state only (Favorites/Compare icons deliberately deferred to Features 17/18).
+- `components/layout/AccountMenu.tsx` — Client Component, Popover-based dropdown (My Bookings/Profile/Logout).
+- `components/layout/Footer.tsx` — homepage-only, placeholder Company/Support/Legal links.
+- `lib/get-server-session.ts` — forwards the incoming request's `cookie` header directly to the backend's `get-session`, since Server Components can't use the browser-only rewrite proxy from Feature 03.
+- `features/search/components/{DestinationInput,DateRangePicker,GuestsRoomsPicker,HeroSearchWidget}.tsx` — interactive hero search widget, local state only (no navigation/API — `/search` doesn't exist until Feature 06).
+- `features/trending-destinations/components/TrendingDestinations.tsx` — new feature folder (matches Feature 11's numbered slot), 8 hardcoded destinations.
+- `components/ui/{calendar,popover}.tsx` — new shadcn primitives (unmodified from generated output — the project's token remapping already makes them on-brand).
+- `code-standards.md`, `ui-rules.md`, `ui-registry.md`, `progress-tracker.md` all updated to match.
 
 ## Decisions made
 
-- **CORS + `credentials: include`, not a Vite proxy**, for admin auth's local-dev cross-origin cookie strategy. `apiBaseQuery.ts`/`cors.ts` were already scaffolded this way in Feature 01; `localhost:5173`/`localhost:4000` are same-site (same registrable domain, different port) so no `SameSite` issues.
-- **`advanced.cookiePrefix: "admin"`** on the admin instance — both instances share the same backend host, and better-auth's default cookie name (`better-auth.session_token`) would otherwise collide between them, silently overwriting whichever session was set last.
-- **No better-auth client SDK in `frontend-admin/`** — `authApi.ts` calls the REST endpoints directly via RTK Query, matching the approved-dependency list and the "all admin calls go through RTK Query" rule.
-- **Admin account seeded via `authAdmin.api.signUpEmail` server-side**, not a raw SQL insert — guarantees the password hash always matches better-auth's own hasher.
-- **`role` additionalField** (`admin`/`super_admin`, default `admin`) added to `admin_user` per `architecture.md`'s schema, but no role-gated logic built yet — nothing needs it until a later admin feature.
+- Added `react-day-picker` + `date-fns` as new approved `frontend/` dependencies (shadcn's `Calendar` primitive) rather than hand-rolling date-range math — confirmed with developer during `/architect`.
+- `Navbar` fetches session server-side (`get-server-session.ts`) rather than a client-side `useSession()` hook, to avoid a loading flash — only `AccountMenu` itself is a Client Component.
+- All three hero search widget segments (Destination/Date/Guests) now share one visual pattern: `m-2 rounded-xl border border-border-default bg-subtle px-4 py-2.5`, accent-colored border+ring when active. This replaced an earlier per-segment-divider layout (`divide-x`/`divide-y`) after two rounds of developer feedback — see Problems Solved.
 
 ## Problems solved
 
-- Both better-auth instances defaulted to the identical cookie name (`better-auth.session_token`). Since they're mounted on the same backend host with the same cookie path, logging into one would have silently overwritten the other's session cookie in the browser. Caught during end-to-end verification (tested both sessions in the same cookie jar before/after the fix), fixed with a distinct `cookiePrefix`.
-- `library-docs.md`'s original guidance said Feature 04 needed the same Next.js rewrites()-proxy trick as Feature 03 — but that contradicted `apiBaseQuery.ts`'s `credentials: "include"` (only meaningful for direct cross-origin calls). Resolved in favor of the already-built CORS approach; docs corrected.
-- `@better-auth/cli generate` requires the config file to export `auth` (default or named) — `auth-admin.ts` exports `authAdmin`. Worked around with a throwaway re-export file (`auth-admin.generate.ts`, deleted after use) rather than renaming the real export.
+- **Hero dead space (developer-reported):** `min-h-[calc(100svh-4rem)] items-center` on the hero grid, combined with the outer section's `py-14`, produced 313px of empty space above the headline on desktop and awkward gaps above/below on mobile. Fixed by dropping the forced min-height entirely; `ui-rules.md`'s Homepage Specific Rules corrected to match (don't reintroduce `min-h-[calc(100svh-4rem)]` on this grid).
+- **Destination field UX (developer-reported, took 3 iterations):** (1) field had zero hover/focus feedback at all — fixed with a hover/focus-within background. (2) That only fixed the *interaction* state, not the *resting* look — developer wanted a real bordered box visible before any interaction (chose this explicitly when asked). (3) While wiring the accent-colored focus border, found a real CSS bug: `hover:border-*` and `focus-within:border-*` on the same element compete when a real cursor rests over a focused field (both pseudo-classes true at once) — Tailwind's stylesheet order, not className source order, decides the winner, and it silently ate the accent color. Fix: don't put hover and focus-within/focus-visible on the same property on one element. Verify with computed styles, not just a screenshot (a real mouse click has both states active simultaneously).
+- Base-ui's `Button` needs `nativeButton={false}` when rendered as a `<Link>` via the `render` prop, or it logs a console warning (Link renders an `<a>`, not a `<button>`).
 
 ## Current state
 
-Both dev servers verified against the developer's real local Postgres instance. Migration `0009` applied, `pnpm seed:admin` creates the seeded admin (`admin@stayzy.dev`, credentials in the real untracked `.env`, not repeated here) and safely no-ops on re-run. Login → `get-session` → `sign-out` round-trip a session cookie cross-origin with correct CORS headers (verified via curl with an `Origin: http://localhost:5173` header). `requireAdmin` tested directly via a throwaway route (401 with no cookie, passes through with one), removed after. Both instances' cookies confirmed to coexist without collision. Both `backend` (`tsc`) and `frontend-admin` (`tsc -b && vite build`) are clean. All changes committed (4 commits: backend admin auth, frontend-admin auth UI, docs fixes, progress-tracker log) and pushed to `origin/main`.
-
-No browser automation tool was available this session, so the admin login UI was verified via `vite build` + curl against the dev server, not visually in a browser.
-
-Noticed but not touched: several stray crash-looping `tsx watch` processes from past sessions competing for port 4000 (harmless, just clutter — a manual `pkill` would tidy them up if desired).
+Homepage is fully built and polished: Navbar (logged-in and logged-out states both verified with a throwaway account, deleted after), hero with search widget (all 3 segments now visually consistent, bordered boxes, verified accent-focus states with computed styles), Trending Destinations (8 static cards), Footer. `tsc`, `eslint`, and `next build` all clean. Verified responsively at mobile/tablet/desktop via headless Playwright (no chromium-cli available in this environment — used a cached `npx playwright` install directly; no project-specific run skill exists yet for this app, none was created since nothing beyond the standard Next.js dev pattern was needed). Both dev servers left running (`frontend` :3000, `backend` :4000).
 
 ## Next session starts with
 
-Feature 05 Homepage UI (see `build-plan.md`): Navbar (logo, login/account state), hero search widget (destination input, check-in/check-out date range, guests + rooms breakdown), trending destinations section (static placeholder data for now), footer. Search widget should be interactive but doesn't need to navigate anywhere real yet — that's Feature 09 (Search Backend Wiring).
+Feature 06 Search Results UI — read `build-plan.md`'s section for it: `/search` page with sticky filter sidebar (price, star rating, guest rating, amenities, room features, meals, free cancellation, landmarks), active filter chips, sort dropdown, List/Grid/Map view toggle (Map view needs Mapbox — `NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN` already exists as an empty placeholder in `frontend/.env.local`, needs a real value before Map view can render), hotel card, pagination, empty state. Static/mock hotel data for now — real backend wiring is Feature 09.
 
 ## Open questions
 
-- None blocking. A quick visual/browser pass over the admin login page would be worthwhile next time a browser is available, since this session's UI verification was curl/build-only.
+- None blocking. Worth reusing the hero search widget's bordered-segment pattern (`m-2 rounded-xl border border-border-default bg-subtle`, accent border+ring when active) for the `/search` filter sidebar's interactive controls, for consistency, if it fits.
