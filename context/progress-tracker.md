@@ -24,10 +24,10 @@ After completing any feature:
 ## Current Status
 
 **Phase:** 2 — Homepage + Search Foundation
-**Current feature:** 05 Homepage UI
-**Next up:** 05 Homepage UI — Navbar, hero search widget, trending destinations section (static placeholder data), footer. Read `build-plan.md`'s section for it before starting.
+**Current feature:** 06 Search Results UI
+**Next up:** 06 Search Results UI — `/search` page with sticky filter sidebar, active filter chips, sort dropdown, List/Grid/Map view toggle, hotel card, pagination, empty state. Static/mock hotel data for now. Read `build-plan.md`'s section for it before starting.
 **Blocking issues:** None
-**Latest completed addition:** 04 Admin Authentication — 2026-07-05
+**Latest completed addition:** 05 Homepage UI — 2026-07-05
 
 ---
 
@@ -42,7 +42,7 @@ After completing any feature:
 
 ### Phase 2 — Homepage + Search Foundation
 
-- [ ] 05 Homepage UI
+- [x] 05 Homepage UI
 - [ ] 06 Search results UI
 - [ ] 07 Admin hotel CRUD
 - [ ] 08 Admin room type CRUD
@@ -103,6 +103,9 @@ Not broken into features yet — planning starts after Phase 9 is complete and s
 
 ## Completed Features
 
+### ✅ 05 Homepage UI — completed 2026-07-05
+Notes: `frontend/`'s homepage (`app/page.tsx`) plus the shared page shell it depends on. `components/layout/Navbar.tsx` is a Server Component that calls the new `lib/get-server-session.ts` (forwards the incoming request's `cookie` header directly to the backend's `get-session`, since Server Components can't use the browser-only rewrite proxy from Feature 03) and renders either a Log-in button or `components/layout/AccountMenu.tsx` (Client Component, Popover-based dropdown — My Bookings/Profile/Logout). `components/layout/Footer.tsx` (homepage-only, per `ui-rules.md`) has placeholder Company/Support/Legal links. The hero search widget (`features/search/components/{HeroSearchWidget,DestinationInput,DateRangePicker,GuestsRoomsPicker}.tsx`) is interactive (destination text, a date-range Popover+Calendar, and an Adults/Kids/Rooms stepper Popover) but holds local state only — no API calls, no navigation, since `/search` doesn't exist until Feature 06. `features/trending-destinations/components/TrendingDestinations.tsx` has 8 hardcoded destinations (its own new feature folder, matching Feature 11's numbered slot, so that feature can add a data hook here later without restructuring). Added `react-day-picker` (+ its `date-fns` peer) as a new approved `frontend/` dependency for shadcn's `Calendar` primitive — see Architecture Decisions. Verified in a real headless browser (Playwright, since no project-specific run skill existed yet for this app — none was created since nothing app-specific beyond the standard Next.js dev-server pattern was needed) at mobile/tablet/desktop widths, plus both the date-range and guests popovers, plus the logged-in `AccountMenu` state using a throwaway signup (deleted after). Both `tsc --noEmit` and `next build` are clean.
+
 ### ✅ 04 Admin Authentication — completed 2026-07-05
 Notes: Second, fully independent better-auth instance (`backend/src/config/auth-admin.ts`) with its own `admin_user`/`admin_session`/`admin_account`/`admin_verification` tables (`migrations/0009_create_admin_auth_tables.sql`), email/password only, no social providers, no sign-up route ever mounted. Mounted at `/api/admin/auth/*` (before `express.json()`, same reasoning as the user instance). `requireAdmin` middleware (`backend/src/middlewares/requireAdmin.ts`) mirrors `requireAuth` exactly, checking the admin instance's session. `backend/src/config/seed-admin.ts` (`pnpm seed:admin`) creates the one initial admin account via `authAdmin.api.signUpEmail` server-side (never a raw SQL insert, so the password hash always matches better-auth's own hasher), reading credentials from `ADMIN_SEED_EMAIL`/`ADMIN_SEED_PASSWORD`, skipping safely if that email already exists. `frontend-admin/` has no better-auth client SDK — `features/auth/authApi.ts` is a plain RTK Query slice calling the admin instance's REST endpoints (`sign-in/email`, `get-session`, `sign-out`) directly, per the approved-dependency list and the "all admin calls go through RTK Query" rule. Local dev uses direct cross-origin calls (CORS + `credentials: "include"`), not a Vite proxy — `backend/src/middlewares/cors.ts` now echoes back whichever of `APP_URL`/`ADMIN_APP_URL` sent the request. `features/auth/components/ProtectedRoute.tsx` is a React Router layout route wrapping `useGetSessionQuery`, redirecting to `/login?returnTo=...` when there's no session. `AuthCard`/`LoginForm` ported verbatim from `frontend/`'s Feature 03 patterns (same tokens, same primitives) minus Google/signup/forgot-password, since admin has none of those. Verified end-to-end against the real local Postgres instance: migration applied, admin seeded and idempotent on re-run, login round-trips a session cookie cross-origin with the correct CORS headers, `get-session` returns `null` when logged out and the full session when logged in, `requireAdmin` correctly 401s with no cookie and passes through with one (tested via a throwaway route, removed after), both frontend and backend `tsc`/`vite build` clean.
 
@@ -129,6 +132,27 @@ Decision: [what was decided]
 Reason: [why]
 Impact: [what files or components this affects]
 ```
+
+### 05 Homepage UI — 2026-07-05 (post-review refinement)
+Decision: The Destination segment of the hero search widget gets its own permanent bordered box (`border border-border-default bg-subtle`, focus-within switches to `border-accent-border` + a matching ring) — unlike the Date/Guests segments, which stay borderless at rest and rely on the Popover itself as the interaction cue.
+Reason: Two rounds of `/review` feedback on this same field. First pass: it had no hover/focus feedback at all (an oversight, fixed with a hover/focus-within background). Second pass: that fix only changed the *interaction* state, not the *resting* appearance — the actual complaint was that a plain-text field with no border doesn't read as an input until touched. Developer explicitly chose "visible bordered box" over the alternatives when asked.
+Impact: `frontend/features/search/components/DestinationInput.tsx`, `ui-registry.md`. Real gotcha hit while wiring the focus state: an initial `hover:border-border-subtle` was left in alongside `focus-within:border-accent-border` — since a real cursor sits over the field while typing, `:hover` and `:focus-within` are both true simultaneously, and Tailwind's generated stylesheet order (not the `className` string's source order) decided which one won, silently killing the accent focus color. Removed the redundant hover-border rule (the box is already visible at rest, so hover didn't need to touch border-color at all). Worth remembering for any future element where hover and focus-within touch the same CSS property — verify with computed styles, not just a screenshot, since a screenshot taken via a real mouse click will have both pseudo-classes active at once.
+Follow-up decision (same session): extended the same bordered-box treatment to the Date and Guests segments too (`DateRangePicker.tsx`, `GuestsRoomsPicker.tsx`), for visual consistency across all three — developer asked for this directly after the Destination-only fix looked inconsistent. Since those two are `PopoverTrigger`s (not a `div` wrapping a native input), used `focus-visible:` + `aria-expanded:` instead of `focus-within:` — base-ui sets `aria-expanded="true"` on a trigger for the entire time its popover stays open, so the box stays highlighted throughout, not just for the instant it receives focus. Also dropped the search widget row's `divide-x`/`divide-y` dividers (`HeroSearchWidget.tsx`), since each segment now draws its own border and a divider line next to it would double up.
+
+### 05 Homepage UI — 2026-07-05
+Decision: Added `react-day-picker` + `date-fns` as new approved `frontend/` dependencies, generating shadcn's standard `Calendar` primitive rather than hand-rolling date-range math.
+Reason: `code-standards.md` already says to prefer shadcn/ui primitives over custom-built components; the date-range picker is real date-math logic (range selection, disabled past dates, month navigation), not decorative UI, and this is exactly the kind of "clever/custom" work worth avoiding when a standard primitive exists. Confirmed with the developer before adding (see the `/architect` session this same day).
+Impact: `frontend/package.json`, `code-standards.md`'s approved-dependency list, `components/ui/calendar.tsx` and `components/ui/popover.tsx` (both newly generated, unmodified from shadcn's output since the project's semantic token remapping from Feature 01 already makes them render on-brand with no manual class edits).
+
+### 05 Homepage UI — 2026-07-05
+Decision: `Navbar` is a Server Component that fetches session state itself (`lib/get-server-session.ts`, forwarding the request's `cookie` header directly to the backend's `get-session`), rather than a Client Component using `authClient.useSession()`.
+Reason: `code-standards.md` prefers Server Components fetching data and passing it down over client-side fetches, and this avoids a loading-state flash on every page load. Only the account dropdown itself (`AccountMenu`) needs to be a Client Component, for its own open/close interactivity and the sign-out click handler.
+Impact: `frontend/lib/get-server-session.ts`, `components/layout/Navbar.tsx`, `components/layout/AccountMenu.tsx`. Unlike `frontend-admin/`'s `ProtectedRoute` (which has to be client-side, since Vite has no server-rendering layer), any future `frontend/` page needing session state server-side should reuse `get-server-session.ts` rather than inventing another fetch.
+
+### 05 Homepage UI — 2026-07-05
+Decision: Navbar scope for this feature is strictly "logo + login/account state," per `build-plan.md`'s Feature 05 bullet list — no Favorites icon, Compare icon, or compact nav search bar yet, even though `project-overview.md` describes the fuller end-state Navbar.
+Reason: Those elements need functionality that doesn't exist until Features 17/18 (Favorites/Compare) — adding inert icons now would be premature UI for features that aren't built, and scope for each feature build is `build-plan.md`'s bullet list, not `project-overview.md`'s end-state description.
+Impact: `components/layout/Navbar.tsx`. Features 17/18 will need to add those nav icons, and will also need to decide how the compact nav search bar (mentioned in `project-overview.md`, not yet built) hides itself specifically on the homepage route.
 
 ### 04 Admin Authentication — 2026-07-05
 Decision: Admin auth uses direct cross-origin calls (CORS + `credentials: "include"`) instead of a Vite dev-server proxy, even though `library-docs.md` originally suggested Feature 04 would need the same rewrite trick as Feature 03.
@@ -269,6 +293,11 @@ Next session starts with: Feature 03 User Authentication — read `build-plan.md
 Built: Feature 03 User Authentication, in full — see Completed Features and Architecture Decisions above for the full breakdown (proxy-based local dev cookie strategy, `middleware.ts` → `proxy.ts` rename, the `requireEmailVerification` fix, real Resend email delivery, the `uuid`→`text` user FK retype, and the border-token doc bug fix).
 Left off: Both dev servers running locally (`backend/` on :4000, `frontend/` on :3000) against the developer's real local Postgres instance. Full flow verified via curl end-to-end (signup creates a session immediately, password reset request → DB-extracted token → reset → login with new password, Google OAuth URL generation) since no browser automation tool was available this session. `RESEND_API_KEY` is still empty in `backend/.env` — real verification/reset emails will fail silently (logged, not thrown) until the developer adds one; everything else works without it. Test users created during verification were deleted from the `user` table afterward; the seeded hotel data from Feature 02 is untouched.
 Next session starts with: Feature 04 Admin Authentication — read `build-plan.md`'s section for it. `frontend-admin/` is Vite, not Next.js, so the Feature 03 rewrite-proxy trick doesn't carry over as-is; decide its local-dev cross-origin cookie strategy explicitly before building the admin login UI.
+
+### Session — 2026-07-05 (2)
+Built: Feature 05 Homepage UI, in full — see Completed Features and Architecture Decisions above (the `react-day-picker` addition, the server-side-session-in-Navbar decision, and the deliberately narrow Navbar scope).
+Left off: Verified in a real headless browser via Playwright (no chromium-cli available in this environment; used the cached `npx playwright` install directly) at mobile/tablet/desktop widths — no horizontal overflow, search widget collapses to a stacked layout below `lg`, trending grid degrades to 1 column on mobile. Date-range popover (2-month calendar, today highlighted, past dates disabled) and Guests/Rooms popover (steppers) both confirmed working. Logged-in `AccountMenu` state also verified end-to-end using a throwaway signup account against the already-running local backend (session cookie forwarded server-side correctly, dropdown shows My Bookings/Profile/Logout) — the test user was deleted from the `user` table afterward. Caught and fixed one console warning along the way: base-ui's `Button` needs `nativeButton={false}` whenever it's rendered as a `<Link>` via the `render` prop (used for both the Navbar's Log-in button and would apply to any future button-styled link). Both `tsc --noEmit` and `next build` are clean. Left the frontend dev server running locally on :3000 alongside the already-running backend on :4000.
+Next session starts with: Feature 06 Search Results UI — read `build-plan.md`'s section for it (sticky filter sidebar, active filter chips, sort dropdown, List/Grid/Map view toggle, hotel card, pagination, empty state — all against static/mock hotel data for now, real backend wiring is Feature 09).
 
 ### Session — 2026-07-05
 Built: Feature 04 Admin Authentication, in full — see Completed Features and Architecture Decisions above for the full breakdown (CORS-over-proxy decision, the cookie-prefix collision fix, RTK-Query-only admin auth client, and the seed-via-server-API decision).

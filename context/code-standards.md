@@ -372,7 +372,7 @@ Approved dependencies:
 
 **backend/** — `express`, `pg`, `better-auth`, `resend` (verification + password reset emails), `stripe`, `@aws-sdk/client-s3`, `zod`, `dotenv`
 
-**frontend/** — `next`, `react`, `better-auth` (client), `@stripe/stripe-js`, `@stripe/react-stripe-js`, `tailwindcss`, `shadcn/ui` components, `lucide-react`
+**frontend/** — `next`, `react`, `better-auth` (client), `@stripe/stripe-js`, `@stripe/react-stripe-js`, `tailwindcss`, `shadcn/ui` components, `lucide-react`, `react-day-picker` + `date-fns` (shadcn's `Calendar` primitive and its date-math peer dependency, added in Feature 05 for the homepage date-range picker)
 
 **frontend-admin/** — `react`, `vite`, `@reduxjs/toolkit`, `react-redux` (required peer for using the store from components), `react-router-dom`, `tailwindcss`, `shadcn/ui` components, `lucide-react`
 

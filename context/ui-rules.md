@@ -354,8 +354,9 @@ Homepage is the only page with a footer and marketing-style sections on the user
 
 ```
 Hero section:
-  mx-auto grid min-h-[calc(100svh-4rem)] max-w-7xl items-center gap-10 px-6 py-14
-  Search widget: bg-surface rounded-2xl border border-border-default shadow-elevated p-5, overlapping the hero visual on desktop
+  Section wrapper: mx-auto max-w-7xl px-6 py-14 lg:py-20
+  Content grid: grid items-center gap-10 lg:grid-cols-2 — no forced min-height. `min-h-[calc(100svh-4rem)]` was tried in Feature 05 and produced 100–300px+ of dead space above the headline (hero content is shorter than a full viewport at real screen sizes) — do not reintroduce it.
+  Search widget: bg-surface rounded-2xl border border-border-default shadow-elevated p-5, wrapped in `mt-8 lg:-mt-16` so it sits with normal spacing below the hero visual on mobile/tablet and only overlaps the hero visual once the two-column layout is active (`lg:`)
   Headline: text-4xl md:text-5xl xl:text-6xl font-semibold leading-tight text-text-primary
   Subheadline: text-base leading-7 text-text-secondary max-w-xl mt-5
 

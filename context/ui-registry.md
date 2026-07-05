@@ -84,6 +84,73 @@ Last updated: 2026-07-05
 Wrapper (loading state): `flex min-h-screen items-center justify-center bg-base`, text `text-sm text-text-muted`
 Notes: New pattern, not a variant of anything in `frontend/` (Next.js's `proxy.ts` checks a cookie with no network call; `frontend-admin/` has no server-rendering layer to do that, so the guard is a React Router layout route wrapping `useGetSessionQuery`, showing this loading state until the query resolves, then either an `<Outlet />` or a `<Navigate>` to `/login`). Reuse this loading-state treatment for any other route-level "waiting on session" moment in `frontend-admin/` rather than inventing a new one.
 
+### Navbar
+
+File: frontend/components/layout/Navbar.tsx
+App: frontend
+Last updated: 2026-07-05
+
+Wrapper: `fixed top-0 z-40 h-16 w-full border-b border-border-default bg-surface px-6`
+Content: `mx-auto flex h-full max-w-7xl items-center justify-between`
+Logo: `text-lg font-semibold text-text-primary`
+CTA (logged out): Primary Button pattern via `render={<Link href="/login" />} nativeButton={false}` on the shadcn `Button` primitive
+Notes: Server Component — calls `lib/get-server-session.ts` (forwards the incoming request's `cookie` header directly to the backend's `get-session`, since Server Components can't rely on the browser-only rewrite proxy). Renders `AccountMenu` when a session exists, the Log-in button otherwise. Scope for Feature 05 is logo + login/account state only, per `build-plan.md` — no Favorites/Compare icons or compact search bar yet (those arrive with Features 17/18, which also need to decide how the compact nav search bar hides itself on the homepage).
+
+### AccountMenu
+
+File: frontend/components/layout/AccountMenu.tsx
+App: frontend
+Last updated: 2026-07-05
+
+Trigger: `flex h-9 items-center gap-2 rounded-xl border border-border-default bg-elevated px-3 text-sm text-text-secondary transition-colors hover:border-border-subtle hover:text-text-primary`
+Avatar fallback: `flex h-6 w-6 items-center justify-center rounded-full bg-accent-dim text-accent-text` wrapping a `UserIcon`
+Menu (Popover content): `w-48 border border-border-default bg-elevated p-1.5 shadow-elevated`
+Menu item: `flex h-9 items-center rounded-lg px-2.5 text-sm text-text-secondary transition-colors hover:bg-subtle hover:text-text-primary`
+Destructive item (Logout): same sizing, `text-state-error hover:bg-state-error-dim`
+Notes: Built on the new `Popover`/`PopoverTrigger`/`PopoverContent` primitives (`components/ui/popover.tsx`, `@base-ui/react/popover`-backed). Client Component — only piece of the Navbar that needs interactivity. Calls `authClient.signOut()` then `router.push("/")` + `router.refresh()` so the Server Component Navbar re-checks session state.
+
+### Footer
+
+File: frontend/components/layout/Footer.tsx
+App: frontend
+Last updated: 2026-07-05
+
+Wrapper: `border-t border-border-default bg-surface`
+Content: `mx-auto grid max-w-7xl gap-10 px-6 py-14 md:grid-cols-[1.5fr_1fr_1fr_1fr]`
+Column heading: `text-sm font-medium text-text-primary`
+Link: `text-sm text-text-muted transition-colors hover:text-text-secondary`
+Copyright bar: `border-t border-border-default px-6 py-5`, text `text-xs text-text-faint`
+Notes: Homepage-only per `ui-rules.md` — rendered from `app/page.tsx` directly, not from `app/layout.tsx`. Link targets (`/about`, `/help`, `/legal/terms`, etc.) are placeholders; none of those pages exist yet.
+
+### Hero Search Widget
+
+File: frontend/features/search/components/{HeroSearchWidget,DestinationInput,DateRangePicker,GuestsRoomsPicker}.tsx
+App: frontend
+Last updated: 2026-07-05
+
+Wrapper: `rounded-2xl border border-border-default bg-surface p-5 shadow-elevated`
+Segment row: `flex flex-col lg:flex-row` — no divider lines; each segment is its own bordered box (see below) with its own `m-2` margin creating the visual gap between segments, so a separate `divide-x`/`divide-y` would be redundant (double lines).
+Segment box (all three — Destination/Date/Guests alike): `m-2 rounded-xl border border-border-default bg-subtle px-4 py-2.5 transition-colors`, active-state border+ring in `accent-border` — `focus-within:` for the Destination `div` (a real `<input>` inside), `focus-visible:` + `aria-expanded:` for the Date/Guests `PopoverTrigger`s (base-ui sets `aria-expanded="true"` on a trigger while its popover is open, so the box stays highlighted for the whole time it's open, not just the instant it's focused).
+Segment label: `text-xs font-medium text-text-muted`
+Segment value row: `flex items-center gap-2 text-sm text-text-primary`, leading icon `h-4 w-4 shrink-0 text-text-muted`
+Destination input: the inner shadcn `Input` is stripped of its own chrome (`h-auto border-0 bg-transparent p-0 shadow-none focus-visible:ring-0`) so it blends into the segment box rather than showing a second nested border.
+Notes (found across three `/review` passes on Feature 05 — read before changing this widget again): (1) a `hover:bg-subtle`-only treatment with no resting-state box was judged "not properly designed" — a field needs to look like a field before it's touched, not just react when touched. All three segments now get the same border/bg treatment at rest, not just Destination, for visual consistency across the widget. (2) never pair a `hover:border-*`/`hover:bg-*` override with a `focus-within:`/`focus-visible:` override on the same property on the same element — a real user's cursor sits over a field while it's focused (clicking in, or hovering an open popover trigger), so both pseudo-classes are true simultaneously, and whichever utility Tailwind emits later in the generated stylesheet wins, regardless of source order in the `className` string. That silently ate the accent focus-border color here the first time. If hover and focus-within/focus-visible ever both need to touch the same property, verify the winning state with computed styles, not just by eyeballing a screenshot (a screenshot from a real mouse click has both pseudo-classes active at once).
+Date popover content: `w-auto border border-border-default bg-elevated p-4 shadow-elevated`, wrapping `components/ui/calendar.tsx` in `mode="range"` `numberOfMonths={2}` — no new custom calendar logic, dates before today disabled via `disabled={{ before: new Date() }}`
+Guests popover content: `w-64 border border-border-default bg-elevated p-4 shadow-elevated`, one row per Adults/Kids/Rooms — stepper buttons use the Ghost Button (icon-only) pattern exactly, count is a plain centered `text-sm text-text-primary`
+Search button: Primary Button pattern, `h-11 w-full ... lg:w-auto`, no `onClick` — per `build-plan.md`, Feature 05's search button holds local state only and does not navigate or call an API yet (no `/search` page exists until Feature 06)
+Notes: Adding `react-day-picker` required setting `nativeButton={false}` on any shadcn `Button` rendered as a `<Link>` via the `render` prop (base-ui logs a console warning otherwise, since `Link` renders an `<a>`, not a `<button>`) — same fix applied to the Navbar's Log-in button.
+
+### Trending Destination Card
+
+File: frontend/features/trending-destinations/components/TrendingDestinations.tsx
+App: frontend
+Last updated: 2026-07-05
+
+Card: `relative aspect-[3/4] overflow-hidden rounded-2xl bg-elevated` (matches the Homepage Specific Rules destination-card spec in `ui-rules.md`)
+Placeholder visual: centered `MapPinIcon` (`h-10 w-10 text-text-faint strokeWidth={1.5}`) — no real photography exists yet, this is a stand-in watermark, not a final visual
+Scrim + label: `absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-4`, city `font-medium text-white`, country `text-xs text-white/70`
+Notes: Static hardcoded array of 8 destinations (Feature 11 will replace this with a real ranked-by-bookings endpoint — the component itself, not just its data source, may need revisiting then since it currently has no loading/empty state).
+
 ---
 
 ## Approved Patterns Locked In Advance
