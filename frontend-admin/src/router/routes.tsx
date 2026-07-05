@@ -1,4 +1,6 @@
 import { createBrowserRouter } from "react-router-dom";
+import { LoginPage } from "@/features/auth/components/LoginPage";
+import { ProtectedRoute } from "@/features/auth/components/ProtectedRoute";
 
 function Placeholder({ label }: { label: string }) {
   return (
@@ -9,6 +11,9 @@ function Placeholder({ label }: { label: string }) {
 }
 
 export const router = createBrowserRouter([
-  { path: "/login", element: <Placeholder label="Admin login arrives in Feature 04." /> },
-  { path: "/", element: <Placeholder label="Admin dashboard arrives in Feature 27." /> },
+  { path: "/login", element: <LoginPage /> },
+  {
+    element: <ProtectedRoute />,
+    children: [{ path: "/", element: <Placeholder label="Admin dashboard arrives in Feature 27." /> }],
+  },
 ]);
