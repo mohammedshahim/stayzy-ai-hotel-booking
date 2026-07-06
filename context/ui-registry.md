@@ -59,7 +59,7 @@ Last updated: 2026-07-04
 
 Wrapper: `<form className="flex flex-col gap-4">`
 Field: `<div className="flex flex-col gap-1.5">` wrapping a `Label` + `Input` — matches `ui-rules.md`'s "Form Fields" pattern exactly
-Error text: `text-xs text-state-error`, directly below the last field, above the submit button
+Error text: `text-xs text-error`, directly below the last field, above the submit button
 Divider (between the email form and Google button): `flex items-center gap-3 text-xs text-text-faint`, with `h-px flex-1 bg-border-default` rules flanking the literal word "or"
 Footer link line: `text-center text-sm text-text-muted`, link itself `text-accent-text hover:underline`
 Interactive: submit button uses the Primary Button pattern plus `disabled:opacity-70` while submitting, with the label swapped to a present-continuous string (e.g. "Logging in...")
@@ -106,7 +106,7 @@ Trigger: `flex h-9 items-center gap-2 rounded-xl border border-border-default bg
 Avatar fallback: `flex h-6 w-6 items-center justify-center rounded-full bg-accent-dim text-accent-text` wrapping a `UserIcon`
 Menu (Popover content): `w-48 border border-border-default bg-elevated p-1.5 shadow-elevated`
 Menu item: `flex h-9 items-center rounded-lg px-2.5 text-sm text-text-secondary transition-colors hover:bg-subtle hover:text-text-primary`
-Destructive item (Logout): same sizing, `text-state-error hover:bg-state-error-dim`
+Destructive item (Logout): same sizing, `text-error hover:bg-error-dim`
 Notes: Built on the new `Popover`/`PopoverTrigger`/`PopoverContent` primitives (`components/ui/popover.tsx`, `@base-ui/react/popover`-backed). Client Component — only piece of the Navbar that needs interactivity. Calls `authClient.signOut()` then `router.push("/")` + `router.refresh()` so the Server Component Navbar re-checks session state.
 
 ### Footer
@@ -151,6 +151,66 @@ Placeholder visual: centered `MapPinIcon` (`h-10 w-10 text-text-faint strokeWidt
 Scrim + label: `absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-4`, city `font-medium text-white`, country `text-xs text-white/70`
 Notes: Static hardcoded array of 8 destinations (Feature 11 will replace this with a real ranked-by-bookings endpoint — the component itself, not just its data source, may need revisiting then since it currently has no loading/empty state).
 
+### StarRating / GuestRatingBadge / EmptyState / Pagination
+
+File: `frontend/components/common/{StarRating,GuestRatingBadge,EmptyState,Pagination}.tsx`
+App: frontend
+Last updated: 2026-07-06
+
+Notes: First real usage of `components/common/` (per `architecture.md`'s folder plan — shared, reused-across-features UI, not feature-scoped). Each matches its `ui-rules.md`/pre-approved pattern exactly (Star Rating, Guest Rating Badge, Empty State) with no deviation. `Pagination` is a new pattern not previously locked in: numbered buttons (`h-8 w-8 rounded-xl`), active page uses the same `border-accent-border bg-accent-dim text-accent-text` treatment as the Admin Sidebar's active nav item, prev/next chevrons use the Ghost Button (icon-only) pattern. Returns `null` when `totalPages <= 1`. Built for Feature 06's search results but intentionally generic — reuse as-is for any future paginated list (admin tables, bookings).
+
+### HotelCard
+
+File: `frontend/features/search/components/HotelCard.tsx`
+App: frontend
+Last updated: 2026-07-06 (post-`/review` fix)
+
+Wrapper: Card pattern, `overflow-hidden`, no padding on the wrapper itself (image needs to bleed to the edges) — `border-accent-border` when `isSelected` (Map view pin sync), `border-border-default` otherwise. Always `flex` (`flex-col` for grid, `flex-row` for list) — required so the body's `flex-1`/`mt-auto` can actually fill a CSS-Grid-stretched card and pin the price/CTA row to a shared bottom edge across a row of cards with differing content heights (missing this was a real bug — see Architecture Decisions).
+Grid variant: image `aspect-[4/3] w-full rounded-t-2xl`, body below
+List variant (`variant="list"`): image becomes `aspect-[4/3] w-56 sm:w-64 shrink-0 rounded-l-2xl`, body fills the remaining width
+Favorite/Compare toggles: `h-8 w-8 rounded-xl bg-elevated/90 backdrop-blur-sm` positioned `absolute right-3 top-3` over the image — local component state only (`useState`, no persistence), matching Feature 05's precedent of building real interactivity ahead of the feature that wires it up for real (Favorites/Compare land in Features 17/18)
+Discount badge: `absolute left-3 top-3 rounded-full bg-error px-2.5 py-1 text-xs font-medium text-white shadow-card` — solid fill, not `bg-error-dim`. The 10%-opacity dim token is designed for badges on the flat page background (see Booking Status Badges); over a photo it was nearly invisible depending on the image underneath. Any future badge placed directly on an image should use the solid token + `text-white`, not the `-dim` pairing.
+Location row: map-pin icon + distance text is a `<button onClick={onLocate}>` — the literal interaction ui-rules.md specifies for Map view pin/card sync, not a whole-card click handler (avoids conflicting with the Favorite/Compare buttons and the "See availability" link inside the same card)
+CTA: Secondary Button pattern, `render={<Link href={"/hotels/" + hotel.id} />} nativeButton={false}` — `/hotels/[id]` doesn't exist until Feature 12, same placeholder-link precedent as the Footer
+Notes: Takes a `MockHotel` from `features/search/data/mock-hotels.ts`. `isSelected`/`onLocate` props are optional and only used by `MapView`; plain grid/list rendering omits them.
+
+### FilterSidebar
+
+File: `frontend/features/search/components/FilterSidebar.tsx`
+App: frontend
+Last updated: 2026-07-06
+
+Wrapper: `w-full rounded-2xl border border-border-default bg-surface p-5 lg:sticky lg:top-20 lg:h-fit lg:w-72 lg:shrink-0` — full-width and non-sticky below `lg` (stacks above results instead of forcing a cramped fixed-width column on mobile/tablet; the `w-72`/`sticky top-20` from `ui-rules.md` only applies at `lg:` and up)
+Section: `border-b border-border-default py-4 last:border-0`, title `text-sm font-medium text-text-primary mb-3` — matches `ui-rules.md` exactly, implemented as a local (unexported) `FilterSection` helper
+Price range: shadcn/base-ui `Slider` (new primitive, added this feature via `shadcn add slider` — unmodified from generated output, same token-remapping precedent as `calendar`/`popover`/`checkbox`), fixed `0–500` bounds rather than data-derived min/max, for round numbers. Wrapped in a local `PriceRangeSlider` subcomponent holding its own `useState` for the dragged position — `onValueChange` (fires every drag tick) only updates that local state, `onValueCommitted` (fires once, on release) is what actually calls `onChange`/writes the URL. `FilterSidebar` remounts it via `key={minPrice-maxPrice}` whenever the committed range changes for an external reason (chip removal, Clear filters), so no effect is needed to keep local/committed state in sync. Do not swap this back to firing `onChange` from `onValueChange` — that re-filters the full result set on every pixel of drag and was reported as janky in `/review`.
+Checkbox rows: shadcn/base-ui `Checkbox` (new primitive, added via `shadcn add checkbox`, also unmodified) + label, local `CheckboxRow` helper matches `ui-rules.md`'s `flex items-center gap-2 text-sm text-text-secondary` exactly
+Guest rating: implemented as checkboxes but behaves as a single-select threshold (`minGuestRating`) — checking one clears any other, since "9+ Excellent" and "8+ Very Good" are mutually exclusive thresholds, not independent filters
+Filter option lists (amenities, room features, meal plans, landmarks): derived at module load from `MOCK_HOTELS` itself (`Array.from(new Set(...))`) rather than a hand-maintained parallel list, so the sidebar can never drift out of sync with the mock data
+Notes: All filters are real and client-side (confirmed with the developer during `/architect`) — wired through `useSearchState`/`useSearchResults`, not decorative.
+
+### ActiveFilterChips / SortDropdown / ViewToggle
+
+File: `frontend/features/search/components/{ActiveFilterChips,SortDropdown,ViewToggle}.tsx`
+App: frontend
+Last updated: 2026-07-06
+
+Active filter chip: Skill-Tag/Amenity Chip pattern exactly, trailing `XIcon` (`h-3 w-3 text-accent-text hover:text-text-primary`) — one chip per active filter *value* (each star rating, each amenity, etc.), not one chip per filter *category*
+Sort dropdown: plain native `<select>` styled to the Input pattern sizing from `ui-rules.md` (`h-10 rounded-xl border border-border-default bg-subtle`) — deliberately not a custom Popover-based listbox like the Date/Guests pickers, since a native select is simpler and suffices here (no multi-row content needed)
+View toggle: segmented icon-button group, `rounded-xl border border-border-default bg-subtle p-1` wrapper, active option gets `bg-elevated text-accent-text shadow-card`, inactive `text-text-muted hover:text-text-secondary`
+Notes: All three are thin, purely presentational — they take `value`/`onChange` and know nothing about `useSearchState`.
+
+### MapView
+
+File: `frontend/features/search/components/MapView.tsx`
+App: frontend
+Last updated: 2026-07-06
+
+Layout: `flex flex-col gap-4 lg:grid lg:grid-cols-[1fr_28rem]` — the `ui-rules.md`-specified `grid-cols-[1fr_28rem]` two-column layout only applies at `lg:` and up; below that, the card list and map stack vertically (map gets a fixed `h-80` instead of the desktop `sticky h-[calc(100vh-6rem)]`) to avoid a ~450px-wide second column overflowing on mobile
+Card list column: renders `HotelCard` with `variant="list"`, `isSelected`/`onLocate` wired to local `selectedHotelId` state
+Map column: `react-map-gl`/`mapbox-gl` (`mapStyle="mapbox://styles/mapbox/light-v11"`), one `Marker` per hotel — a plain `<button>` pin (`rounded-full border-2`, `border-accent-primary bg-accent-primary text-white` when selected, `border-border-default bg-elevated text-accent-primary` otherwise) rather than a Mapbox `Popup`, to keep pin↔card sync to a single boolean instead of managing popup open/close state too
+Pan/select sync: a `useEffect` watching `selectedHotelId` calls `mapRef.current.flyTo(...)` (imperative `MapRef`, not the declarative `viewState` prop) — selecting a card or clicking a pin both funnel through the same `setSelectedHotelId`, satisfying "selecting a card pans to and highlights its pin, and vice versa" from `ui-rules.md`
+Notes: Receives already-filtered/sorted `hotels` from `useSearchResults` with pagination bypassed (Map view shows every match at once, per `ui-rules.md`) — `MapView` itself does no filtering/sorting/pagination.
+
 ---
 
 ## Approved Patterns Locked In Advance
@@ -178,7 +238,7 @@ hover:bg-subtle text-text-muted hover:text-text-secondary h-8 w-8 rounded-xl tra
 ### Destructive Button
 
 ```
-bg-state-error-dim hover:bg-state-error/20 border border-state-error/25 text-state-error h-9 px-4 rounded-xl transition-colors
+bg-error-dim hover:bg-error/20 border border-error/25 text-error h-9 px-4 rounded-xl transition-colors
 ```
 
 ### Card
@@ -206,31 +266,31 @@ Corrected 2026-07-04 (first real usage, in `AuthForm` above): the shadcn/base-ui
 ### Booking Status Badge — Confirmed
 
 ```
-inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-state-success-dim text-state-success border border-state-success/20
+inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-success-dim text-success border border-success/20
 ```
 
 ### Booking Status Badge — Pending Payment
 
 ```
-inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-state-warning-dim text-state-warning border border-state-warning/20
+inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-warning-dim text-warning border border-warning/20
 ```
 
 ### Booking Status Badge — Completed
 
 ```
-inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-state-info-dim text-state-info border border-state-info/20
+inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-info-dim text-info border border-info/20
 ```
 
 ### Booking Status Badge — Cancelled
 
 ```
-inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-state-neutral-dim text-state-neutral border border-state-neutral/20
+inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-neutral-dim text-neutral border border-neutral/20
 ```
 
 ### Booking Status Badge — Failed
 
 ```
-inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-state-error-dim text-state-error border border-state-error/20
+inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-error-dim text-error border border-error/20
 ```
 
 ### Star Rating
@@ -244,8 +304,8 @@ Empty:   text-rating-star-empty h-4 w-4
 ### Guest Rating Badge
 
 ```
-inline-flex items-center gap-1.5 rounded-lg bg-state-info-dim px-2 py-1
-Score: text-sm font-bold text-state-info
+inline-flex items-center gap-1.5 rounded-lg bg-info-dim px-2 py-1
+Score: text-sm font-bold text-info
 Label: text-xs text-text-secondary
 ```
 

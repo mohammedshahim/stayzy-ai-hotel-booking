@@ -24,10 +24,10 @@ After completing any feature:
 ## Current Status
 
 **Phase:** 2 — Homepage + Search Foundation
-**Current feature:** 06 Search Results UI
-**Next up:** 06 Search Results UI — `/search` page with sticky filter sidebar, active filter chips, sort dropdown, List/Grid/Map view toggle, hotel card, pagination, empty state. Static/mock hotel data for now. Read `build-plan.md`'s section for it before starting.
+**Current feature:** 07 Admin Hotel CRUD
+**Next up:** 07 Admin Hotel CRUD — read `build-plan.md`'s section for it (`frontend-admin/` `/hotels` list, `/hotels/new`, `/hotels/[id]` edit; backend CRUD endpoints, server-side geocoding into `hotels.location`, S3 image upload).
 **Blocking issues:** None
-**Latest completed addition:** 05 Homepage UI — 2026-07-05
+**Latest completed addition:** 06 Search Results UI — 2026-07-06
 
 ---
 
@@ -43,7 +43,7 @@ After completing any feature:
 ### Phase 2 — Homepage + Search Foundation
 
 - [x] 05 Homepage UI
-- [ ] 06 Search results UI
+- [x] 06 Search results UI
 - [ ] 07 Admin hotel CRUD
 - [ ] 08 Admin room type CRUD
 - [ ] 09 Search backend wiring
@@ -103,6 +103,9 @@ Not broken into features yet — planning starts after Phase 9 is complete and s
 
 ## Completed Features
 
+### ✅ 06 Search Results UI — completed 2026-07-06
+Notes: `/search` page (`app/search/page.tsx`, a thin Server Component `<Suspense>` wrapper around the Client Component `features/search/components/SearchPageContent.tsx`). Sticky filter sidebar (price/star/guest-rating/amenities/room-features/meals/free-cancellation/landmarks — all real, client-side, wired through `useSearchState`/`useSearchResults` over a new 27-hotel mock dataset in `features/search/data/mock-hotels.ts`), removable active-filter chips, sort dropdown, List/Grid/Map view toggle (Map view is a real `react-map-gl`/`mapbox-gl` map with pin↔card sync), hotel cards (grid and list variants), pagination, and a genuine empty state (reachable through real filter combinations, not a hardcoded toggle). All state — destination, dates, guests, every filter, sort, view, and page — lives in the URL via `features/search/hooks/useSearchState.ts`, so Feature 09 can swap "filter the mock array" for "call the real backend" without changing how state is read/written. Added `react-map-gl` + `mapbox-gl` and generated shadcn's `checkbox`/`slider` primitives as new dependencies. Homepage's `HeroSearchWidget` now navigates to `/search` with its state serialized into the URL, closing the dead-button gap left by Feature 05. Found and fixed a second systemic token-doc bug (`state-error` etc. vs the actually-registered `error` etc. — see Architecture Decisions) and retrofitted 6 already-shipped files that had it. Fixed a mobile responsive bug found during verification: the filter sidebar and Map view's two-column layout both overflowed horizontally below `lg:` — both now stack vertically on mobile/tablet. Verified end-to-end with Playwright: all filters/sort/pagination/empty-state/view-toggle behavior confirmed via real URL state changes, Map view confirmed rendering real Mapbox tiles with all 27 pins and working pan/select sync, homepage→search navigation confirmed carrying destination/dates/guests, responsive at mobile/tablet/desktop with no horizontal overflow. `tsc --noEmit`, `eslint`, and `next build` all clean.
+
 ### ✅ 05 Homepage UI — completed 2026-07-05
 Notes: `frontend/`'s homepage (`app/page.tsx`) plus the shared page shell it depends on. `components/layout/Navbar.tsx` is a Server Component that calls the new `lib/get-server-session.ts` (forwards the incoming request's `cookie` header directly to the backend's `get-session`, since Server Components can't use the browser-only rewrite proxy from Feature 03) and renders either a Log-in button or `components/layout/AccountMenu.tsx` (Client Component, Popover-based dropdown — My Bookings/Profile/Logout). `components/layout/Footer.tsx` (homepage-only, per `ui-rules.md`) has placeholder Company/Support/Legal links. The hero search widget (`features/search/components/{HeroSearchWidget,DestinationInput,DateRangePicker,GuestsRoomsPicker}.tsx`) is interactive (destination text, a date-range Popover+Calendar, and an Adults/Kids/Rooms stepper Popover) but holds local state only — no API calls, no navigation, since `/search` doesn't exist until Feature 06. `features/trending-destinations/components/TrendingDestinations.tsx` has 8 hardcoded destinations (its own new feature folder, matching Feature 11's numbered slot, so that feature can add a data hook here later without restructuring). Added `react-day-picker` (+ its `date-fns` peer) as a new approved `frontend/` dependency for shadcn's `Calendar` primitive — see Architecture Decisions. Verified in a real headless browser (Playwright, since no project-specific run skill existed yet for this app — none was created since nothing app-specific beyond the standard Next.js dev-server pattern was needed) at mobile/tablet/desktop widths, plus both the date-range and guests popovers, plus the logged-in `AccountMenu` state using a throwaway signup (deleted after). Both `tsc --noEmit` and `next build` are clean.
 
@@ -132,6 +135,36 @@ Decision: [what was decided]
 Reason: [why]
 Impact: [what files or components this affects]
 ```
+
+### 06 Search Results UI — 2026-07-06 (post-`/review` fixes)
+Decision: Fixed three developer-reported issues after the feature was marked complete: (1) `HotelCard`'s grid variant wrapper wasn't a flex container, so the price/CTA row couldn't be pinned to a shared bottom edge across cards of different heights in the same grid row — made the wrapper always `flex` (`flex-col`/`flex-row` per variant). (2) The discount badge used `bg-error-dim` (10%-opacity) directly over a photo, nearly invisible on some images — switched to solid `bg-error` + `text-white`, matching how a badge needs more opacity when it sits on an image instead of the flat page background. (3) The price range slider fired `onChange` (→ URL write → full re-filter) on every drag tick, causing jank — refactored into a `PriceRangeSlider` subcomponent using local state for the live thumb position plus the `Slider` primitive's `onValueCommitted` (fires once, on release) for the actual state/URL commit.
+Reason: All three were verified against the running app before fixing (not assumed from the report alone). For (3), the initial fix attempt used a `useEffect` to re-sync local state from the URL — `eslint-plugin-react-hooks`'s `set-state-in-effect` rule correctly flagged this as the "adjusting state on a prop change via effect" anti-pattern; switched to React's recommended fix instead (remount via `key` when the external value changes), which needed no effect at all.
+Impact: `frontend/features/search/components/{HotelCard,FilterSidebar}.tsx`, `context/ui-registry.md` (both entries corrected). Any future badge placed on top of a photo (not the flat page background) should default to a solid color + `text-white`, not the `-dim` token pairing. Any future continuous-drag input (sliders, etc.) that triggers an expensive side effect should use the same local-state-plus-commit-event pattern rather than firing on every tick.
+
+### 06 Search Results UI — 2026-07-05 (pre-implementation fix)
+Decision: Fixed a second systemic token-doc bug: `ui-tokens.md`/`ui-rules.md`/`ui-registry.md` documented status colors as `state-success`/`state-error`/`state-warning`/`state-info`/`state-neutral` (and `-dim` variants), but `app/globals.css`'s `@theme inline` block only ever registered `--color-success`, `--color-error`, `--color-warning`, `--color-info`, `--color-neutral` — no `--color-state-*` key exists. Corrected all three docs to the bare form (`success`, `error-dim`, ...).
+Reason: Same class of bug as Feature 03's `border-default` vs `border-border-default` fix — verified by building the app and grepping the compiled CSS: `.text-state-error` produced zero output while `.text-info` (this feature's `GuestRatingBadge`) compiled correctly. Confirmed with the developer before fixing, since it touches files outside this feature's scope.
+Impact: `context/ui-tokens.md`, `context/ui-rules.md`, `context/ui-registry.md` (docs corrected). Retrofitted 6 already-shipped files that had the broken classes and were silently rendering with no error/success/destructive color at all: `frontend/features/auth/components/{ForgotPasswordForm,LoginForm,VerifyEmailStatus,ResetPasswordForm,SignupForm}.tsx` and `frontend/components/layout/AccountMenu.tsx` (Logout item). Any future status-color usage (booking badges in Features 21–27) must use the bare form, never `state-`-prefixed.
+
+### 06 Search Results UI — 2026-07-06
+Decision: All `/search` state (destination, dates, guests, every sidebar filter, sort, view, page) lives in the URL query string via `features/search/hooks/useSearchState.ts`, read with `useSearchParams`/written with `router.replace(..., { scroll: false })` — not local React state.
+Reason: `/search` is a real, shareable, bookmarkable URL, and `architecture.md`'s `GET /search` already expects exactly this param shape (`sort`, filters, pagination). Building it URL-driven now means Feature 09 mostly swaps "filter the mock array from parsed URL state" for "send the same params to the backend" rather than re-deriving state management from scratch. Confirmed with the developer during `/architect`.
+Impact: `frontend/features/search/hooks/useSearchState.ts` (parse/serialize helpers + the hook), every Feature 06 component takes `state`/`onChange` rather than owning its own state. Changing any filter/sort/destination/date/guest field resets `page` back to 1; changing only `view` or `page` does not.
+
+### 06 Search Results UI — 2026-07-06
+Decision: Added `react-map-gl` + `mapbox-gl` as new `frontend/` dependencies for Map view, and generated shadcn's `checkbox`/`slider` primitives (`components/ui/{checkbox,slider}.tsx`, unmodified from generated output).
+Reason: `react-map-gl` is the standard declarative React wrapper around `mapbox-gl` — avoids hand-rolling ref lifecycle/cleanup for the map instance. Checkbox/Slider are shadcn primitives the filter sidebar needed that didn't exist yet in `components/ui/`, same "generate via shadcn CLI, don't hand-roll" precedent as `calendar`/`popover` in Feature 05. Confirmed with the developer during `/architect` ("clean and neat approach... without adding complex code").
+Impact: `frontend/package.json`, `code-standards.md`'s approved-dependency list, `components/ui/{checkbox,slider}.tsx`, `features/search/components/MapView.tsx`.
+
+### 06 Search Results UI — 2026-07-06
+Decision: Mock hotel data (`features/search/data/mock-hotels.ts`, 27 hotels across 5 cities) is shaped to match `architecture.md`'s future `GET /search` response exactly (price, rating, location + lat/lng, amenities, room type, etc.), and filter option lists (amenities/room features/meal plans/landmarks) are derived from that array at module load (`Array.from(new Set(...))`) rather than hand-maintained separately.
+Reason: Keeps the mock data as a drop-in stand-in for Feature 09's real backend response (card/page components won't need restructuring, just a different data source), and makes the filter sidebar's option lists impossible to drift out of sync with the data actually being filtered.
+Impact: `frontend/features/search/data/mock-hotels.ts`, `FilterSidebar.tsx`. Feature 09 should replace the array + its derived-constant exports, not the components that consume them.
+
+### 06 Search Results UI — 2026-07-06 (post-verification fix)
+Decision: Filter sidebar and Map view's two-column layout both switched from an always-on fixed-width/grid layout to stacking vertically below the `lg:` breakpoint (sidebar: `w-full` → `lg:w-72`; Map view: `flex flex-col` → `lg:grid lg:grid-cols-[1fr_28rem]`). The results-count/sort/view-toggle toolbar row also gained `flex-wrap`.
+Reason: Caught via real Playwright verification at a 390px mobile viewport — the fixed-width sidebar (288px) and Map view's fixed 28rem (448px) second column both caused horizontal page overflow, and the toolbar's `justify-between` squeezed the result-count text into an awkward 3-line wrap. None of this was caught by `tsc`/`eslint`/`next build`, only by actually rendering the page.
+Impact: `frontend/features/search/components/{FilterSidebar,MapView,SearchPageContent}.tsx`. Worth remembering for Feature 30's dedicated responsive pass: any new fixed-width side-by-side layout on `/search`-like pages needs an explicit mobile stacking variant from the start, not just at the final audit.
 
 ### 05 Homepage UI — 2026-07-05 (post-review refinement)
 Decision: The Destination segment of the hero search widget gets its own permanent bordered box (`border border-border-default bg-subtle`, focus-within switches to `border-accent-border` + a matching ring) — unlike the Date/Guests segments, which stay borderless at rest and rely on the Popover itself as the interaction cue.
@@ -278,6 +311,11 @@ Built: [what was completed]
 Left off: [exactly where the session ended]
 Next session starts with: [first thing to do next time]
 ```
+
+### Session — 2026-07-06
+Built: Feature 06 Search Results UI, in full — see Completed Features and Architecture Decisions above (URL-driven state, `react-map-gl`/`mapbox-gl` + shadcn `checkbox`/`slider` additions, the mock-data-shaped-like-the-real-API decision, and the mobile-stacking fix).
+Left off: Found and fixed a second token-doc bug before starting real implementation (`state-error`/`state-success`/etc. classes silently compiling to nothing — same class of issue as Feature 03's border-token bug), confirmed with the developer before retrofitting the 6 already-shipped files that had it. Verified end-to-end with a fresh Playwright pass against `localhost` (not `127.0.0.1` — Next's dev server only treats `localhost` as an allowed same-origin dev client, and hitting `127.0.0.1` silently breaks the client router/HMR bridge in a way that looks exactly like an app bug; lost real time chasing that before realizing it was the test harness, not the app). Confirmed: sort/filter/pagination all correctly reflected in the URL, empty state reachable via a real narrow price-range filter, Map view renders real Mapbox tiles with all pins and working pan/select sync, homepage→search navigation carries destination/dates/guests, no horizontal overflow at mobile/tablet/desktop after the stacking fix. `tsc --noEmit`, `eslint`, and `next build` all clean. The frontend dev server from a prior session had gone unresponsive (hung, 0% CPU, still `LISTEN`ing but not accepting connections) — killed and restarted it; left the fresh one running on :3000 alongside the already-running backend on :4000.
+Next session starts with: Feature 07 Admin Hotel CRUD — read `build-plan.md`'s section for it (`frontend-admin/` `/hotels` list/new/edit pages, amenities picker, image upload/reorder with one marked main; backend CRUD endpoints in `backend/src/routes/admin/hotels.routes.ts`, server-side geocoding into `hotels.location`, images to S3).
 
 ### Session — 2026-07-04
 Built: Feature 01 Monorepo Scaffold, in full — `backend/`, `frontend/`, `frontend-admin/`, root `.gitignore`/`README.md`. See Architecture Decisions above for the notable deviations (CommonJS backend, shadcn token remapping, `react-redux` addition, strict mode fix in admin tsconfigs).
