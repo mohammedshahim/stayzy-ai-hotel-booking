@@ -1,4 +1,5 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
+import { AppShell } from "@/components/layout/AppShell";
 import { useGetSessionQuery } from "@/features/auth/authApi";
 
 export function ProtectedRoute() {
@@ -18,5 +19,9 @@ export function ProtectedRoute() {
     return <Navigate to={`/login?returnTo=${returnTo}`} replace />;
   }
 
-  return <Outlet />;
+  return (
+    <AppShell>
+      <Outlet />
+    </AppShell>
+  );
 }
