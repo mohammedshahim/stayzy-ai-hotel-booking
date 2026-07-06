@@ -29,6 +29,7 @@ const envSchema = z.object({
   S3_SECRET_ACCESS_KEY: z.string().optional(),
 
   MAPBOX_ACCESS_TOKEN: z.string().optional(),
+  GEOCODING_PROVIDER: z.string().default("mapbox"),
 });
 
 const parsed = envSchema.safeParse(process.env);
