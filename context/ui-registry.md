@@ -211,6 +211,52 @@ Map column: `react-map-gl`/`mapbox-gl` (`mapStyle="mapbox://styles/mapbox/light-
 Pan/select sync: a `useEffect` watching `selectedHotelId` calls `mapRef.current.flyTo(...)` (imperative `MapRef`, not the declarative `viewState` prop) — selecting a card or clicking a pin both funnel through the same `setSelectedHotelId`, satisfying "selecting a card pans to and highlights its pin, and vice versa" from `ui-rules.md`
 Notes: Receives already-filtered/sorted `hotels` from `useSearchResults` with pagination bypassed (Map view shows every match at once, per `ui-rules.md`) — `MapView` itself does no filtering/sorting/pagination.
 
+### AppShell / Sidebar / Topbar
+
+File: `frontend-admin/src/components/layout/{AppShell,Sidebar,Topbar}.tsx`
+App: frontend-admin
+Last updated: 2026-07-06 (post-`/review` fix)
+
+Sidebar: `sticky top-0` + `h-screen w-60` fixed column, `bg-sidebar border-r border-sidebar-border` (the `--color-sidebar*` tokens from `ui-tokens.md`, not `bg-surface`/`border-border-default`) — nav items `flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent`, active item adds `bg-sidebar-accent text-sidebar-accent-foreground`. Matches the exact `ui-rules.md` shell structure (`Sidebar` → `Dashboard, Hotels, Bookings` — `Topbar` — flat content area).
+Topbar: `sticky top-0 h-16 bg-surface border-b border-border-default px-4 lg:px-6`, admin email left (`text-sm text-text-muted`), Log out button right (Secondary/Ghost-style, no fixed pattern existed for this so it borrows Secondary Button's text/hover tones without the border).
+AppShell: plain flex wrapper — `Sidebar` + a `flex-1` column (`Topbar` then `mx-auto max-w-7xl px-4 py-8 lg:px-6 lg:py-10` content, matching the `frontend-admin` Content Width spec).
+Notes: First real build of this shell — `ui-rules.md` had already specified it but nothing existed yet (only a login page). `Dashboard` and `Bookings` nav items render disabled (`text-sidebar-foreground/50`, a `Soon` pill, no `NavLink`) since those routes don't exist until Features 25–27 — only `Hotels` is a real `NavLink`. Wired into `ProtectedRoute.tsx`, wrapping its `<Outlet />`. **`sticky top-0` on the Sidebar is required, not optional** — `h-screen` alone only sets its height, it does not pin it to the viewport. Without `sticky`, any content column taller than the viewport (e.g. the hotel edit form + Photos section) makes the whole page scroll and the sidebar scrolls away with it — caught via developer report post-launch, same treatment `Topbar` already had from the start.
+
+### Hotels Table (HotelsListPage)
+
+File: `frontend-admin/src/features/hotels/components/HotelsListPage.tsx`
+App: frontend-admin
+Last updated: 2026-07-06
+
+Wrapper: exact "Table Wrapper" pattern (`bg-surface rounded-2xl border border-border-default overflow-hidden`) around the shadcn `Table` primitive.
+Header row/cell: exact "Table Header Row"/"Table Header Cell" patterns.
+Body row/cell: exact "Table Body Row"/"Table Body Cell" patterns (shadcn's own `TableRow`/`TableCell` defaults were overridden to match, since they ship with generic `hover:bg-muted/50` instead of the locked `hover:bg-elevated`).
+Empty state: exact "Empty State" pattern, rendered inside a full-width table cell (`Building2` icon).
+Row actions: Ghost Button pattern (`size-8 rounded-xl text-text-muted hover:bg-subtle hover:text-text-secondary`) as the `DropdownMenu` trigger — must keep `variant="ghost"` on the shadcn `Button` (dropping it falls back to the `default` variant's solid `bg-primary`, a real regression caught during manual verification).
+Pagination: plain Previous/Next (`h-8 rounded-xl` Secondary-Button-style), not the full numbered `frontend/components/common/Pagination.tsx` pattern — deliberate simplification for a low-traffic admin list. Port the real `Pagination` component here if the admin panel ever needs numbered pages.
+Notes: Introduces **Hotel Status Badge**, extending the "Booking Status Badge" family to a new status pair not in the original booking list: `published` → `success` variant, `draft` → `neutral` variant, same exact classes (`inline-flex items-center gap-1.5 rounded-full border border-X/20 bg-X-dim px-2.5 py-1 text-xs font-medium text-X`).
+
+### Hotel Form (HotelFormPage / AmenitiesPicker / HotelImagesManager)
+
+File: `frontend-admin/src/features/hotels/components/{HotelFormPage,AmenitiesPicker,HotelImagesManager}.tsx`
+App: frontend-admin
+Last updated: 2026-07-06
+
+Form fields: exact "Input" pattern (including the corrected `focus-visible:border-accent-border focus-visible:ring-accent-border`, not the primitive's default ring) shared by `Input`/`Textarea`/`Select` trigger via one `INPUT_CLASS` constant.
+Buttons: Save = Primary Button pattern, Cancel = Secondary Button pattern, both exact.
+AmenitiesPicker: plain checkbox grid (`grid grid-cols-2 gap-3 sm:grid-cols-3`), no card/border — a picker over the existing seeded `amenities` lookup table, not a new pattern.
+HotelImagesManager: image tiles `aspect-square rounded-xl border border-border-default bg-subtle`, "Main" tag `rounded-lg bg-accent-primary px-2 py-0.5 text-xs font-medium text-white` (same solid-fill-over-photo treatment as `HotelCard`'s discount badge — `-dim` tokens don't read over a photo). Star/Trash overlay controls are the Ghost Button pattern at `size-8 rounded-xl` (matching `HotelCard`'s Favorite/Compare toggle sizing, since both are small icon controls floating over a photo) with `text-white` in place of the muted-token colors, since they sit on a `bg-black/40` scrim rather than the flat page background — same reasoning as `HotelCard`'s note on photo-overlay controls needing their own treatment. Reordering uses native HTML5 drag events (`draggable`/`onDragStart`/`onDragOver`/`onDrop`) — no drag library, since none is used anywhere else in either app yet.
+Notes: Uploads go straight through the backend (`multipart/form-data` → `@aws-sdk/client-s3`), not a presigned direct-to-S3 flow — see `architecture.md`/build decisions for Feature 07. New hotels have no images until the record exists, so `HotelImagesManager` only renders in edit mode; creating a hotel redirects straight to its edit page.
+
+### StarRatingDisplay
+
+File: `frontend-admin/src/components/common/StarRatingDisplay.tsx`
+App: frontend-admin
+Last updated: 2026-07-06
+
+Wrapper/Filled/Empty: exact "Star Rating" pattern (`inline-flex items-center gap-0.5`; filled `size-4 fill-current text-rating-star`; empty `size-4 text-rating-star-empty`).
+Notes: First real usage of `frontend-admin/src/components/common/` (mirrors `frontend/components/common/`'s role — shared, reused-across-features UI). Read-only display only; the hotel form uses a plain `Select` (1–5) for star rating *input* rather than a clickable star widget, since a dropdown is simpler for an admin data-entry form and no interactive star-input pattern exists anywhere in either app.
+
 ---
 
 ## Approved Patterns Locked In Advance

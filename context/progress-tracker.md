@@ -24,10 +24,10 @@ After completing any feature:
 ## Current Status
 
 **Phase:** 2 — Homepage + Search Foundation
-**Current feature:** 07 Admin Hotel CRUD
-**Next up:** 07 Admin Hotel CRUD — read `build-plan.md`'s section for it (`frontend-admin/` `/hotels` list, `/hotels/new`, `/hotels/[id]` edit; backend CRUD endpoints, server-side geocoding into `hotels.location`, S3 image upload).
-**Blocking issues:** None
-**Latest completed addition:** 06 Search Results UI — 2026-07-06
+**Current feature:** 08 Admin Room Type CRUD
+**Next up:** 08 Admin Room Type CRUD — read `build-plan.md`'s section for it (room type management nested under `/hotels/[id]`, CRUD endpoints for `room_types`/`room_type_features`/`room_type_images`, rate override management for seasonal pricing/blackout dates).
+**Blocking issues:** None. Note: this dev environment's `S3_BUCKET`/`S3_REGION`/`S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY` are all still blank in `backend/.env` — image upload code is correct and fails gracefully (clean error, not a crash) but was never exercised against a real bucket. Fill those in to actually test image upload/room-type-image upload.
+**Latest completed addition:** 07 Admin Hotel CRUD — 2026-07-06
 
 ---
 
@@ -44,7 +44,7 @@ After completing any feature:
 
 - [x] 05 Homepage UI
 - [x] 06 Search results UI
-- [ ] 07 Admin hotel CRUD
+- [x] 07 Admin hotel CRUD
 - [ ] 08 Admin room type CRUD
 - [ ] 09 Search backend wiring
 - [ ] 10 Recent searches + search suggestions
@@ -103,6 +103,9 @@ Not broken into features yet — planning starts after Phase 9 is complete and s
 
 ## Completed Features
 
+### ✅ 07 Admin Hotel CRUD — completed 2026-07-06
+Notes: `frontend-admin/`'s first real authenticated app screens beyond login. New `AppShell`/`Sidebar`/`Topbar` (`components/layout/`) — the shell `ui-rules.md` already specified but nothing had built yet; `Dashboard`/`Bookings` nav items render disabled ("Soon") since those routes don't exist until Features 25–27, only `Hotels` is live. `/hotels` (table: image/name, location, star rating, status badge, row actions), `/hotels/new` and `/hotels/:id` (shared `HotelFormPage` — all hotel fields, an `AmenitiesPicker` over the existing seeded `amenities` table, and — edit mode only — `HotelImagesManager`: upload, native-HTML5 drag-to-reorder, mark-one-main, delete). Backend: `routes/queries/services/controllers` for hotel CRUD + amenities list, following the existing layered-architecture convention exactly (first feature to actually populate `models/`/`queries/`/`services/`/`controllers/admin/`, previously empty folders). Soft delete via a new nullable `hotels.deleted_at` column (migration `0010`) — independent of the existing `status` (draft/published) column, not a third status value; every list/lookup query filters `deleted_at IS NULL`. Server-side geocoding behind a small `GeocodingProvider` interface (`services/geocoding/`) with Mapbox as the only implementation today (reuses `MAPBOX_ACCESS_TOKEN`, already scaffolded for Feature 06's map) — swapping providers later is one new file, not a rewrite; only re-geocodes on update when address fields actually changed. Images upload through the backend (`multer` memory storage → `@aws-sdk/client-s3`), not presigned direct-to-S3 — one request, fits the existing layered pattern. Any authenticated admin can delete (no role-gating introduced — `requireAdmin` doesn't check `admin_user.role` anywhere yet and this wasn't the feature to add that). Fixed a real bug found during verification: `config/s3.ts` constructed the `S3Client` eagerly at import time, which crashes the *entire backend* on startup in any environment where S3 isn't configured yet (this dev environment's S3 env vars are all blank) — made lazy (constructed on first actual upload/delete call) instead. Also fixed a live pre-existing bug in `frontend-admin`'s Feature 04 `LoginForm.tsx` (`text-state-error` — same silently-resolves-to-nothing class of bug as Feature 06's fix, just never caught in this app before) and extended the "Booking Status Badge" pattern in `ui-registry.md` to a new "Hotel Status Badge" (draft → neutral, published → success). Verified end-to-end with a real headless-browser pass (Playwright, no project-specific run skill existed yet — none created since nothing beyond the standard two-dev-server pattern was needed): login → hotels list (seeded demo hotels render correctly) → Add Hotel → create (real Mapbox geocoding call succeeds) → redirect to edit page → back to list → new row appears → delete via row menu + confirm dialog → row disappears, confirmed soft-deleted (`deleted_at` set, not hard-deleted) directly in Postgres. Image upload itself could not be exercised live — this environment's `S3_BUCKET`/`S3_REGION`/keys are blank — but the failure mode was confirmed clean (a descriptive 500, not a crash). Caught and fixed a real regression during design-system alignment: dropped `variant="ghost"` on two icon buttons while matching the pre-approved Ghost Button pattern, which silently fell back to the solid-fill default variant — re-verified visually after the fix. `tsc --noEmit` clean and `vite build` clean for both apps.
+
 ### ✅ 06 Search Results UI — completed 2026-07-06
 Notes: `/search` page (`app/search/page.tsx`, a thin Server Component `<Suspense>` wrapper around the Client Component `features/search/components/SearchPageContent.tsx`). Sticky filter sidebar (price/star/guest-rating/amenities/room-features/meals/free-cancellation/landmarks — all real, client-side, wired through `useSearchState`/`useSearchResults` over a new 27-hotel mock dataset in `features/search/data/mock-hotels.ts`), removable active-filter chips, sort dropdown, List/Grid/Map view toggle (Map view is a real `react-map-gl`/`mapbox-gl` map with pin↔card sync), hotel cards (grid and list variants), pagination, and a genuine empty state (reachable through real filter combinations, not a hardcoded toggle). All state — destination, dates, guests, every filter, sort, view, and page — lives in the URL via `features/search/hooks/useSearchState.ts`, so Feature 09 can swap "filter the mock array" for "call the real backend" without changing how state is read/written. Added `react-map-gl` + `mapbox-gl` and generated shadcn's `checkbox`/`slider` primitives as new dependencies. Homepage's `HeroSearchWidget` now navigates to `/search` with its state serialized into the URL, closing the dead-button gap left by Feature 05. Found and fixed a second systemic token-doc bug (`state-error` etc. vs the actually-registered `error` etc. — see Architecture Decisions) and retrofitted 6 already-shipped files that had it. Fixed a mobile responsive bug found during verification: the filter sidebar and Map view's two-column layout both overflowed horizontally below `lg:` — both now stack vertically on mobile/tablet. Verified end-to-end with Playwright: all filters/sort/pagination/empty-state/view-toggle behavior confirmed via real URL state changes, Map view confirmed rendering real Mapbox tiles with all 27 pins and working pan/select sync, homepage→search navigation confirmed carrying destination/dates/guests, responsive at mobile/tablet/desktop with no horizontal overflow. `tsc --noEmit`, `eslint`, and `next build` all clean.
 
@@ -135,6 +138,36 @@ Decision: [what was decided]
 Reason: [why]
 Impact: [what files or components this affects]
 ```
+
+### 07 Admin Hotel CRUD — 2026-07-06
+Decision: Hotel "delete" is a soft delete via a new nullable `hotels.deleted_at` column, not a third `status` value and not a hard row delete.
+Reason: `hotels.status` is a `draft`/`published` lifecycle field with its own `CHECK` constraint — deletion is a separate, independent concern (developer-confirmed when the ambiguity came up during planning).
+Impact: `migrations/0010_add_hotels_deleted_at.sql`; every hotel query in `queries/hotels.queries.ts` filters `WHERE deleted_at IS NULL`.
+
+### 07 Admin Hotel CRUD — 2026-07-06
+Decision: Server-side geocoding goes through a small `GeocodingProvider` interface (`services/geocoding/geocoding.provider.ts` + `mapbox.provider.ts` + an env-driven factory in `index.ts`), not a direct Mapbox SDK call inline in the hotel service.
+Reason: Developer asked for geocoding to be swappable to a different provider later without a rewrite.
+Impact: `hotel.service.ts` calls `geocodingProvider.geocode(address)` only; adding a second provider means one new file + one line in the factory, not touching call sites. Only re-geocodes on update if address fields actually changed (compared against the existing row).
+
+### 07 Admin Hotel CRUD — 2026-07-06
+Decision: Images upload through the backend (`multer` memory storage → `@aws-sdk/client-s3`), not a presigned direct-to-S3 flow from the browser.
+Reason: One request, fits the existing `routes → controllers → services` layering exactly; a low-traffic admin panel doesn't need to offload upload bandwidth from the backend.
+Impact: New `multer` dependency (backend only). `POST /admin/hotels/:id/images` is multipart; `PATCH .../images` (reorder/mark-main) and everything else stays JSON.
+
+### 07 Admin Hotel CRUD — 2026-07-06 (bug found during verification)
+Decision: `config/s3.ts` now constructs the `S3Client` lazily (`getS3Client()`, built on first call) instead of eagerly at module import time.
+Reason: `S3Client`'s constructor validates the AWS region synchronously and throws if it's missing — with this dev environment's `S3_REGION` blank, the eager version crashed the *entire backend* on startup (not just image upload), the moment anything imported the module. Caught live: `tsx watch` kept crash-looping until fixed.
+Impact: `config/s3.ts`, `services/upload.service.ts`. Any environment without S3 configured now runs fine; only an actual upload/delete call fails, with a clean descriptive error (`services/upload.service.ts`'s `getBucket()` guard), not a process crash.
+
+### 07 Admin Hotel CRUD — 2026-07-06
+Decision: No role-gating added for hotel delete (or anything else) — any authenticated admin can do it.
+Reason: `requireAdmin` has never checked `admin_user.role` (`admin`/`super_admin`) anywhere in the codebase; developer confirmed this isn't the feature to introduce that machinery.
+Impact: `middlewares/requireAdmin.ts` unchanged. Revisit if a future feature actually needs role-based permissions.
+
+### 07 Admin Hotel CRUD — 2026-07-06 (post-`/review` fixes)
+Decision: Fixed two developer-reported issues after the feature was marked complete: (1) the admin sidebar scrolled away with the page on any content taller than the viewport (the hotel edit form + Photos section) — `Sidebar.tsx`'s `h-screen` set its height but never pinned it, since the `AppShell` wrapper has no height constraint of its own; added `sticky top-0`. (2) Editing a hotel and clicking Save without touching the check-in/check-out time pickers failed with `"Expected time in HH:MM format"` — root cause was in the backend, not the form: `hotels.queries.ts` selected `check_in_time`/`check_out_time` raw, and `pg` serializes Postgres `time` columns as `"HH:MM:SS"`, which `HotelFormPage.tsx` prefills verbatim into form state; submitting without ever triggering the time input's `onChange` (which normalizes to HH:MM) sent the stale `HH:MM:SS` string straight into the strict `HH:MM` zod regex. Fixed at the query layer (`to_char(check_in_time, 'HH24:MI')`) rather than loosening the regex or patching the frontend, so every consumer of this API gets a consistently-shaped value.
+Reason: Both verified against the running app before fixing — reproduced the exact reported behavior first, then confirmed the fix with a fresh Playwright pass (prefilled time values now read back as `"14:00"`, update succeeds untouched, sidebar's bounding box stays at the same `y` position after a page scroll of 800px).
+Impact: `frontend-admin/src/components/layout/Sidebar.tsx`, `backend/src/queries/hotels.queries.ts`.
 
 ### 06 Search Results UI — 2026-07-06 (post-`/review` fixes)
 Decision: Fixed three developer-reported issues after the feature was marked complete: (1) `HotelCard`'s grid variant wrapper wasn't a flex container, so the price/CTA row couldn't be pinned to a shared bottom edge across cards of different heights in the same grid row — made the wrapper always `flex` (`flex-col`/`flex-row` per variant). (2) The discount badge used `bg-error-dim` (10%-opacity) directly over a photo, nearly invisible on some images — switched to solid `bg-error` + `text-white`, matching how a badge needs more opacity when it sits on an image instead of the flat page background. (3) The price range slider fired `onChange` (→ URL write → full re-filter) on every drag tick, causing jank — refactored into a `PriceRangeSlider` subcomponent using local state for the live thumb position plus the `Slider` primitive's `onValueCommitted` (fires once, on release) for the actual state/URL commit.
@@ -297,6 +330,11 @@ Description: [what the issue is]
 Status: [open / in progress / resolved]
 ```
 
+### S3 credentials blank in this dev environment
+Feature: 07 Admin Hotel CRUD (also affects Feature 08's room type images)
+Description: `backend/.env`'s `S3_BUCKET`/`S3_REGION`/`S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY` are all empty. Image upload code is correct and fails cleanly (a descriptive 500, not a crash — see the `07 Admin Hotel CRUD` lazy-`S3Client` architecture decision), but was never exercised against a real bucket end-to-end.
+Status: open — fill in real credentials to actually test upload/reorder/delete against S3.
+
 ---
 
 ## Session Notes
@@ -311,6 +349,11 @@ Built: [what was completed]
 Left off: [exactly where the session ended]
 Next session starts with: [first thing to do next time]
 ```
+
+### Session — 2026-07-06 (2)
+Built: Feature 07 Admin Hotel CRUD, in full — see Completed Features and Architecture Decisions above (the `AppShell`/`Sidebar`/`Topbar` build, soft-delete-via-`deleted_at` decision, the `GeocodingProvider` abstraction, backend-proxied image upload, and the lazy-`S3Client` bug fix).
+Left off: Verified end-to-end with a real headless-browser pass (Playwright, cached install, no project-specific run skill existed yet for `frontend-admin/`) — login, hotels list (5 seeded demo hotels render correctly with real star ratings/status badges), Add Hotel form, create (a real live Mapbox geocoding call succeeded), redirect to the edit page, back to the list, new row visible, delete via the row dropdown + confirm dialog, row disappears — confirmed soft-deleted (`deleted_at` set, not a hard delete) directly against Postgres afterward. Found and fixed a real bug while starting the backend for verification: `config/s3.ts` built the `S3Client` eagerly at import time, which crashed the whole server on startup given this environment's blank S3 env vars — made lazy instead (see Architecture Decisions). Also found and fixed a live pre-existing bug in `frontend-admin`'s Feature 04 `LoginForm.tsx` (`text-state-error`, same silently-resolves-to-nothing class of bug Feature 06 fixed in `frontend/`, just never caught here). Cross-checked the new components against `ui-registry.md`'s pre-approved patterns (Table Wrapper/Row/Cell, Destructive Button, Star Rating, Booking Status Badge) after realizing I'd built some of them ad hoc instead of matching what was already locked in — fixed the drift, and caught+fixed a real regression along the way (dropped `variant="ghost"` on two icon buttons while aligning classes, which silently fell back to a solid-fill default variant; re-verified visually after fixing). Image upload itself could not be exercised against real S3 — this environment's `S3_BUCKET`/`S3_REGION`/keys are blank (logged as an open Known Issue) — but confirmed the failure mode is clean (descriptive 500, not a crash). `tsc --noEmit` and `vite build`/`tsc -b` both clean for `backend/` and `frontend-admin/`. Both dev servers left running (`backend` :4000, `frontend-admin` :5173).
+Next session starts with: Feature 08 Admin Room Type CRUD — read `build-plan.md`'s section for it (room type management nested under `/hotels/[id]`, CRUD endpoints for `room_types`/`room_type_features`/`room_type_images`, rate override management for seasonal pricing/blackout dates). Consider filling in real S3 credentials first if room type image upload needs to be tested live.
 
 ### Session — 2026-07-06
 Built: Feature 06 Search Results UI, in full — see Completed Features and Architecture Decisions above (URL-driven state, `react-map-gl`/`mapbox-gl` + shadcn `checkbox`/`slider` additions, the mock-data-shaped-like-the-real-API decision, and the mobile-stacking fix).
