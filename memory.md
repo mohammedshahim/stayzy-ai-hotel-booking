@@ -1,41 +1,52 @@
-# Memory — Feature 05 Homepage UI
+# Memory — Feature 06 Search Results UI
 
-Last updated: 2026-07-05
+Last updated: 2026-07-06
 
 ## What was built
 
-**`frontend/` homepage and shared page shell:**
-- `app/layout.tsx` — added `<Navbar />` + `<main className="pt-16 min-h-screen bg-base">` per `ui-rules.md`'s Page Structure.
-- `app/page.tsx` — hero section (headline, subheadline, hero visual placeholder, `HeroSearchWidget`), `TrendingDestinations`, `Footer`.
-- `components/layout/Navbar.tsx` — Server Component, logo + login/account state only (Favorites/Compare icons deliberately deferred to Features 17/18).
-- `components/layout/AccountMenu.tsx` — Client Component, Popover-based dropdown (My Bookings/Profile/Logout).
-- `components/layout/Footer.tsx` — homepage-only, placeholder Company/Support/Legal links.
-- `lib/get-server-session.ts` — forwards the incoming request's `cookie` header directly to the backend's `get-session`, since Server Components can't use the browser-only rewrite proxy from Feature 03.
-- `features/search/components/{DestinationInput,DateRangePicker,GuestsRoomsPicker,HeroSearchWidget}.tsx` — interactive hero search widget, local state only (no navigation/API — `/search` doesn't exist until Feature 06).
-- `features/trending-destinations/components/TrendingDestinations.tsx` — new feature folder (matches Feature 11's numbered slot), 8 hardcoded destinations.
-- `components/ui/{calendar,popover}.tsx` — new shadcn primitives (unmodified from generated output — the project's token remapping already makes them on-brand).
-- `code-standards.md`, `ui-rules.md`, `ui-registry.md`, `progress-tracker.md` all updated to match.
+**`frontend/` `/search` page and supporting feature code:**
+- `app/search/page.tsx` — thin Server Component `<Suspense>` wrapper around the Client Component `features/search/components/SearchPageContent.tsx` (composes everything below).
+- `features/search/data/mock-hotels.ts` — 27 hardcoded hotels across 5 cities (Paris/Tokyo/New York/London/Rome), shaped to match `architecture.md`'s future `GET /search` response exactly (price, rating, lat/lng, amenities, room type, etc.) so Feature 09 can swap the data source without restructuring consumers. Also exports derived constants (`ALL_AMENITIES`, `ALL_ROOM_FEATURES`, `ALL_MEAL_PLANS`, `ALL_LANDMARKS`, price bounds) computed from the array itself.
+- `features/search/types.ts` — `SearchState`/`SortOption`/`ViewMode` types.
+- `features/search/hooks/useSearchState.ts` — URL-driven state (destination/dates/guests/every filter/sort/view/page) via `useSearchParams`/`router.replace`. Changing any filter/sort/destination/date/guest field resets `page` to 1; `view`/`page` alone do not.
+- `features/search/hooks/useSearchResults.ts` — pure filter → sort → paginate over `MOCK_HOTELS`; Map view bypasses pagination (returns every match).
+- `features/search/components/{FilterSidebar,ActiveFilterChips,SortDropdown,ViewToggle,HotelCard,MapView}.tsx` — all real/functional, not decorative. `MapView` uses `react-map-gl`/`mapbox-gl` with pin↔card pan/select sync.
+- `components/common/{StarRating,GuestRatingBadge,EmptyState,Pagination}.tsx` — first real usage of `components/common/` (shared, reused-across-features UI per `architecture.md`).
+- `components/ui/{checkbox,slider}.tsx` — new shadcn primitives, unmodified from generated output.
+- `frontend/features/search/components/HeroSearchWidget.tsx` — Search button now navigates to `/search` with destination/dates/guests serialized into the URL (was a dead button since Feature 05).
+
+**Post-`/review` fixes (same session, after Feature 06 was marked complete):**
+- `HotelCard.tsx` wrapper is now always `flex` (`flex-col` grid / `flex-row` list) — fixes price/CTA row not aligning to a shared bottom edge across cards of different heights in the same grid row.
+- Discount badge switched from `bg-error-dim` (10%-opacity, invisible over photos) to solid `bg-error` + `text-white`.
+- `FilterSidebar.tsx`'s price slider refactored into a `PriceRangeSlider` subcomponent: local `useState` drives the live thumb during drag, `onValueCommitted` (fires once, on release) is what actually writes URL state/re-filters — removes jank from firing on every drag tick. Uses a `key`-based remount (not a `useEffect`) to re-sync when the committed range changes externally, since `eslint-plugin-react-hooks`'s `set-state-in-effect` rule correctly flagged the effect-based first attempt.
 
 ## Decisions made
 
-- Added `react-day-picker` + `date-fns` as new approved `frontend/` dependencies (shadcn's `Calendar` primitive) rather than hand-rolling date-range math — confirmed with developer during `/architect`.
-- `Navbar` fetches session server-side (`get-server-session.ts`) rather than a client-side `useSession()` hook, to avoid a loading flash — only `AccountMenu` itself is a Client Component.
-- All three hero search widget segments (Destination/Date/Guests) now share one visual pattern: `m-2 rounded-xl border border-border-default bg-subtle px-4 py-2.5`, accent-colored border+ring when active. This replaced an earlier per-segment-divider layout (`divide-x`/`divide-y`) after two rounds of developer feedback — see Problems Solved.
+- **All `/search` state lives in the URL**, not local React state — `architecture.md`'s `GET /search` already expects this exact param shape, so Feature 09 mostly swaps "filter the mock array" for "call the backend."
+- **`react-map-gl` + `mapbox-gl`** added as new `frontend/` dependencies for Map view — standard declarative wrapper, avoids hand-rolled ref lifecycle.
+- **Mock data shaped like the real future API response**, with filter option lists derived from the data itself (not hand-maintained) so they can't drift.
+- **Continuous-drag inputs (sliders) should use local-state-plus-commit-event, not fire the expensive side effect on every tick** — this is the general pattern to reuse for any future slider/drag control in this codebase.
+- **Any badge placed directly over a photo needs a solid/opaque background** (`bg-error` + `text-white`), not the `-dim` (10%-opacity) token pairing meant for the flat page background.
 
 ## Problems solved
 
-- **Hero dead space (developer-reported):** `min-h-[calc(100svh-4rem)] items-center` on the hero grid, combined with the outer section's `py-14`, produced 313px of empty space above the headline on desktop and awkward gaps above/below on mobile. Fixed by dropping the forced min-height entirely; `ui-rules.md`'s Homepage Specific Rules corrected to match (don't reintroduce `min-h-[calc(100svh-4rem)]` on this grid).
-- **Destination field UX (developer-reported, took 3 iterations):** (1) field had zero hover/focus feedback at all — fixed with a hover/focus-within background. (2) That only fixed the *interaction* state, not the *resting* look — developer wanted a real bordered box visible before any interaction (chose this explicitly when asked). (3) While wiring the accent-colored focus border, found a real CSS bug: `hover:border-*` and `focus-within:border-*` on the same element compete when a real cursor rests over a focused field (both pseudo-classes true at once) — Tailwind's stylesheet order, not className source order, decides the winner, and it silently ate the accent color. Fix: don't put hover and focus-within/focus-visible on the same property on one element. Verify with computed styles, not just a screenshot (a real mouse click has both states active simultaneously).
-- Base-ui's `Button` needs `nativeButton={false}` when rendered as a `<Link>` via the `render` prop, or it logs a console warning (Link renders an `<a>`, not a `<button>`).
+- **Second systemic token-doc bug found and fixed** (in addition to Feature 03's border-token bug): `ui-tokens.md`/`ui-rules.md`/`ui-registry.md` documented status colors as `state-success`/`state-error`/etc., but `app/globals.css`'s `@theme inline` block only ever registered `--color-success`/`--color-error`/etc. — no `--color-state-*` key exists, so `state-`-prefixed classes silently compiled to nothing. Fixed all three docs and retrofitted 6 already-shipped files that had it: `frontend/features/auth/components/{ForgotPasswordForm,LoginForm,VerifyEmailStatus,ResetPasswordForm,SignupForm}.tsx` and `frontend/components/layout/AccountMenu.tsx`. Verified via a repo-wide grep — zero remaining `state-`-prefixed occurrences.
+- **Playwright test-harness false alarm**: hitting `127.0.0.1:3000` instead of `localhost:3000` silently broke the Next dev server's client router/HMR bridge (Next only allows `localhost` as a same-origin dev client) — looked exactly like an app bug (URL never updated on filter/sort changes) until switching the test URLs to `localhost` resolved it. Not an app issue.
+- **Stale dev server**: a frontend dev server left running from a prior session had gone unresponsive (hung, 0% CPU, still `LISTEN`ing but not accepting connections) — killed and restarted it.
+- **Mobile responsive overflow**: `FilterSidebar`'s fixed `w-72` and `MapView`'s fixed `grid-cols-[1fr_28rem]` both caused horizontal overflow below `lg:` — both now stack vertically on mobile/tablet (sidebar full-width, map gets `h-80` instead of the desktop sticky full-height column). Toolbar row (result count + sort + view toggle) also gained `flex-wrap` to avoid an awkward 3-line count-text wrap on mobile.
 
 ## Current state
 
-Homepage is fully built and polished: Navbar (logged-in and logged-out states both verified with a throwaway account, deleted after), hero with search widget (all 3 segments now visually consistent, bordered boxes, verified accent-focus states with computed styles), Trending Destinations (8 static cards), Footer. `tsc`, `eslint`, and `next build` all clean. Verified responsively at mobile/tablet/desktop via headless Playwright (no chromium-cli available in this environment — used a cached `npx playwright` install directly; no project-specific run skill exists yet for this app, none was created since nothing beyond the standard Next.js dev pattern was needed). Both dev servers left running (`frontend` :3000, `backend` :4000).
+Feature 06 is fully built and polished, including the 3 developer-reported post-review fixes (card alignment, discount badge legibility, slider jank). `tsc --noEmit`, `eslint`, and `next build` all clean. Verified end-to-end with Playwright: filters/sort/pagination/empty-state/view-toggle all confirmed via real URL state changes, Map view renders real Mapbox tiles with all 27 pins and working pan/select sync, homepage→search navigation carries destination/dates/guests, no horizontal overflow at mobile/tablet/desktop, price slider confirmed to only commit on release (not mid-drag). `ui-registry.md` and `progress-tracker.md` both fully updated including the post-review fixes. Both dev servers left running (`frontend` :3000, `backend` :4000).
+
+**Uncommitted**: none of this session's work has been committed to git yet — a commit request came in but was interrupted before execution, so the working tree still has everything as unstaged/untracked changes.
 
 ## Next session starts with
 
-Feature 06 Search Results UI — read `build-plan.md`'s section for it: `/search` page with sticky filter sidebar (price, star rating, guest rating, amenities, room features, meals, free cancellation, landmarks), active filter chips, sort dropdown, List/Grid/Map view toggle (Map view needs Mapbox — `NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN` already exists as an empty placeholder in `frontend/.env.local`, needs a real value before Map view can render), hotel card, pagination, empty state. Static/mock hotel data for now — real backend wiring is Feature 09.
+Two things pending, in order:
+1. **Commit this session's work** — the developer asked for it to be committed "with each commit having a proper message" (implying multiple logical commits, not one big one — likely: token-doc bug fix + retrofits as one commit, the Feature 06 build itself as another, the post-review fixes as a third) and then pushed. This was interrupted before it happened — confirm the commit grouping and remote/branch before pushing.
+2. **Feature 07 Admin Hotel CRUD** — read `build-plan.md`'s section for it: `frontend-admin/` `/hotels` list, `/hotels/new`, `/hotels/[id]` edit (amenities picker, image upload/reorder with one marked main); backend CRUD endpoints in `backend/src/routes/admin/hotels.routes.ts`; server-side geocoding into `hotels.location`; images to S3.
 
 ## Open questions
 
-- None blocking. Worth reusing the hero search widget's bordered-segment pattern (`m-2 rounded-xl border border-border-default bg-subtle`, accent border+ring when active) for the `/search` filter sidebar's interactive controls, for consistency, if it fits.
+- None blocking Feature 07. The only open item is finalizing how this session's changes should be split into commits before pushing (see Next Session above) — confirm with the developer before pushing since that's a shared/remote-affecting action.
