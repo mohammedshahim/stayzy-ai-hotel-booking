@@ -46,7 +46,7 @@ export function AccountMenu({ user }: Props) {
         <button
           type="button"
           onClick={handleLogout}
-          className="flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-sm text-state-error transition-colors hover:bg-state-error-dim"
+          className="flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-sm text-error transition-colors hover:bg-error-dim"
         >
           <LogOutIcon className="h-4 w-4" />
           Logout

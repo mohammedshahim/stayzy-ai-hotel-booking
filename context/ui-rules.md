@@ -174,9 +174,9 @@ transition-colors
 **Destructive button** — cancel booking, delete hotel/room (admin), remove review
 
 ```
-bg-state-error-dim hover:bg-state-error/20
-border border-state-error/25
-text-state-error
+bg-error-dim hover:bg-error/20
+border border-error/25
+text-error
 h-9 px-4 rounded-xl
 transition-colors
 ```
@@ -188,11 +188,11 @@ Base structure:
   inline-flex items-center gap-1.5
   px-2.5 py-1 rounded-full text-xs font-medium
 
-Confirmed:       bg-state-success-dim text-state-success border border-state-success/20
-Pending Payment: bg-state-warning-dim text-state-warning border border-state-warning/20
-Completed:       bg-state-info-dim text-state-info border border-state-info/20
-Cancelled:       bg-state-neutral-dim text-state-neutral border border-state-neutral/20
-Failed:          bg-state-error-dim text-state-error border border-state-error/20
+Confirmed:       bg-success-dim text-success border border-success/20
+Pending Payment: bg-warning-dim text-warning border border-warning/20
+Completed:       bg-info-dim text-info border border-info/20
+Cancelled:       bg-neutral-dim text-neutral border border-neutral/20
+Failed:          bg-error-dim text-error border border-error/20
 ```
 
 Never use plain colored text without the dim background for status badges.
@@ -211,8 +211,8 @@ Numeric label (optional): ml-1.5 text-sm font-medium text-text-primary
 Guest rating (review-score style, e.g. "9.2 Excellent") uses a separate compact badge, not the star row:
 
 ```
-inline-flex items-center gap-1.5 rounded-lg bg-state-info-dim px-2 py-1
-Score: text-sm font-bold text-state-info
+inline-flex items-center gap-1.5 rounded-lg bg-info-dim px-2 py-1
+Score: text-sm font-bold text-info
 Label: text-xs text-text-secondary
 ```
 
@@ -283,7 +283,7 @@ Expandable row: bg-subtle border-t border-border-default px-4 py-4
 bg-elevated rounded-2xl border border-border-default p-5 shadow-card
 Stat number:  text-2xl font-bold text-text-primary
 Stat label:   text-xs text-text-muted uppercase tracking-wide mt-1
-Trend/icon:   text-accent-primary (positive) or text-state-error (negative)
+Trend/icon:   text-accent-primary (positive) or text-error (negative)
 ```
 
 ### Form Fields
@@ -295,7 +295,7 @@ Field wrapper:  flex flex-col gap-1.5
 Label:          text-sm font-medium text-text-secondary
 Input/Select:   (see Inputs pattern above)
 Helper text:    text-xs text-text-muted mt-1
-Error message:  text-xs text-state-error mt-1
+Error message:  text-xs text-error mt-1
 ```
 
 ### Empty States

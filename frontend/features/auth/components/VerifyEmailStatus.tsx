@@ -42,8 +42,8 @@ export function VerifyEmailStatus() {
         <span className="font-medium text-text-primary">{session?.user.email ?? "your email"}</span>. Click it to
         verify your account — you can keep browsing in the meantime.
       </p>
-      {isSent && <p className="text-xs text-state-success">Verification email resent.</p>}
-      {error && <p className="text-xs text-state-error">{error}</p>}
+      {isSent && <p className="text-xs text-success">Verification email resent.</p>}
+      {error && <p className="text-xs text-error">{error}</p>}
       <Button
         type="button"
         variant="outline"

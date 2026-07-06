@@ -77,28 +77,30 @@ Star ratings always use this gold token, never the terracotta accent — ratings
 
 | Role        | CSS Variable          | Hex/Value                | Tailwind Class      |
 | ----------- | --------------------- | -------------------------- | -------------------- |
-| Success     | `--state-success`     | `#1F9D63`                  | `state-success`      |
-| Success dim | `--state-success-dim` | `rgba(31,157,99,0.10)`     | `state-success-dim`  |
-| Error       | `--state-error`       | `#D64545`                  | `state-error`        |
-| Error dim   | `--state-error-dim`   | `rgba(214,69,69,0.10)`     | `state-error-dim`    |
-| Warning     | `--state-warning`     | `#C97A1B`                  | `state-warning`      |
-| Warning dim | `--state-warning-dim` | `rgba(201,122,27,0.10)`    | `state-warning-dim`  |
-| Info        | `--state-info`        | `#2E7BC4`                  | `state-info`         |
-| Info dim    | `--state-info-dim`    | `rgba(46,123,196,0.10)`    | `state-info-dim`     |
-| Neutral     | `--state-neutral`     | `#71695A`                  | `state-neutral`      |
-| Neutral dim | `--state-neutral-dim` | `rgba(113,105,90,0.12)`    | `state-neutral-dim`  |
+| Success     | `--state-success`     | `#1F9D63`                  | `success`      |
+| Success dim | `--state-success-dim` | `rgba(31,157,99,0.10)`     | `success-dim`  |
+| Error       | `--state-error`       | `#D64545`                  | `error`        |
+| Error dim   | `--state-error-dim`   | `rgba(214,69,69,0.10)`     | `error-dim`    |
+| Warning     | `--state-warning`     | `#C97A1B`                  | `warning`      |
+| Warning dim | `--state-warning-dim` | `rgba(201,122,27,0.10)`    | `warning-dim`  |
+| Info        | `--state-info`        | `#2E7BC4`                  | `info`         |
+| Info dim    | `--state-info-dim`    | `rgba(46,123,196,0.10)`    | `info-dim`     |
+| Neutral     | `--state-neutral`     | `#71695A`                  | `neutral`      |
+| Neutral dim | `--state-neutral-dim` | `rgba(113,105,90,0.12)`    | `neutral-dim`  |
 
 `state-warning` is deliberately shifted more brown/yellow than `accent-primary` so a warning badge never gets visually confused with a primary CTA.
 
+Corrected 2026-07-05 (found while building Feature 06): the `@theme inline` block below registers these as `--color-success`, `--color-error`, `--color-warning`, `--color-info`, `--color-neutral` (and their `-dim` variants) — there is no `--color-state-success` etc. The Tailwind Class column previously said `state-success`/`state-error`/etc., which silently compiles to nothing (same class of bug as the `border-default` vs `border-border-default` fix in Feature 03). Always use the bare form (`success`, `error-dim`, ...) in JSX — never prefix these five with `state-`.
+
 ### Booking Status Mapping
 
-| Booking Status   | Color Token     | Dim Token           |
-| ----------------- | --------------- | -------------------- |
-| Confirmed         | `state-success` | `state-success-dim`  |
-| Pending Payment   | `state-warning` | `state-warning-dim`  |
-| Completed         | `state-info`    | `state-info-dim`     |
-| Cancelled         | `state-neutral` | `state-neutral-dim`  |
-| Failed            | `state-error`   | `state-error-dim`    |
+| Booking Status   | Color Token | Dim Token     |
+| ----------------- | ----------- | -------------- |
+| Confirmed         | `success`   | `success-dim`  |
+| Pending Payment   | `warning`   | `warning-dim`  |
+| Completed         | `info`      | `info-dim`     |
+| Cancelled         | `neutral`   | `neutral-dim`  |
+| Failed            | `error`     | `error-dim`    |
 
 ---
 

@@ -73,7 +73,7 @@ export function SignupForm() {
           className="h-10 rounded-xl border-border-default bg-subtle px-3 text-text-primary placeholder:text-text-muted focus-visible:border-accent-border focus-visible:ring-accent-border"
         />
       </div>
-      {error && <p className="text-xs text-state-error">{error}</p>}
+      {error && <p className="text-xs text-error">{error}</p>}
       <Button
         type="submit"
         disabled={isSubmitting}
