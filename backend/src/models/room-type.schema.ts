@@ -23,6 +23,7 @@ export const roomTypes = pgTable("room_types", {
   mealPlanId: uuid("meal_plan_id").references(() => mealPlans.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
+  deletedAt: timestamp("deleted_at", { withTimezone: true, mode: "string" }),
 });
 
 export const roomFeatures = pgTable("room_features", {
