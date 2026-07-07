@@ -370,6 +370,10 @@ export const db = drizzle(pool, { schema });
 
 `pool` is exported alongside `db` — seed scripts and `migrate-down.ts` need it directly (`pool.end()`, or raw SQL for the migration-tracking table), since `db` itself has no `.end()`/`.connect()`.
 
+### A JS array inside a `sql` template renders as `IN (...)`, not a Postgres array literal
+
+`sql\`... = ANY(${idArray}::uuid[])\`` looks reasonable but is wrong — Drizzle spreads an interpolated JS array into a parenthesized, comma-separated placeholder list (`($1, $2, $3)`), the shape `IN (...)` needs, not a single bound array parameter `ANY(...)` needs. With one element it renders as `($1)`, and Postgres then fails to parse `($1)::uuid[]` as an array literal (`malformed array literal`); with multiple elements `ANY(($1, $2)::uuid[])` is invalid SQL outright. Found while building Feature 09's search filters (`backend/src/queries/search.queries.ts`) — the "hotel has all of these amenity ids" / "room type has all of these room feature ids" correlated subqueries. **Fix:** write `column IN ${idArray}` (no explicit parens, no cast) instead of `column = ANY(${idArray}::type[])` — `IN` is exactly the shape Drizzle already produces for an interpolated array.
+
 ### better-auth wiring (`config/auth.ts` / `config/auth-admin.ts`)
 
 ```typescript

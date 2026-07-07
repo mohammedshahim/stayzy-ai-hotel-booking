@@ -52,7 +52,10 @@ backend/
 │   │   ├── index.ts                     → mounts all routers
 │   │   ├── auth.routes.ts
 │   │   ├── hotels.routes.ts             → public hotel read endpoints
-│   │   ├── search.routes.ts             → search + filters + trending destinations
+│   │   ├── search.routes.ts             → GET /search — destination + availability + filters + sort + pagination
+│   │   ├── amenities.routes.ts          → public GET — amenity id/name lookup for search filter options
+│   │   ├── room-features.routes.ts      → public GET — room feature id/name lookup for search filter options
+│   │   ├── meal-plans.routes.ts         → public GET — meal plan id/name lookup for search filter options
 │   │   ├── bookings.routes.ts
 │   │   ├── payments.routes.ts           → PaymentIntent creation
 │   │   ├── reviews.routes.ts
@@ -217,7 +220,9 @@ Applies sidebar filters (price, rating, amenities, ...), sort order, and paginat
 Response includes per-hotel lowest available price and location coordinates for the selected dates
 ```
 
-`GET /search` accepts a `sort` parameter (`price_asc`, `price_desc`, `guest_rating`, `star_rating`, `distance`) applied after filtering and before pagination; `distance` requires a reference point (destination centroid or the user's searched landmark) and is computed the same way as the PostGIS nearby-hotels query below. Every result also carries `hotels.location` so the frontend can render Map view without a second request.
+`GET /search` accepts a `sort` parameter (`price_asc`, `price_desc`, `guest_rating`, `star_rating`, `distance`) applied after filtering and before pagination. There is no landmarks table or discount column in the schema (Feature 06's mock data invented both for the UI, with no backing) — Feature 09 dropped both from the real search rather than adding schema for them, so `distance` sort has no landmark reference point to measure from. It instead sorts against the centroid (mean lat/lng) of the matched result set itself, computed in `search.service.ts` — not via `ST_Distance`/PostGIS and not via an external geocoding call per search. Every result also carries `hotels.location` so the frontend can render Map view without a second request.
+
+`availability.service.ts`'s per-date effective-inventory/price check (`available_override ?? total_inventory`, `price ?? base_price`) is done in plain JS over `enumerateStayDates(checkIn, checkOut)`, not a SQL `generate_series`/CTE — `queries/search.queries.ts` only ever runs plain `db.select()` builder queries (a date range is always small, so per-date aggregation client-side is simpler than forcing it into one SQL statement). Any future feature needing "is this room type available for these dates" (Feature 12/13's hotel details and room selection) should reuse `findQualifyingRoomTypes`/`pickCheapestPerHotel` rather than re-deriving the math.
 
 ### Booking + Payment
 

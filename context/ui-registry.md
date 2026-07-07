@@ -163,53 +163,56 @@ Notes: First real usage of `components/common/` (per `architecture.md`'s folder 
 
 File: `frontend/features/search/components/HotelCard.tsx`
 App: frontend
-Last updated: 2026-07-06 (post-`/review` fix)
+Last updated: 2026-07-07 (Feature 09 + post-`/review` fix)
 
 Wrapper: Card pattern, `overflow-hidden`, no padding on the wrapper itself (image needs to bleed to the edges) — `border-accent-border` when `isSelected` (Map view pin sync), `border-border-default` otherwise. Always `flex` (`flex-col` for grid, `flex-row` for list) — required so the body's `flex-1`/`mt-auto` can actually fill a CSS-Grid-stretched card and pin the price/CTA row to a shared bottom edge across a row of cards with differing content heights (missing this was a real bug — see Architecture Decisions).
 Grid variant: image `aspect-[4/3] w-full rounded-t-2xl`, body below
 List variant (`variant="list"`): image becomes `aspect-[4/3] w-56 sm:w-64 shrink-0 rounded-l-2xl`, body fills the remaining width
 Favorite/Compare toggles: `h-8 w-8 rounded-xl bg-elevated/90 backdrop-blur-sm` positioned `absolute right-3 top-3` over the image — local component state only (`useState`, no persistence), matching Feature 05's precedent of building real interactivity ahead of the feature that wires it up for real (Favorites/Compare land in Features 17/18)
-Discount badge: `absolute left-3 top-3 rounded-full bg-error px-2.5 py-1 text-xs font-medium text-white shadow-card` — solid fill, not `bg-error-dim`. The 10%-opacity dim token is designed for badges on the flat page background (see Booking Status Badges); over a photo it was nearly invisible depending on the image underneath. Any future badge placed directly on an image should use the solid token + `text-white`, not the `-dim` pairing.
-Location row: map-pin icon + distance text is a `<button onClick={onLocate}>` — the literal interaction ui-rules.md specifies for Map view pin/card sync, not a whole-card click handler (avoids conflicting with the Favorite/Compare buttons and the "See availability" link inside the same card)
+Discount badge: **removed in Feature 09** — the real schema has no discount column on `hotels`/`room_types` (Feature 06's mock data invented it for the UI). The general principle it established still stands and is still in use elsewhere: any badge/tag placed directly on a photo uses a **solid** fill + `text-white`, never a `-dim` token (the 10%-opacity dim tokens are for badges on the flat page background — see Booking Status Badges — and read as nearly invisible over an image). See `HotelImagesManager`'s "Main" tag for the still-live example of this rule.
+Location row: map-pin icon + `"View on map"` text is a `<button onClick={onLocate}>` — `onLocate` is a **required** prop (not optional) since Feature 09's `/review` fix made every call site (Grid/List via `SearchPageContent`'s `handleLocate`, Map view's own list via `onSelectHotel`) always provide a real handler. Previously this button rendered inert (`onClick={undefined}`) outside Map view, showing a CTA-looking control that did nothing — the fix made it always functional: clicking it from Grid/List now switches `SearchPageContent`'s view state to `"map"` *and* selects that specific hotel (lifted `selectedHotelId` state, not owned by `MapView` anymore — see MapView's entry).
 CTA: Secondary Button pattern, `render={<Link href={"/hotels/" + hotel.id} />} nativeButton={false}` — `/hotels/[id]` doesn't exist until Feature 12, same placeholder-link precedent as the Footer
-Notes: Takes a `MockHotel` from `features/search/data/mock-hotels.ts`. `isSelected`/`onLocate` props are optional and only used by `MapView`; plain grid/list rendering omits them.
+Notes: Takes a `SearchResultHotel` (`features/search/types.ts`) from the real `GET /search` response, not `MockHotel`/`mock-hotels.ts` (deleted in Feature 09). `isSelected` stays optional (only meaningful in Map view); `onLocate` is required on every render path.
 
 ### FilterSidebar
 
 File: `frontend/features/search/components/FilterSidebar.tsx`
 App: frontend
-Last updated: 2026-07-06
+Last updated: 2026-07-07 (Feature 09)
 
 Wrapper: `w-full rounded-2xl border border-border-default bg-surface p-5 lg:sticky lg:top-20 lg:h-fit lg:w-72 lg:shrink-0` — full-width and non-sticky below `lg` (stacks above results instead of forcing a cramped fixed-width column on mobile/tablet; the `w-72`/`sticky top-20` from `ui-rules.md` only applies at `lg:` and up)
 Section: `border-b border-border-default py-4 last:border-0`, title `text-sm font-medium text-text-primary mb-3` — matches `ui-rules.md` exactly, implemented as a local (unexported) `FilterSection` helper
-Price range: shadcn/base-ui `Slider` (new primitive, added this feature via `shadcn add slider` — unmodified from generated output, same token-remapping precedent as `calendar`/`popover`/`checkbox`), fixed `0–500` bounds rather than data-derived min/max, for round numbers. Wrapped in a local `PriceRangeSlider` subcomponent holding its own `useState` for the dragged position — `onValueChange` (fires every drag tick) only updates that local state, `onValueCommitted` (fires once, on release) is what actually calls `onChange`/writes the URL. `FilterSidebar` remounts it via `key={minPrice-maxPrice}` whenever the committed range changes for an external reason (chip removal, Clear filters), so no effect is needed to keep local/committed state in sync. Do not swap this back to firing `onChange` from `onValueChange` — that re-filters the full result set on every pixel of drag and was reported as janky in `/review`.
-Checkbox rows: shadcn/base-ui `Checkbox` (new primitive, added via `shadcn add checkbox`, also unmodified) + label, local `CheckboxRow` helper matches `ui-rules.md`'s `flex items-center gap-2 text-sm text-text-secondary` exactly
+Price range: shadcn/base-ui `Slider` (unmodified from generated output, same token-remapping precedent as `calendar`/`popover`/`checkbox`), fixed `0–500` bounds rather than data-derived min/max, for round numbers. Wrapped in a local `PriceRangeSlider` subcomponent holding its own `useState` for the dragged position — `onValueChange` (fires every drag tick) only updates that local state, `onValueCommitted` (fires once, on release) is what actually calls `onChange`/writes the URL. `FilterSidebar` remounts it via `key={minPrice-maxPrice}` whenever the committed range changes for an external reason (chip removal, Clear filters), so no effect is needed to keep local/committed state in sync. Do not swap this back to firing `onChange` from `onValueChange` — that re-filters the full result set on every pixel of drag and was reported as janky in `/review`.
+Checkbox rows: shadcn/base-ui `Checkbox` + label, local `CheckboxRow` helper matches `ui-rules.md`'s `flex items-center gap-2 text-sm text-text-secondary` exactly
 Guest rating: implemented as checkboxes but behaves as a single-select threshold (`minGuestRating`) — checking one clears any other, since "9+ Excellent" and "8+ Very Good" are mutually exclusive thresholds, not independent filters
-Filter option lists (amenities, room features, meal plans, landmarks): derived at module load from `MOCK_HOTELS` itself (`Array.from(new Set(...))`) rather than a hand-maintained parallel list, so the sidebar can never drift out of sync with the mock data
+Amenities/Room features/Meals: **Feature 09** switched these from name-strings derived off mock data to real database UUIDs. `FilterSidebar` no longer fetches its own option lists — it takes a `catalogs: SearchCatalogs` prop (`{ amenities, roomFeatures, mealPlans }`, each `{id, name}[]`) fetched once by `SearchPageContent` via `useSearchCatalogs()` and shared with `ActiveFilterChips` (was two independent fetches of the same 3 endpoints before a `/review` fix — see that hook's own note). Checkbox `checked`/`onCheckedChange` key off `option.id`, label renders `option.name`.
+Landmarks section: **removed in Feature 09** — no landmarks table in the real schema (Feature 06's mock data invented it). Do not re-add without a real data source.
 Notes: All filters are real and client-side (confirmed with the developer during `/architect`) — wired through `useSearchState`/`useSearchResults`, not decorative.
 
 ### ActiveFilterChips / SortDropdown / ViewToggle
 
 File: `frontend/features/search/components/{ActiveFilterChips,SortDropdown,ViewToggle}.tsx`
 App: frontend
-Last updated: 2026-07-06
+Last updated: 2026-07-07 (Feature 09)
 
 Active filter chip: Skill-Tag/Amenity Chip pattern exactly, trailing `XIcon` (`h-3 w-3 text-accent-text hover:text-text-primary`) — one chip per active filter *value* (each star rating, each amenity, etc.), not one chip per filter *category*
 Sort dropdown: plain native `<select>` styled to the Input pattern sizing from `ui-rules.md` (`h-10 rounded-xl border border-border-default bg-subtle`) — deliberately not a custom Popover-based listbox like the Date/Guests pickers, since a native select is simpler and suffices here (no multi-row content needed)
 View toggle: segmented icon-button group, `rounded-xl border border-border-default bg-subtle p-1` wrapper, active option gets `bg-elevated text-accent-text shadow-card`, inactive `text-text-muted hover:text-text-secondary`
-Notes: All three are thin, purely presentational — they take `value`/`onChange` and know nothing about `useSearchState`.
+Amenity/room-feature/meal-plan chip labels: `ActiveFilterChips` takes the same `catalogs: SearchCatalogs` prop as `FilterSidebar` (from `SearchPageContent`, see that entry) and resolves each id to a display name via a local `useMemo`'d `Map` (falls back to the raw id if the catalog hasn't loaded yet). Do not re-introduce a component-local fetch for this — that was the exact duplication a `/review` pass caught (6 requests for 3 endpoints instead of 3).
+Notes: All three are thin, purely presentational — they take `value`/`onChange` (plus `catalogs` for `ActiveFilterChips`) and know nothing about `useSearchState` internals.
 
 ### MapView
 
 File: `frontend/features/search/components/MapView.tsx`
 App: frontend
-Last updated: 2026-07-06
+Last updated: 2026-07-07 (Feature 09 + post-`/review` fix)
 
 Layout: `flex flex-col gap-4 lg:grid lg:grid-cols-[1fr_28rem]` — the `ui-rules.md`-specified `grid-cols-[1fr_28rem]` two-column layout only applies at `lg:` and up; below that, the card list and map stack vertically (map gets a fixed `h-80` instead of the desktop `sticky h-[calc(100vh-6rem)]`) to avoid a ~450px-wide second column overflowing on mobile
-Card list column: renders `HotelCard` with `variant="list"`, `isSelected`/`onLocate` wired to local `selectedHotelId` state
+Card list column: renders `HotelCard` with `variant="list"`, `isSelected`/`onLocate` wired to `selectedHotelId`/`onSelectHotel` **props**
 Map column: `react-map-gl`/`mapbox-gl` (`mapStyle="mapbox://styles/mapbox/light-v11"`), one `Marker` per hotel — a plain `<button>` pin (`rounded-full border-2`, `border-accent-primary bg-accent-primary text-white` when selected, `border-border-default bg-elevated text-accent-primary` otherwise) rather than a Mapbox `Popup`, to keep pin↔card sync to a single boolean instead of managing popup open/close state too
-Pan/select sync: a `useEffect` watching `selectedHotelId` calls `mapRef.current.flyTo(...)` (imperative `MapRef`, not the declarative `viewState` prop) — selecting a card or clicking a pin both funnel through the same `setSelectedHotelId`, satisfying "selecting a card pans to and highlights its pin, and vice versa" from `ui-rules.md`
-Notes: Receives already-filtered/sorted `hotels` from `useSearchResults` with pagination bypassed (Map view shows every match at once, per `ui-rules.md`) — `MapView` itself does no filtering/sorting/pagination.
+Pan/select sync: a `useEffect` watching the resolved selected id calls `mapRef.current.flyTo(...)` (imperative `MapRef`, not the declarative `viewState` prop) — selecting a card or clicking a pin both funnel through the same `onSelectHotel`, satisfying "selecting a card pans to and highlights its pin, and vice versa" from `ui-rules.md`
+**Feature 09 `/review` fix — `selectedHotelId` is no longer local state.** It's now owned by `SearchPageContent` and passed down as `selectedHotelId`/`onSelectHotel` props, so `HotelCard`'s "View on map" button in Grid/List (outside `MapView` entirely) can set it *and* switch to Map view in one action — the two need to share the same piece of state. `MapView` computes an `effectiveSelectedId` internally (falls back to `hotels[0]` if the prop is `null` or points at a hotel no longer in the current result set) rather than trusting the prop blindly.
+Notes: Receives already-filtered/sorted `hotels` from `useSearchResults` with pagination bypassed (Map view shows every match at once, per `ui-rules.md`) — `MapView` itself does no filtering/sorting/pagination. `useSearchResults` forces `page: 1` for Map-view requests regardless of whatever page was active in Grid/List (a `/review` fix — Map view has no pagination UI and was silently able to request an empty out-of-range slice otherwise).
 
 ### AppShell / Sidebar / Topbar
 
