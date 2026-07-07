@@ -1,0 +1,56 @@
+import type { NextFunction, Request, Response } from "express";
+import { searchQuerySchema } from "../types/search.schemas";
+import { searchHotels } from "../services/search.service";
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function tomorrowIso(): string {
+  return new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+export async function search(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const parsed = searchQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: parsed.error.issues[0]?.message ?? "Invalid search query" });
+      return;
+    }
+    const query = parsed.data;
+
+    // The schema's own refine only validates ordering when both checkIn and checkOut are
+    // supplied together — a request giving only one (e.g. `?checkOut=2020-01-01`) skips it,
+    // and the defaults below could then resolve to an inverted range. Re-check post-default.
+    const checkIn = query.checkIn ?? todayIso();
+    const checkOut = query.checkOut ?? tomorrowIso();
+    if (checkOut <= checkIn) {
+      res.status(400).json({ success: false, error: "checkOut must be after checkIn" });
+      return;
+    }
+
+    const result = await searchHotels({
+      destination: query.destination,
+      checkIn,
+      checkOut,
+      adults: query.adults,
+      kids: query.kids,
+      rooms: query.rooms,
+      minPrice: query.minPrice ?? null,
+      maxPrice: query.maxPrice ?? null,
+      starRatings: query.starRatings,
+      minGuestRating: query.minGuestRating ?? null,
+      amenityIds: query.amenities,
+      mealPlanIds: query.mealPlans,
+      roomFeatureIds: query.roomFeatures,
+      freeCancellationOnly: query.freeCancellationOnly ?? false,
+      sort: query.sort,
+      page: query.page,
+      pageSize: query.pageSize,
+    });
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
