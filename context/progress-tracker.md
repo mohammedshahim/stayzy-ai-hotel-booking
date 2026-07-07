@@ -25,9 +25,9 @@ After completing any feature:
 
 **Phase:** 2 — Homepage + Search Foundation
 **Current feature:** 08 Admin Room Type CRUD
-**Next up:** 08 Admin Room Type CRUD — read `build-plan.md`'s section for it (room type management nested under `/hotels/[id]`, CRUD endpoints for `room_types`/`room_type_features`/`room_type_images`, rate override management for seasonal pricing/blackout dates).
+**Next up:** 08 Admin Room Type CRUD — read `build-plan.md`'s section for it (room type management nested under `/hotels/[id]`, CRUD endpoints for `room_types`/`room_type_features`/`room_type_images`, rate override management for seasonal pricing/blackout dates). Not blocked by the Drizzle ORM migration below — the layered architecture and every function signature in `queries/` are unchanged, only the implementation underneath.
 **Blocking issues:** None. Note: this dev environment's `S3_BUCKET`/`S3_REGION`/`S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY` are all still blank in `backend/.env` — image upload code is correct and fails gracefully (clean error, not a crash) but was never exercised against a real bucket. Fill those in to actually test image upload/room-type-image upload.
-**Latest completed addition:** 07 Admin Hotel CRUD — 2026-07-06
+**Latest completed addition:** 07 Admin Hotel CRUD — 2026-07-06. Since then: an infra migration (raw `pg` → Drizzle ORM, not a numbered feature) — see Architecture Decisions and Session Notes below.
 
 ---
 
@@ -138,6 +138,16 @@ Decision: [what was decided]
 Reason: [why]
 Impact: [what files or components this affects]
 ```
+
+### Backend data layer — 2026-07-07 (infra, not a numbered feature)
+Decision: Migrated the entire backend data layer from raw `pg` queries to Drizzle ORM (`drizzle-orm` + `drizzle-kit`), with a full clean-slate rebuild of the local dev database. All 14 non-auth-lookup tables plus both better-auth instances' tables now have Drizzle schema (`src/models/*.schema.ts`, one file per domain), `src/config/db.ts` exports `drizzle(pool, { schema })` instead of a raw `pg` `Pool`, `hotels.queries.ts`/`hotel-images.queries.ts`/`amenities.queries.ts` (the only 3 files that touched raw SQL) are rewritten against the Drizzle query builder with every function's signature and return shape preserved, and both better-auth instances (`auth.ts`/`auth-admin.ts`) now use `drizzleAdapter`. The old `backend/migrations/*.sql` + `src/config/migrate.ts` hand-rolled runner are deleted; `drizzle/` (drizzle-kit-generated migrations) + `drizzle.config.ts` replace them.
+Reason: Developer-requested infra migration — not tied to a `build-plan.md` feature, so it doesn't consume a feature slot. The clean-slate rebuild was safe since local dev data has no value worth preserving (developer-confirmed).
+Impact: `src/models/*.schema.ts` (new), `src/config/db.ts`, `src/config/auth.ts`, `src/config/auth-admin.ts`, `src/queries/{hotels,hotel-images,amenities}.queries.ts`, `src/config/{seed,seed-admin}.ts`, `drizzle.config.ts` (new), `drizzle/` (new, replaces `backend/migrations/`). `context/architecture.md`, `code-standards.md`, `library-docs.md` all updated — see `library-docs.md`'s new "Drizzle ORM" section for the schema-file/adapter conventions going forward. PostGIS's `hotels.location` uses a hand-written `customType` (`geographyPoint` in `hotel.schema.ts`) since Drizzle has no native geography column type — see the `library-docs.md` PostGIS rewrite for the gotcha this surfaced (a raw `sql` template interpolates a column as its bare unqualified name, not table-qualified, which silently broke `listHotels`' `mainImageUrl` correlated subquery until the outer table was qualified explicitly as a literal string).
+
+### Backend data layer — 2026-07-07 (infra, not a numbered feature)
+Decision: Added hand-authored migration downgrade support on top of drizzle-kit, since drizzle-kit only ever generates forward ("up") migrations. Every `drizzle-kit generate` run must be followed by hand-authoring a matching `<tag>.down.sql` file next to the generated `<tag>.sql` in `drizzle/`, reversing that migration exactly. `pnpm migrate` now runs `drizzle-kit migrate`; a new `pnpm migrate:down` (`src/config/migrate-down.ts`) reads `drizzle/meta/_journal.json` plus the `drizzle.__drizzle_migrations` tracking table to find the most recently applied migration, runs its `.down.sql` in a transaction, and deletes its tracking row so `drizzle-kit migrate` will re-apply it later. It throws (never silently no-ops) if a `.down.sql` file is missing.
+Reason: Developer explicitly wanted rollback capability, which drizzle-kit doesn't provide out of the box.
+Impact: `src/config/migrate-down.ts` (new), `drizzle/0000_baseline.down.sql` (new — reverses the baseline: drops all 22 tables, then `DROP EXTENSION IF EXISTS postgis`), `package.json`'s `migrate`/`migrate:down` scripts. Verified with a real `pnpm migrate:down` → `pnpm migrate` cycle against the local dev DB (all tables dropped and PostGIS extension removed, then both fully restored). Every future schema change must ship its `.down.sql` sibling in the same commit as the generated `.sql` file — see `library-docs.md`'s "Drizzle ORM" section; there's no tool enforcing this, a missing down file just fails loudly the next time `pnpm migrate:down` reaches it.
 
 ### 07 Admin Hotel CRUD — 2026-07-06
 Decision: Hotel "delete" is a soft delete via a new nullable `hotels.deleted_at` column, not a third `status` value and not a hard row delete.
@@ -349,6 +359,11 @@ Built: [what was completed]
 Left off: [exactly where the session ended]
 Next session starts with: [first thing to do next time]
 ```
+
+### Session — 2026-07-07
+Built: Infra migration, not a numbered feature — moved the entire backend data layer from raw `pg` to Drizzle ORM, with a full clean-slate local DB rebuild and hand-rolled migration downgrade support on top of drizzle-kit. See Architecture Decisions above for the full breakdown (schema files, `drizzleAdapter` wiring for both better-auth instances, the `geographyPoint` customType, and the `migrate`/`migrate:down` mechanism).
+Left off: Verified end-to-end against the real local Postgres instance: `pnpm migrate` (now `drizzle-kit migrate`) applied the generated baseline cleanly to an empty DB (`DROP SCHEMA public CASCADE` first, developer-confirmed safe), `pnpm seed`/`pnpm seed:admin` both ran and are idempotent on a second run, hit the real admin hotel endpoints over HTTP (list/detail/create-path via update/soft-delete, amenities) with the dev server running, verified both better-auth instances end-to-end over HTTP (admin sign-in + get-session round-trip a cookie; user sign-up + get-session round-trip a cookie — test user deleted from `user` afterward), and ran a real `pnpm migrate:down` → `pnpm migrate` cycle (confirmed all 22 tables and the postgis extension actually dropped, then confirmed both fully restored). Caught and fixed one real bug during verification: `hotels.queries.ts`'s `listHotels` `mainImageUrl` correlated subquery returned `null` for every row — a raw `sql` template interpolates a `PgColumn` as its bare unqualified name, and since `hotel_images` has its own `id` column, the intended `hotels.id` reference was silently shadowed; fixed by qualifying it as a literal `"hotels"."id"` string (documented as a general rule in `library-docs.md`'s PostGIS and Drizzle ORM sections, since it'll bite again on any future correlated-subquery `sql` fragment). `tsc --noEmit`/`pnpm build` clean. Left the `backend` dev server running on :4000 (re-seeded to a clean state — 5 hotels, 1 admin account — after the delete/rollback testing above).
+Next session starts with: Feature 08 Admin Room Type CRUD — read `build-plan.md`'s section for it (unaffected by this migration beyond the data-layer implementation: same layered architecture, same query function signatures going forward).
 
 ### Session — 2026-07-06 (2)
 Built: Feature 07 Admin Hotel CRUD, in full — see Completed Features and Architecture Decisions above (the `AppShell`/`Sidebar`/`Topbar` build, soft-delete-via-`deleted_at` decision, the `GeocodingProvider` abstraction, backend-proxied image upload, and the lazy-`S3Client` bug fix).

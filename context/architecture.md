@@ -42,7 +42,8 @@ backend/
 │   ├── app.ts                           → Express app, middleware wiring, route mounting
 │   ├── config/
 │   │   ├── env.ts                       → typed, validated environment variables
-│   │   ├── db.ts                        → PostgreSQL pool
+│   │   ├── db.ts                        → PostgreSQL pool + Drizzle db instance (drizzle-orm/node-postgres) wrapping it
+│   │   ├── migrate-down.ts              → hand-rolled downgrade runner (rolls back the most recent drizzle-kit migration via its paired .down.sql — see library-docs.md)
 │   │   ├── auth.ts                      → better-auth instance for user-facing auth
 │   │   ├── auth-admin.ts                → better-auth instance for admin auth (separate table, separate cookie)
 │   │   ├── stripe.ts                    → Stripe client instance
@@ -70,8 +71,8 @@ backend/
 │   │   ├── payment.service.ts
 │   │   ├── review.service.ts
 │   │   └── favorite.service.ts          → guest-cookie to account merge logic lives here
-│   ├── models/                          → typed row shapes, one file per table (the DB blueprint)
-│   ├── queries/                         → SQL/query builder functions per model, one file per model
+│   ├── models/                          → Drizzle `pgTable(...)` schema files, one per domain (the DB blueprint) — `*.schema.ts`
+│   ├── queries/                         → Drizzle query builder functions per model, one file per model — no raw SQL strings
 │   ├── webhooks/
 │   │   └── stripe.webhook.ts            → verifies signature, moves bookings to confirmed
 │   ├── middlewares/
@@ -81,7 +82,8 @@ backend/
 │   │   └── errorHandler.ts
 │   ├── types/
 │   └── utils/
-├── migrations/                          → SQL migrations, timestamp-ordered
+├── drizzle/                              → drizzle-kit-generated migrations (`<tag>.sql`) + hand-authored `<tag>.down.sql` siblings + meta/ journal
+├── drizzle.config.ts                     → drizzle-kit config (schema glob, output folder, DB credentials)
 ├── package.json
 └── tsconfig.json
 ```
@@ -188,8 +190,8 @@ frontend-admin/
 | `backend/src/routes`       | HTTP surface only — parses request, calls a controller. No business logic.                  |
 | `backend/src/controllers`  | Request/response shaping and status codes. Calls services, never touches the DB directly.   |
 | `backend/src/services`     | All business logic — availability math, booking state transitions, review aggregation, favorite merge logic. |
-| `backend/src/queries`      | All SQL. Services never write raw SQL inline — always through a query function.             |
-| `backend/src/models`       | Typed shape of each table. Source of truth for what a row looks like in application code.   |
+| `backend/src/queries`      | All database access, via the Drizzle query builder. Services never write raw SQL or import `pg`/`drizzle-orm` directly — always through a query function. |
+| `backend/src/models`       | Drizzle `pgTable` schema per table (the DB blueprint) plus the application-level row types services/controllers consume. |
 | `frontend/features/*`      | Feature-scoped UI + data hooks. A feature never imports another feature's internals directly. |
 | `frontend/components`      | Shared, reusable UI only. No data fetching, no feature-specific logic.                       |
 | `frontend-admin/features/*`| Feature-scoped UI + RTK Query API slices. Same isolation rule as the user frontend.          |

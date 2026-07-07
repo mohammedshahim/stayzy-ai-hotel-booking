@@ -238,14 +238,39 @@ const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!
 
 ## PostGIS
 
-Used through the plain `pg` driver — no separate ORM/spatial library needed.
+Modeled through a Drizzle `customType` (see "Drizzle ORM" below) since Drizzle has no built-in geography column type — not through a separate spatial library.
 
-### Setup (once)
+### Setup (once, baked into the generated baseline migration)
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS postgis;
-CREATE INDEX hotels_location_gist_idx ON hotels USING GIST (location);
 ```
+
+`drizzle-kit generate` doesn't know about Postgres extensions, so `CREATE EXTENSION IF NOT EXISTS postgis;` was hand-prepended to `drizzle/0000_baseline.sql` (with a matching `DROP EXTENSION IF EXISTS postgis;` appended to `0000_baseline.down.sql`) — any future migration that needs a new extension needs the same manual step. The GiST index (`hotels_location_gist_idx`) is declared directly in the table schema (`index("hotels_location_gist_idx").using("gist", table.location)` in `models/hotel.schema.ts`), not a separate migration.
+
+### The `geographyPoint` customType (`backend/src/models/hotel.schema.ts`)
+
+```typescript
+import { sql } from "drizzle-orm";
+import { customType } from "drizzle-orm/pg-core";
+
+export const geographyPoint = customType<{ data: { latitude: number; longitude: number } }>({
+  dataType() {
+    return "geography(Point,4326)";
+  },
+  toDriver(value) {
+    return sql`ST_SetSRID(ST_MakePoint(${value.longitude}, ${value.latitude}), 4326)::geography`;
+  },
+});
+
+export const hotels = pgTable("hotels", {
+  // ...
+  location: geographyPoint("location").notNull(),
+  // ...
+});
+```
+
+Writing `location: { latitude, longitude }` in `.values()`/`.set()` calls this `toDriver` and inlines the `ST_SetSRID(...)` expression directly — no separate "geocode then update" round trip. There is no `fromDriver`: a single geography column can't fan out into two selected fields on its own, so reads never select `location` raw — they select `ST_Y`/`ST_X` as their own computed fields instead (below).
 
 ### Geocode + Save (`backend/src/services/hotel.service.ts`)
 
@@ -255,41 +280,126 @@ import { updateHotelLocation } from "../queries/hotel.queries";
 
 export async function setHotelLocation(hotelId: string, address: string) {
   const { lat, lng } = await geocodeAddress(address);
-  await updateHotelLocation(hotelId, lat, lng); // ST_MakePoint(lng, lat)::geography
+  await updateHotelLocation(hotelId, lat, lng);
 }
 ```
 
 ```typescript
 // backend/src/queries/hotel.queries.ts
+import { eq } from "drizzle-orm";
+import { hotels } from "../models/hotel.schema";
+
 export async function updateHotelLocation(hotelId: string, lat: number, lng: number) {
-  await db.query(
-    `UPDATE hotels SET location = ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography WHERE id = $3`,
-    [lng, lat, hotelId],
-  );
+  await db
+    .update(hotels)
+    .set({ location: { latitude: lat, longitude: lng } })
+    .where(eq(hotels.id, hotelId));
 }
+```
+
+### Reading lat/lng back out (`backend/src/queries/hotels.queries.ts`)
+
+```typescript
+import { sql } from "drizzle-orm";
+import { hotels } from "../models/hotel.schema";
+
+const HOTEL_COLUMNS = {
+  // ...
+  latitude: sql<number>`ST_Y(${hotels.location}::geometry)`,
+  longitude: sql<number>`ST_X(${hotels.location}::geometry)`,
+  // ...
+};
 ```
 
 ### Nearby / Similar Hotels Query
 
 ```typescript
+import { sql } from "drizzle-orm";
+import { hotels } from "../models/hotel.schema";
+import { db } from "../config/db";
+
 export async function findNearbyHotels(hotelId: string, limitCount = 6) {
-  const { rows } = await db.query(
-    `SELECT h.*, ST_Distance(h.location, ref.location) AS distance_meters
-     FROM hotels h, (SELECT location FROM hotels WHERE id = $1) ref
-     WHERE h.id != $1
-     ORDER BY distance_meters ASC
-     LIMIT $2`,
-    [hotelId, limitCount],
-  );
-  return rows;
+  const ref = db.select({ location: hotels.location }).from(hotels).where(sql`${hotels.id} = ${hotelId}`);
+  return db
+    .select({
+      id: hotels.id,
+      distanceMeters: sql<number>`ST_Distance(${hotels.location}, (${ref}))`,
+    })
+    .from(hotels)
+    .where(sql`${hotels.id} != ${hotelId}`)
+    .orderBy(sql`ST_Distance(${hotels.location}, (${ref}))`)
+    .limit(limitCount);
 }
 ```
 
 **Rules:**
 
-- `ST_MakePoint` takes `(longitude, latitude)` — reversed from how people usually say coordinates out loud. Getting this backwards silently produces a valid but wrong point.
-- Always cast to `::geography`, not `::geometry` — geography gives distances in meters directly, geometry needs manual SRID/unit handling
+- `ST_MakePoint` takes `(longitude, latitude)` — reversed from how people usually say coordinates out loud. Getting this backwards silently produces a valid but wrong point. `geographyPoint`'s `toDriver` is the one place this ordering has to be right — every other call site just passes `{ latitude, longitude }`.
+- Always cast to `::geography`, not `::geometry` — geography gives distances in meters directly, geometry needs manual SRID/unit handling. `ST_Y`/`ST_X` (which return plain coordinates, not distances) need the opposite cast: `location::geometry`.
 - Always query through `ST_DWithin` (uses the GiST index) for "within X meters" filtering, not `ST_Distance(...) < X` alone, which cannot use the index efficiently
+- When a raw `sql` template references a column from a table other than the immediate query's `FROM`/join (e.g. a correlated subquery reaching back to an outer table), qualify it explicitly with the literal table name (`` sql`... = "hotels"."id"` ``) — Drizzle renders an interpolated `PgColumn` as its bare unqualified name, which silently resolves to the wrong column if the inner table happens to have a same-named one (e.g. every table has its own `id`)
+
+---
+
+## Drizzle ORM
+
+The entire data layer (`backend/src/queries/*`, `backend/src/config/db.ts`, both better-auth instances) runs on `drizzle-orm` + `drizzle-kit`, not raw `pg` calls. `pg`'s `Pool` still exists (`backend/src/config/db.ts` exports it as `pool`) but only Drizzle and better-auth's adapter ever touch it — nothing else imports `pg` directly.
+
+### Schema files (`backend/src/models/*.schema.ts`)
+
+One file per domain, mirroring the old `models/*.model.ts` grouping: `hotel.schema.ts`, `room-type.schema.ts`, `booking.schema.ts`, `favorite.schema.ts`, `auth.schema.ts`, `admin-auth.schema.ts`. Each exports its `pgTable(...)` definitions plus the row types the rest of the app imports:
+
+- Where no hand-shaped view type existed before (bookings, reviews, favorites, room types, etc.), the row type is just `typeof someTable.$inferSelect` / `$inferInsert` under the same name a hand-written interface would have used (`Booking`, `BookingInput`, ...).
+- Where a hand-shaped "view" type already existed and callers depend on its exact shape — `Hotel` in `hotel.schema.ts` is the example — that interface is kept hand-written, verbatim, alongside the `pgTable`. `Hotel` flattens `location` into `latitude`/`longitude` and formats `checkInTime`/`checkOutTime` as `"HH:MM"`, neither of which is the raw table row shape, so it can never just be `$inferSelect`.
+- `timestamp(...)` and `date(...)` columns are declared with `{ mode: "string" }` (timestamps) or left at their default string mode (dates) — not Drizzle's `Date`-object mode — so every row type keeps the same `string` timestamp fields the hand-written interfaces always had.
+- `numeric(...)` columns that represent money or ratings use `{ mode: "number" }` so they come back as `number`, not the driver's default `string`.
+
+### `db.ts`
+
+```typescript
+// backend/src/config/db.ts
+import { Pool } from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
+import * as hotelSchema from "../models/hotel.schema";
+// ...one `import * as` per schema file
+
+export const pool = new Pool({ connectionString: env.DATABASE_URL });
+export const schema = { ...hotelSchema, ...roomTypeSchema, ...bookingSchema, ...favoriteSchema, ...authSchema, ...adminAuthSchema };
+export const db = drizzle(pool, { schema });
+```
+
+`pool` is exported alongside `db` — seed scripts and `migrate-down.ts` need it directly (`pool.end()`, or raw SQL for the migration-tracking table), since `db` itself has no `.end()`/`.connect()`.
+
+### better-auth wiring (`config/auth.ts` / `config/auth-admin.ts`)
+
+```typescript
+import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { account, session, user, verification } from "../models/auth.schema";
+import { db } from "./db";
+
+export const auth = betterAuth({
+  database: drizzleAdapter(db, { provider: "pg", schema: { user, session, account, verification } }),
+  // ...
+});
+```
+
+**Rule:** `drizzleAdapter` resolves a model via `db.query[modelName]`, where `modelName` is literally the string better-auth is configured with (`user`, `session`, ... for the user instance; `admin_user`, `admin_session`, `admin_account`, `admin_verification` for the admin instance, per its `modelName` remapping). That means the **schema object's key** must match the model name exactly — not just point at the right table. This is why `admin-auth.schema.ts` exports `admin_user`/`admin_session`/`admin_account`/`admin_verification` in snake_case instead of the usual camelCase: the export name **is** the lookup key, not a style choice. `db` itself is always the full merged schema (built with every domain's tables) — only the `schema` object passed into each `drizzleAdapter()` call is scoped to that instance's own auth tables.
+
+### Migrations: drizzle-kit generates "up" only — this project adds "down"
+
+`drizzle-kit` has no concept of a down migration — `drizzle-kit generate` only ever produces a forward SQL file from a schema diff. This project adds a **hand-authored discipline** on top, not a drizzle-kit feature:
+
+1. Run `npx drizzle-kit generate` (from `backend/`) after any schema change. It writes `drizzle/<tag>.sql` and updates `drizzle/meta/_journal.json`.
+2. **Immediately hand-author `drizzle/<tag>.down.sql`** — a migration that exactly reverses that one `<tag>.sql` file (drop what it created, restore what it altered/dropped). For a migration that only adds a table/column, the down file is just the `DROP`. There is no tool that generates or checks this for you — it must ship in the same commit as the generated `.sql` file, or `pnpm migrate:down` will fail loudly (by design) when it reaches that migration.
+3. `pnpm migrate` runs `drizzle-kit migrate`, which applies any not-yet-applied `<tag>.sql` files in journal order and tracks progress in `drizzle.__drizzle_migrations` (schema `drizzle`, table `__drizzle_migrations` — created automatically by drizzle-orm's migrator, not something this project manages).
+4. `pnpm migrate:down` (`backend/src/config/migrate-down.ts`) is this project's own script, not a drizzle-kit command:
+   - Reads the most recently applied row from `drizzle.__drizzle_migrations` and matches it back to a `drizzle/meta/_journal.json` entry by `created_at`/`when`.
+   - Loads that entry's `<tag>.down.sql`, splits it on `--> statement-breakpoint` (the same convention drizzle-kit's own generated files use), and runs every statement inside one transaction.
+   - Deletes that migration's row from `__drizzle_migrations` on success, so `drizzle-kit migrate`/`pnpm migrate` sees it as unapplied again and will re-apply it going forward.
+   - **Throws instead of silently no-oping if the `.down.sql` file is missing** — a missing down file is a bug in whichever change introduced the migration, not something to paper over at rollback time.
+5. Both are one-migration-at-a-time (rolls back exactly the single most recent migration, applies whatever's pending) — there's no "roll back to migration X" shortcut. Multiple rollbacks just call `pnpm migrate:down` repeatedly.
+
+**Rule:** every future schema change's PR/commit must include both the generated `<tag>.sql` and its hand-written `<tag>.down.sql` sibling. There's no CI or drizzle-kit check enforcing this — treat a missing `.down.sql` as an incomplete migration, the same way `progress-tracker.md` treats an undocumented decision as incomplete work.
 
 ---
 

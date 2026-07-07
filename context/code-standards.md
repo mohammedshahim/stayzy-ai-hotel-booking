@@ -105,26 +105,27 @@ export async function createBookingForUser(
 
 ### Query Pattern
 
+All database access goes through Drizzle (`drizzle-orm`), never raw `pg` calls or hand-written SQL strings — see `library-docs.md`'s "Drizzle ORM" section for the schema-file convention and migration workflow.
+
 ```typescript
 // backend/src/queries/booking.queries.ts
 import { db } from "../config/db";
-import type { Booking, CreateBookingInput } from "../models/booking.model";
+import { bookings } from "../models/booking.schema";
+import type { Booking, BookingInput } from "../models/booking.schema";
 
 export async function insertBooking(
-  data: CreateBookingInput & { userId: string; status: string },
+  data: BookingInput,
 ): Promise<Booking> {
-  const { rows } = await db.query<Booking>(
-    `INSERT INTO bookings (user_id, hotel_id, room_type_id, check_in, check_out, adults, kids, rooms_booked, total_price, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-     RETURNING *`,
-    [data.userId, data.hotelId, data.roomTypeId, data.checkIn, data.checkOut, data.adults, data.kids, data.roomsBooked, data.totalPrice, data.status],
-  );
-  return rows[0];
+  const [row] = await db.insert(bookings).values(data).returning();
+  if (!row) throw new Error("Failed to insert booking");
+  return row;
 }
 ```
 
-- Parameterized queries only — never string-interpolate values into SQL
+- Use the Drizzle query builder (`db.select`/`db.insert`/`db.update`/`db.delete`, `eq`/`and`/`sql` helpers) — never a raw SQL string, never the `pg` `Pool` directly
 - One query function does one thing; compose in the service layer, not by growing one query
+- Multi-statement operations (e.g. delete-then-reinsert a join table, reorder a sequence of rows) run inside `db.transaction(async (tx) => { ... })`, using `tx` for every statement in the block
+- A raw `sql` template is only for what the query builder can't express (a PostGIS function, a correlated subquery, `to_char`, etc.) — when a `sql` template interpolates a column from a table other than the query's own `FROM`/join scope, qualify it explicitly (e.g. `` sql`... = "hotels"."id"` ``) since Drizzle renders an interpolated column as its bare unqualified name, which can silently collide with a same-named column in the immediate table
 
 ### Request Validation
 
@@ -370,7 +371,7 @@ Never install a new package without a clear reason. Before installing anything c
 
 Approved dependencies:
 
-**backend/** — `express`, `pg`, `better-auth`, `resend` (verification + password reset emails), `stripe`, `@aws-sdk/client-s3`, `zod`, `dotenv`
+**backend/** — `express`, `drizzle-orm` + `drizzle-kit` (data layer — see `library-docs.md`'s "Drizzle ORM" section), `pg` (the underlying driver Drizzle and better-auth's pool connect through — never queried directly), `better-auth`, `resend` (verification + password reset emails), `stripe`, `@aws-sdk/client-s3`, `zod`, `dotenv`
 
 **frontend/** — `next`, `react`, `better-auth` (client), `@stripe/stripe-js`, `@stripe/react-stripe-js`, `tailwindcss`, `shadcn/ui` components, `lucide-react`, `react-day-picker` + `date-fns` (shadcn's `Calendar` primitive and its date-math peer dependency, added in Feature 05 for the homepage date-range picker), `react-map-gl` + `mapbox-gl` (Map view on `/search`, added in Feature 06 — `mapbox-gl` ships its own TypeScript types, no `@types/` package needed)
 
