@@ -1,42 +1,50 @@
+import { and, asc, count, eq, sql } from "drizzle-orm";
 import { db } from "../config/db";
-import type { HotelImage } from "../models/hotel.model";
+import { hotelImages } from "../models/hotel.schema";
+import type { HotelImage } from "../models/hotel.schema";
 
-const IMAGE_COLUMNS = `id, hotel_id AS "hotelId", url, is_main AS "isMain", sort_order AS "sortOrder"`;
+const IMAGE_COLUMNS = {
+  id: hotelImages.id,
+  hotelId: hotelImages.hotelId,
+  url: hotelImages.url,
+  isMain: hotelImages.isMain,
+  sortOrder: hotelImages.sortOrder,
+};
 
 export async function listHotelImages(hotelId: string): Promise<HotelImage[]> {
-  const { rows } = await db.query<HotelImage>(
-    `SELECT ${IMAGE_COLUMNS} FROM hotel_images WHERE hotel_id = $1 ORDER BY sort_order`,
-    [hotelId],
-  );
-  return rows;
+  return db
+    .select(IMAGE_COLUMNS)
+    .from(hotelImages)
+    .where(eq(hotelImages.hotelId, hotelId))
+    .orderBy(asc(hotelImages.sortOrder));
 }
 
 export async function getHotelImageById(imageId: string): Promise<HotelImage | null> {
-  const { rows } = await db.query<HotelImage>(`SELECT ${IMAGE_COLUMNS} FROM hotel_images WHERE id = $1`, [imageId]);
-  return rows[0] ?? null;
+  const [row] = await db.select(IMAGE_COLUMNS).from(hotelImages).where(eq(hotelImages.id, imageId));
+  return row ?? null;
 }
 
 export async function countHotelImages(hotelId: string): Promise<number> {
-  const { rows } = await db.query<{ count: string }>(`SELECT COUNT(*) AS count FROM hotel_images WHERE hotel_id = $1`, [
-    hotelId,
-  ]);
-  return Number(rows[0]?.count ?? 0);
+  const [row] = await db.select({ count: count() }).from(hotelImages).where(eq(hotelImages.hotelId, hotelId));
+  return row?.count ?? 0;
 }
 
 export async function insertHotelImage(hotelId: string, url: string, isMain: boolean): Promise<HotelImage> {
-  const { rows } = await db.query<HotelImage>(
-    `INSERT INTO hotel_images (hotel_id, url, is_main, sort_order)
-     VALUES ($1, $2, $3, (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM hotel_images WHERE hotel_id = $1))
-     RETURNING ${IMAGE_COLUMNS}`,
-    [hotelId, url, isMain],
-  );
-  const row = rows[0];
+  const [row] = await db
+    .insert(hotelImages)
+    .values({
+      hotelId,
+      url,
+      isMain,
+      sortOrder: sql`(SELECT COALESCE(MAX(${hotelImages.sortOrder}), -1) + 1 FROM ${hotelImages} WHERE ${hotelImages.hotelId} = ${hotelId})`,
+    })
+    .returning(IMAGE_COLUMNS);
   if (!row) throw new Error("Failed to insert hotel image");
   return row;
 }
 
 export async function deleteHotelImage(imageId: string): Promise<void> {
-  await db.query(`DELETE FROM hotel_images WHERE id = $1`, [imageId]);
+  await db.delete(hotelImages).where(eq(hotelImages.id, imageId));
 }
 
 export async function reorderHotelImages(
@@ -44,22 +52,14 @@ export async function reorderHotelImages(
   imageIds: string[],
   mainImageId: string,
 ): Promise<HotelImage[]> {
-  const client = await db.connect();
-  try {
-    await client.query("BEGIN");
-    await client.query(`UPDATE hotel_images SET is_main = false WHERE hotel_id = $1`, [hotelId]);
-    for (let index = 0; index < imageIds.length; index += 1) {
-      await client.query(
-        `UPDATE hotel_images SET sort_order = $1, is_main = $2 WHERE id = $3 AND hotel_id = $4`,
-        [index, imageIds[index] === mainImageId, imageIds[index], hotelId],
-      );
+  await db.transaction(async (tx) => {
+    await tx.update(hotelImages).set({ isMain: false }).where(eq(hotelImages.hotelId, hotelId));
+    for (const [index, imageId] of imageIds.entries()) {
+      await tx
+        .update(hotelImages)
+        .set({ sortOrder: index, isMain: imageId === mainImageId })
+        .where(and(eq(hotelImages.id, imageId), eq(hotelImages.hotelId, hotelId)));
     }
-    await client.query("COMMIT");
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
+  });
   return listHotelImages(hotelId);
 }

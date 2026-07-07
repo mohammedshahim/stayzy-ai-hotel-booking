@@ -1,4 +1,7 @@
-import { db } from "./db";
+import { sql } from "drizzle-orm";
+import { db, pool } from "./db";
+import { amenities, hotelAmenities, hotelImages, hotels } from "../models/hotel.schema";
+import { mealPlans, roomFeatures, roomTypeFeatures, roomTypeImages, roomTypes } from "../models/room-type.schema";
 
 const AMENITIES = [
   { name: "Free Wi-Fi", icon: "wifi" },
@@ -285,37 +288,30 @@ const HOTELS: HotelSeed[] = [
 ];
 
 async function truncateSeededTables(): Promise<void> {
-  await db.query(
-    "TRUNCATE TABLE hotels, amenities, room_features, meal_plans RESTART IDENTITY CASCADE;"
-  );
+  await db.execute(sql`TRUNCATE TABLE hotels, amenities, room_features, meal_plans RESTART IDENTITY CASCADE;`);
 }
 
-interface LookupRow {
-  name: string;
-  icon?: string;
+async function insertAmenities(rows: readonly { name: string; icon: string }[]): Promise<Map<string, string>> {
+  const idsByName = new Map<string, string>();
+  for (const row of rows) {
+    const [inserted] = await db.insert(amenities).values(row).returning({ id: amenities.id });
+    if (!inserted) throw new Error(`[seed] failed to insert amenity: ${row.name}`);
+    idsByName.set(row.name, inserted.id);
+  }
+  return idsByName;
 }
 
-async function insertLookupTable(
-  table: "amenities" | "room_features" | "meal_plans",
-  rows: readonly LookupRow[]
+async function insertNamedLookup(
+  table: "room_features" | "meal_plans",
+  target: typeof roomFeatures | typeof mealPlans,
+  rows: readonly { name: string }[]
 ): Promise<Map<string, string>> {
   const idsByName = new Map<string, string>();
-
   for (const row of rows) {
-    const columns = row.icon !== undefined ? ["name", "icon"] : ["name"];
-    const values = row.icon !== undefined ? [row.name, row.icon] : [row.name];
-    const placeholders = values.map((_, index) => `$${index + 1}`).join(", ");
-
-    const { rows: inserted } = await db.query<{ id: string }>(
-      `INSERT INTO ${table} (${columns.join(", ")}) VALUES (${placeholders}) RETURNING id`,
-      values
-    );
-
-    const insertedRow = inserted[0];
-    if (!insertedRow) throw new Error(`[seed] failed to insert into ${table}: ${row.name}`);
-    idsByName.set(row.name, insertedRow.id);
+    const [inserted] = await db.insert(target).values(row).returning({ id: target.id });
+    if (!inserted) throw new Error(`[seed] failed to insert into ${table}: ${row.name}`);
+    idsByName.set(row.name, inserted.id);
   }
-
   return idsByName;
 }
 
@@ -325,95 +321,73 @@ async function seedHotels(
   mealPlanIdsByName: Map<string, string>
 ): Promise<void> {
   for (const hotel of HOTELS) {
-    const { rows: hotelRows } = await db.query<{ id: string }>(
-      `INSERT INTO hotels (
-        name, slug, description, address_line1, city, country, postal_code,
-        location, star_rating, check_in_time, check_out_time,
-        free_cancellation, cancellation_policy, status
-      ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7,
-        ST_MakePoint($8, $9)::geography, $10, $11, $12,
-        $13, $14, 'published'
-      ) RETURNING id`,
-      [
-        hotel.name,
-        hotel.slug,
-        hotel.description,
-        hotel.addressLine1,
-        hotel.city,
-        hotel.country,
-        hotel.postalCode,
-        hotel.lng,
-        hotel.lat,
-        hotel.starRating,
-        hotel.checkInTime,
-        hotel.checkOutTime,
-        hotel.freeCancellation,
-        hotel.cancellationPolicy,
-      ]
-    );
+    const [hotelRow] = await db
+      .insert(hotels)
+      .values({
+        name: hotel.name,
+        slug: hotel.slug,
+        description: hotel.description,
+        addressLine1: hotel.addressLine1,
+        city: hotel.city,
+        country: hotel.country,
+        postalCode: hotel.postalCode,
+        location: { latitude: hotel.lat, longitude: hotel.lng },
+        starRating: hotel.starRating,
+        checkInTime: hotel.checkInTime,
+        checkOutTime: hotel.checkOutTime,
+        freeCancellation: hotel.freeCancellation,
+        cancellationPolicy: hotel.cancellationPolicy,
+        status: "published",
+      })
+      .returning({ id: hotels.id });
 
-    const hotelRow = hotelRows[0];
     if (!hotelRow) throw new Error(`[seed] failed to insert hotel: ${hotel.slug}`);
     const hotelId = hotelRow.id;
 
-    for (const [index, url] of hotel.images.entries()) {
-      await db.query(
-        `INSERT INTO hotel_images (hotel_id, url, is_main, sort_order) VALUES ($1, $2, $3, $4)`,
-        [hotelId, url, index === 0, index]
-      );
-    }
+    await db
+      .insert(hotelImages)
+      .values(hotel.images.map((url, index) => ({ hotelId, url, isMain: index === 0, sortOrder: index })));
 
-    for (const amenityName of hotel.amenities) {
-      const amenityId = amenityIdsByName.get(amenityName);
-      if (!amenityId) throw new Error(`[seed] unknown amenity: ${amenityName}`);
-      await db.query(`INSERT INTO hotel_amenities (hotel_id, amenity_id) VALUES ($1, $2)`, [
-        hotelId,
-        amenityId,
-      ]);
-    }
+    await db.insert(hotelAmenities).values(
+      hotel.amenities.map((amenityName) => {
+        const amenityId = amenityIdsByName.get(amenityName);
+        if (!amenityId) throw new Error(`[seed] unknown amenity: ${amenityName}`);
+        return { hotelId, amenityId };
+      })
+    );
 
     for (const roomType of hotel.roomTypes) {
       const mealPlanId = mealPlanIdsByName.get(roomType.mealPlan);
       if (!mealPlanId) throw new Error(`[seed] unknown meal plan: ${roomType.mealPlan}`);
 
-      const { rows: roomTypeRows } = await db.query<{ id: string }>(
-        `INSERT INTO room_types (
-          hotel_id, name, description, max_adults, max_kids,
-          base_price, total_inventory, meal_plan_id
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        RETURNING id`,
-        [
+      const [roomTypeRow] = await db
+        .insert(roomTypes)
+        .values({
           hotelId,
-          roomType.name,
-          roomType.description,
-          roomType.maxAdults,
-          roomType.maxKids,
-          roomType.basePrice,
-          roomType.totalInventory,
+          name: roomType.name,
+          description: roomType.description,
+          maxAdults: roomType.maxAdults,
+          maxKids: roomType.maxKids,
+          basePrice: roomType.basePrice,
+          totalInventory: roomType.totalInventory,
           mealPlanId,
-        ]
-      );
+        })
+        .returning({ id: roomTypes.id });
 
-      const roomTypeRow = roomTypeRows[0];
       if (!roomTypeRow) throw new Error(`[seed] failed to insert room type: ${roomType.name}`);
       const roomTypeId = roomTypeRow.id;
 
-      for (const [index, url] of roomType.images.entries()) {
-        await db.query(
-          `INSERT INTO room_type_images (room_type_id, url, is_main, sort_order) VALUES ($1, $2, $3, $4)`,
-          [roomTypeId, url, index === 0, index]
-        );
-      }
+      await db
+        .insert(roomTypeImages)
+        .values(roomType.images.map((url, index) => ({ roomTypeId, url, isMain: index === 0, sortOrder: index })));
 
-      for (const featureName of roomType.features) {
-        const featureId = roomFeatureIdsByName.get(featureName);
-        if (!featureId) throw new Error(`[seed] unknown room feature: ${featureName}`);
-        await db.query(
-          `INSERT INTO room_type_features (room_type_id, room_feature_id) VALUES ($1, $2)`,
-          [roomTypeId, featureId]
-        );
-      }
+      await db.insert(roomTypeFeatures).values(
+        roomType.features.map((featureName) => {
+          const roomFeatureId = roomFeatureIdsByName.get(featureName);
+          if (!roomFeatureId) throw new Error(`[seed] unknown room feature: ${featureName}`);
+          return { roomTypeId, roomFeatureId };
+        })
+      );
     }
   }
 }
@@ -421,9 +395,9 @@ async function seedHotels(
 async function seed(): Promise<void> {
   await truncateSeededTables();
 
-  const amenityIdsByName = await insertLookupTable("amenities", AMENITIES);
-  const roomFeatureIdsByName = await insertLookupTable("room_features", ROOM_FEATURES);
-  const mealPlanIdsByName = await insertLookupTable("meal_plans", MEAL_PLANS);
+  const amenityIdsByName = await insertAmenities(AMENITIES);
+  const roomFeatureIdsByName = await insertNamedLookup("room_features", roomFeatures, ROOM_FEATURES);
+  const mealPlanIdsByName = await insertNamedLookup("meal_plans", mealPlans, MEAL_PLANS);
 
   await seedHotels(amenityIdsByName, roomFeatureIdsByName, mealPlanIdsByName);
 
@@ -431,9 +405,9 @@ async function seed(): Promise<void> {
 }
 
 seed()
-  .then(() => db.end())
+  .then(() => pool.end())
   .catch(async (error) => {
     console.error("[seed] error", error);
-    await db.end();
+    await pool.end();
     process.exit(1);
   });

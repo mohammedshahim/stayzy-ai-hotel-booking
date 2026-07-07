@@ -1,4 +1,4 @@
-import type { HotelImage, HotelWithDetails } from "../models/hotel.model";
+import type { HotelImage, HotelWithDetails } from "../models/hotel.schema";
 import {
   getHotelAmenities,
   getHotelById,
