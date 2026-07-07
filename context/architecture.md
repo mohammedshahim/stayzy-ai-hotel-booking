@@ -364,10 +364,11 @@ Join table: `hotel_id`, `amenity_id`.
 | max_kids            | integer     |                                                  |
 | base_price          | numeric     | Per night, used when no rate override applies    |
 | total_inventory     | integer     | Total rooms of this type at the hotel            |
-| free_cancellation   | boolean     | Overrides hotel-level default when set            |
+| free_cancellation   | boolean, nullable | `null` inherits the hotel's `free_cancellation` default; `true`/`false` explicitly overrides it |
 | meal_plan_id        | uuid        | References meal_plans, nullable                  |
 | created_at          | timestamptz |                                                  |
 | updated_at          | timestamptz |                                                  |
+| deleted_at          | timestamptz | Nullable, soft delete — same pattern as `hotels.deleted_at` |
 
 ### `room_type_features`
 
@@ -387,7 +388,7 @@ Same shape as `hotel_images`, scoped by `room_type_id` instead of `hotel_id`.
 | price                 | numeric     | Overrides base_price for this date, nullable          |
 | available_override    | integer     | Overrides effective inventory for this date, nullable |
 
-Unique on `(room_type_id, date)`. Used for seasonal pricing and blackout dates.
+Unique on `(room_type_id, date)`. Used for seasonal pricing and blackout dates. Rows are always one-per-date; the admin UI accepts a date range and the backend (`rate-override.service.ts`) expands it into individual rows via `upsertRateOverrides` (an `onConflictDoUpdate` upsert, so overlapping ranges replace rather than duplicate), and re-groups consecutive same-value dates back into ranges for display and range delete.
 
 ### `bookings`
 
