@@ -5,17 +5,13 @@ import { StarIcon } from "lucide-react";
 
 import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
-import {
-  ALL_AMENITIES,
-  ALL_LANDMARKS,
-  ALL_MEAL_PLANS,
-  ALL_ROOM_FEATURES,
-} from "@/features/search/data/mock-hotels";
+import type { SearchCatalogs } from "@/features/search/hooks/useSearchCatalogs";
 import type { SearchState } from "@/features/search/types";
 
 type Props = {
   state: SearchState;
   onChange: (partial: Partial<SearchState>) => void;
+  catalogs: SearchCatalogs;
 };
 
 const PRICE_MIN = 0;
@@ -89,7 +85,7 @@ function PriceRangeSlider({
   );
 }
 
-export function FilterSidebar({ state, onChange }: Props) {
+export function FilterSidebar({ state, onChange, catalogs }: Props) {
   const minPrice = state.minPrice ?? PRICE_MIN;
   const maxPrice = state.maxPrice ?? PRICE_MAX;
 
@@ -138,36 +134,36 @@ export function FilterSidebar({ state, onChange }: Props) {
       </FilterSection>
 
       <FilterSection title="Amenities">
-        {ALL_AMENITIES.map((amenity) => (
+        {catalogs.amenities.map((amenity) => (
           <CheckboxRow
-            key={amenity}
-            label={amenity}
-            checked={state.amenities.includes(amenity)}
-            onCheckedChange={() => onChange({ amenities: toggleInArray(state.amenities, amenity) })}
+            key={amenity.id}
+            label={amenity.name}
+            checked={state.amenities.includes(amenity.id)}
+            onCheckedChange={() => onChange({ amenities: toggleInArray(state.amenities, amenity.id) })}
           />
         ))}
       </FilterSection>
 
       <FilterSection title="Room features">
-        {ALL_ROOM_FEATURES.map((feature) => (
+        {catalogs.roomFeatures.map((feature) => (
           <CheckboxRow
-            key={feature}
-            label={feature}
-            checked={state.roomFeatures.includes(feature)}
+            key={feature.id}
+            label={feature.name}
+            checked={state.roomFeatures.includes(feature.id)}
             onCheckedChange={() =>
-              onChange({ roomFeatures: toggleInArray(state.roomFeatures, feature) })
+              onChange({ roomFeatures: toggleInArray(state.roomFeatures, feature.id) })
             }
           />
         ))}
       </FilterSection>
 
       <FilterSection title="Meals">
-        {ALL_MEAL_PLANS.map((mealPlan) => (
+        {catalogs.mealPlans.map((mealPlan) => (
           <CheckboxRow
-            key={mealPlan}
-            label={mealPlan}
-            checked={state.mealPlans.includes(mealPlan)}
-            onCheckedChange={() => onChange({ mealPlans: toggleInArray(state.mealPlans, mealPlan) })}
+            key={mealPlan.id}
+            label={mealPlan.name}
+            checked={state.mealPlans.includes(mealPlan.id)}
+            onCheckedChange={() => onChange({ mealPlans: toggleInArray(state.mealPlans, mealPlan.id) })}
           />
         ))}
       </FilterSection>
@@ -178,17 +174,6 @@ export function FilterSidebar({ state, onChange }: Props) {
           checked={state.freeCancellationOnly}
           onCheckedChange={(checked) => onChange({ freeCancellationOnly: checked })}
         />
-      </FilterSection>
-
-      <FilterSection title="Landmarks">
-        {ALL_LANDMARKS.map((landmark) => (
-          <CheckboxRow
-            key={landmark}
-            label={landmark}
-            checked={state.landmarks.includes(landmark)}
-            onCheckedChange={() => onChange({ landmarks: toggleInArray(state.landmarks, landmark) })}
-          />
-        ))}
       </FilterSection>
     </aside>
   );

@@ -19,7 +19,6 @@ const DEFAULT_STATE: SearchState = {
   roomFeatures: [],
   mealPlans: [],
   freeCancellationOnly: false,
-  landmarks: [],
   sort: "recommended",
   view: "grid",
   page: 1,
@@ -53,7 +52,6 @@ const FILTER_KEYS: (keyof SearchState)[] = [
   "roomFeatures",
   "mealPlans",
   "freeCancellationOnly",
-  "landmarks",
   "sort",
 ];
 
@@ -87,7 +85,6 @@ export function parseSearchState(params: URLSearchParams): SearchState {
     roomFeatures: parseList(params.get("roomFeatures")),
     mealPlans: parseList(params.get("mealPlans")),
     freeCancellationOnly: params.get("freeCancellationOnly") === "true",
-    landmarks: parseList(params.get("landmarks")),
     sort:
       sortParam && SORT_OPTIONS.includes(sortParam as SortOption)
         ? (sortParam as SortOption)
@@ -117,7 +114,6 @@ export function serializeSearchState(state: SearchState): string {
   if (state.roomFeatures.length) params.set("roomFeatures", state.roomFeatures.join(","));
   if (state.mealPlans.length) params.set("mealPlans", state.mealPlans.join(","));
   if (state.freeCancellationOnly) params.set("freeCancellationOnly", "true");
-  if (state.landmarks.length) params.set("landmarks", state.landmarks.join(","));
   if (state.sort !== DEFAULT_STATE.sort) params.set("sort", state.sort);
   if (state.view !== DEFAULT_STATE.view) params.set("view", state.view);
   if (state.page !== DEFAULT_STATE.page) params.set("page", String(state.page));

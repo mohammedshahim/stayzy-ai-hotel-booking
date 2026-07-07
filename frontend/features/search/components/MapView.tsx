@@ -1,32 +1,39 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import Map, { Marker, type MapRef } from "react-map-gl/mapbox";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { MapPinIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { HotelCard } from "@/features/search/components/HotelCard";
-import type { MockHotel } from "@/features/search/data/mock-hotels";
+import type { SearchResultHotel } from "@/features/search/types";
 
 type Props = {
-  hotels: MockHotel[];
+  hotels: SearchResultHotel[];
+  selectedHotelId: string | null;
+  onSelectHotel: (hotelId: string) => void;
 };
 
 const MAPBOX_ACCESS_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
 
-export function MapView({ hotels }: Props) {
+export function MapView({ hotels, selectedHotelId, onSelectHotel }: Props) {
   const mapRef = useRef<MapRef>(null);
-  const [selectedHotelId, setSelectedHotelId] = useState<string | null>(hotels[0]?.id ?? null);
+  // selectedHotelId is owned by SearchPageContent (so "View on map" from Grid/List can set it
+  // before switching views) — fall back to the first result if it's unset or points at a hotel
+  // that's no longer in the current (possibly re-filtered) result set.
+  const effectiveSelectedId = hotels.some((hotel) => hotel.id === selectedHotelId)
+    ? selectedHotelId
+    : (hotels[0]?.id ?? null);
 
   useEffect(() => {
-    const hotel = hotels.find((item) => item.id === selectedHotelId);
+    const hotel = hotels.find((item) => item.id === effectiveSelectedId);
     if (hotel) {
       mapRef.current?.flyTo({ center: [hotel.longitude, hotel.latitude], zoom: 12, duration: 800 });
     }
-  }, [selectedHotelId, hotels]);
+  }, [effectiveSelectedId, hotels]);
 
-  const initialHotel = hotels[0];
+  const initialHotel = hotels.find((item) => item.id === effectiveSelectedId) ?? hotels[0];
   if (!initialHotel) return null;
 
   return (
@@ -37,8 +44,8 @@ export function MapView({ hotels }: Props) {
             key={hotel.id}
             hotel={hotel}
             variant="list"
-            isSelected={hotel.id === selectedHotelId}
-            onLocate={() => setSelectedHotelId(hotel.id)}
+            isSelected={hotel.id === effectiveSelectedId}
+            onLocate={() => onSelectHotel(hotel.id)}
           />
         ))}
       </div>
@@ -60,14 +67,14 @@ export function MapView({ hotels }: Props) {
               key={hotel.id}
               longitude={hotel.longitude}
               latitude={hotel.latitude}
-              onClick={() => setSelectedHotelId(hotel.id)}
+              onClick={() => onSelectHotel(hotel.id)}
             >
               <button
                 type="button"
                 aria-label={hotel.name}
                 className={cn(
                   "flex h-8 w-8 items-center justify-center rounded-full border-2 shadow-card transition-colors",
-                  hotel.id === selectedHotelId
+                  hotel.id === effectiveSelectedId
                     ? "border-accent-primary bg-accent-primary text-white"
                     : "border-border-default bg-elevated text-accent-primary",
                 )}

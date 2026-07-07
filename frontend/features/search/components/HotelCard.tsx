@@ -8,17 +8,14 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { StarRating } from "@/components/common/StarRating";
 import { GuestRatingBadge } from "@/components/common/GuestRatingBadge";
-import {
-  getDiscountedPrice,
-  getGuestRatingLabel,
-  type MockHotel,
-} from "@/features/search/data/mock-hotels";
+import { getGuestRatingLabel } from "@/features/search/lib/guest-rating";
+import type { SearchResultHotel } from "@/features/search/types";
 
 type Props = {
-  hotel: MockHotel;
+  hotel: SearchResultHotel;
   variant: "grid" | "list";
   isSelected?: boolean;
-  onLocate?: () => void;
+  onLocate: () => void;
 };
 
 const VISIBLE_AMENITY_COUNT = 3;
@@ -27,8 +24,6 @@ export function HotelCard({ hotel, variant, isSelected, onLocate }: Props) {
   const [isFavorited, setIsFavorited] = useState(false);
   const [isCompared, setIsCompared] = useState(false);
 
-  const finalPrice = getDiscountedPrice(hotel);
-  const hasDiscount = hotel.discountPercent > 0;
   const guestRatingLabel = getGuestRatingLabel(hotel.guestRating);
   const visibleAmenities = hotel.amenities.slice(0, VISIBLE_AMENITY_COUNT);
   const extraAmenityCount = hotel.amenities.length - visibleAmenities.length;
@@ -47,20 +42,15 @@ export function HotelCard({ hotel, variant, isSelected, onLocate }: Props) {
           variant === "grid" ? "aspect-[4/3] w-full" : "aspect-[4/3] w-56 sm:w-64",
         )}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element -- mock placeholder photos, no next/image domain configured yet */}
+        {/* eslint-disable-next-line @next/next/no-img-element -- S3-hosted photos, no next/image domain configured yet */}
         <img
-          src={hotel.image}
+          src={hotel.image ?? ""}
           alt={hotel.name}
           className={cn(
             "h-full w-full object-cover",
             variant === "grid" ? "rounded-t-2xl" : "rounded-l-2xl",
           )}
         />
-        {hasDiscount && (
-          <span className="absolute left-3 top-3 rounded-full bg-error px-2.5 py-1 text-xs font-medium text-white shadow-card">
-            -{hotel.discountPercent}%
-          </span>
-        )}
         <div className="absolute right-3 top-3 flex gap-2">
           <button
             type="button"
@@ -100,7 +90,7 @@ export function HotelCard({ hotel, variant, isSelected, onLocate }: Props) {
             className="flex w-fit items-center gap-1 text-xs text-text-muted transition-colors hover:text-text-secondary"
           >
             <MapPinIcon className="h-3.5 w-3.5 text-text-muted" />
-            {hotel.distanceFromCenterKm} km from {hotel.landmark}
+            View on map
           </button>
         </div>
 
@@ -121,12 +111,7 @@ export function HotelCard({ hotel, variant, isSelected, onLocate }: Props) {
         </div>
 
         <div className="mt-auto flex items-end justify-between pt-2">
-          <div className="flex items-baseline gap-2">
-            {hasDiscount && (
-              <span className="text-sm text-text-faint line-through">${hotel.pricePerNight}</span>
-            )}
-            <span className="text-xl font-bold text-text-primary">${finalPrice}</span>
-          </div>
+          <span className="text-xl font-bold text-text-primary">${hotel.pricePerNight}</span>
           <Button
             render={<Link href={`/hotels/${hotel.id}`} />}
             nativeButton={false}

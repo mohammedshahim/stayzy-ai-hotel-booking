@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { SearchXIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -12,6 +13,7 @@ import { HotelCard } from "@/features/search/components/HotelCard";
 import { MapView } from "@/features/search/components/MapView";
 import { SortDropdown } from "@/features/search/components/SortDropdown";
 import { ViewToggle } from "@/features/search/components/ViewToggle";
+import { useSearchCatalogs } from "@/features/search/hooks/useSearchCatalogs";
 import { useSearchResults } from "@/features/search/hooks/useSearchResults";
 import { useSearchState } from "@/features/search/hooks/useSearchState";
 import type { SearchState } from "@/features/search/types";
@@ -25,19 +27,28 @@ const EMPTY_FILTERS: Partial<SearchState> = {
   roomFeatures: [],
   mealPlans: [],
   freeCancellationOnly: false,
-  landmarks: [],
 };
 
 export function SearchPageContent() {
   const { state, update } = useSearchState();
-  const { results, totalResults, totalPages, currentPage, isEmpty } = useSearchResults(state);
+  const { results, totalResults, totalPages, currentPage, isEmpty, isLoading } = useSearchResults(state);
+  const catalogs = useSearchCatalogs();
+
+  // Lifted above MapView so "View on map" from Grid/List can both switch the view and
+  // tell MapView which hotel to open centered on — MapView no longer owns this itself.
+  const [selectedHotelId, setSelectedHotelId] = useState<string | null>(null);
+
+  function handleLocate(hotelId: string) {
+    setSelectedHotelId(hotelId);
+    update({ view: "map" });
+  }
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-6 px-6 py-8 lg:flex-row">
-      <FilterSidebar state={state} onChange={update} />
+      <FilterSidebar state={state} onChange={update} catalogs={catalogs} />
 
       <div className="flex flex-1 flex-col gap-4">
-        <ActiveFilterChips state={state} onChange={update} />
+        <ActiveFilterChips state={state} onChange={update} catalogs={catalogs} />
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-text-secondary">
@@ -50,7 +61,9 @@ export function SearchPageContent() {
           </div>
         </div>
 
-        {isEmpty ? (
+        {isLoading && isEmpty ? (
+          <p className="py-16 text-center text-sm text-text-muted">Searching hotels…</p>
+        ) : isEmpty ? (
           <EmptyState
             icon={SearchXIcon}
             heading="No hotels match these filters"
@@ -64,17 +77,26 @@ export function SearchPageContent() {
               </Button>
             }
           />
-        ) : state.view === "map" ? (
-          <MapView hotels={results} />
         ) : (
-          <div
-            className={cn(
-              state.view === "grid" ? "grid gap-5 sm:grid-cols-2 xl:grid-cols-3" : "flex flex-col gap-4",
+          <div className={cn("transition-opacity", isLoading && "opacity-60")}>
+            {state.view === "map" ? (
+              <MapView hotels={results} selectedHotelId={selectedHotelId} onSelectHotel={setSelectedHotelId} />
+            ) : (
+              <div
+                className={cn(
+                  state.view === "grid" ? "grid gap-5 sm:grid-cols-2 xl:grid-cols-3" : "flex flex-col gap-4",
+                )}
+              >
+                {results.map((hotel) => (
+                  <HotelCard
+                    key={hotel.id}
+                    hotel={hotel}
+                    variant={state.view === "grid" ? "grid" : "list"}
+                    onLocate={() => handleLocate(hotel.id)}
+                  />
+                ))}
+              </div>
             )}
-          >
-            {results.map((hotel) => (
-              <HotelCard key={hotel.id} hotel={hotel} variant={state.view === "grid" ? "grid" : "list"} />
-            ))}
           </div>
         )}
 

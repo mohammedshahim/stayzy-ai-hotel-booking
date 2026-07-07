@@ -1,12 +1,15 @@
 "use client";
 
+import { useMemo } from "react";
 import { XIcon } from "lucide-react";
 
-import type { SearchState } from "@/features/search/types";
+import type { SearchCatalogs } from "@/features/search/hooks/useSearchCatalogs";
+import type { CatalogOption, SearchState } from "@/features/search/types";
 
 type Props = {
   state: SearchState;
   onChange: (partial: Partial<SearchState>) => void;
+  catalogs: SearchCatalogs;
 };
 
 type Chip = {
@@ -15,7 +18,18 @@ type Chip = {
   onRemove: () => void;
 };
 
-export function ActiveFilterChips({ state, onChange }: Props) {
+// Amenities/room features/meal plans are stored as ids in SearchState — this resolves them
+// back to display names for the chip label, from the same catalogs SearchPageContent fetches
+// once and shares with FilterSidebar (see useSearchCatalogs.ts).
+function toNameMap(options: CatalogOption[]): Map<string, string> {
+  return new Map(options.map((option) => [option.id, option.name]));
+}
+
+export function ActiveFilterChips({ state, onChange, catalogs }: Props) {
+  const amenityNames = useMemo(() => toNameMap(catalogs.amenities), [catalogs.amenities]);
+  const roomFeatureNames = useMemo(() => toNameMap(catalogs.roomFeatures), [catalogs.roomFeatures]);
+  const mealPlanNames = useMemo(() => toNameMap(catalogs.mealPlans), [catalogs.mealPlans]);
+
   const chips: Chip[] = [];
 
   if (state.minPrice !== null || state.maxPrice !== null) {
@@ -42,28 +56,28 @@ export function ActiveFilterChips({ state, onChange }: Props) {
     });
   }
 
-  for (const amenity of state.amenities) {
+  for (const amenityId of state.amenities) {
     chips.push({
-      key: `amenity-${amenity}`,
-      label: amenity,
-      onRemove: () => onChange({ amenities: state.amenities.filter((value) => value !== amenity) }),
+      key: `amenity-${amenityId}`,
+      label: amenityNames.get(amenityId) ?? amenityId,
+      onRemove: () => onChange({ amenities: state.amenities.filter((value) => value !== amenityId) }),
     });
   }
 
-  for (const feature of state.roomFeatures) {
+  for (const featureId of state.roomFeatures) {
     chips.push({
-      key: `feature-${feature}`,
-      label: feature,
+      key: `feature-${featureId}`,
+      label: roomFeatureNames.get(featureId) ?? featureId,
       onRemove: () =>
-        onChange({ roomFeatures: state.roomFeatures.filter((value) => value !== feature) }),
+        onChange({ roomFeatures: state.roomFeatures.filter((value) => value !== featureId) }),
     });
   }
 
-  for (const mealPlan of state.mealPlans) {
+  for (const mealPlanId of state.mealPlans) {
     chips.push({
-      key: `meal-${mealPlan}`,
-      label: mealPlan,
-      onRemove: () => onChange({ mealPlans: state.mealPlans.filter((value) => value !== mealPlan) }),
+      key: `meal-${mealPlanId}`,
+      label: mealPlanNames.get(mealPlanId) ?? mealPlanId,
+      onRemove: () => onChange({ mealPlans: state.mealPlans.filter((value) => value !== mealPlanId) }),
     });
   }
 
@@ -72,14 +86,6 @@ export function ActiveFilterChips({ state, onChange }: Props) {
       key: "free-cancellation",
       label: "Free cancellation",
       onRemove: () => onChange({ freeCancellationOnly: false }),
-    });
-  }
-
-  for (const landmark of state.landmarks) {
-    chips.push({
-      key: `landmark-${landmark}`,
-      label: landmark,
-      onRemove: () => onChange({ landmarks: state.landmarks.filter((value) => value !== landmark) }),
     });
   }
 
