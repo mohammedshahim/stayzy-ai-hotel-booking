@@ -1,7 +1,10 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { createAuthMiddleware } from "better-auth/api";
 import { account, session, user, verification } from "../models/auth.schema";
+import { mergeGuestRecentSearches } from "../services/recent-search.service";
 import { sendPasswordResetEmail, sendVerificationEmail } from "../services/email.service";
+import { GUEST_SESSION_COOKIE } from "../utils/guestCookie";
 import { db } from "./db";
 import { env } from "./env";
 
@@ -35,5 +38,24 @@ export const auth = betterAuth({
     additionalFields: {
       avatarUrl: { type: "string", required: false },
     },
+  },
+  hooks: {
+    // Guest→account merge (recent searches now, favorites in Feature 17) runs here rather
+    // than from the frontend so it covers email/password sign-in/up and the Google OAuth
+    // callback identically — every path that creates a new session flows through this hook.
+    after: createAuthMiddleware(async (ctx) => {
+      const newSession = ctx.context.newSession;
+      if (!newSession) return;
+
+      const guestSessionToken = ctx.getCookie(GUEST_SESSION_COOKIE);
+      if (!guestSessionToken) return;
+
+      try {
+        await mergeGuestRecentSearches(guestSessionToken, newSession.user.id);
+        ctx.setCookie(GUEST_SESSION_COOKIE, "", { maxAge: 0 });
+      } catch (error) {
+        console.error("[config/auth hooks.after] failed to merge guest recent searches", error);
+      }
+    }),
   },
 });

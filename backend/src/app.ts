@@ -1,3 +1,4 @@
+import cookieParser from "cookie-parser";
 import express from "express";
 import routes from "./routes";
 import authRoutes from "./routes/auth.routes";
@@ -8,6 +9,7 @@ import { errorHandler } from "./middlewares/errorHandler";
 export const app = express();
 
 app.use(cors);
+app.use(cookieParser());
 // better-auth reads the raw request body itself, so both instances must be mounted before express.json()
 app.use("/api/auth", authRoutes);
 app.use("/api/admin/auth", adminAuthRoutes);

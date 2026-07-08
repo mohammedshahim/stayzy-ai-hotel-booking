@@ -11,6 +11,9 @@ dependencies:
   better-auth:
     specifier: ^1.2.7
     version: 1.6.23(drizzle-kit@0.31.10)(drizzle-orm@0.45.2)(pg@8.22.0)
+  cookie-parser:
+    specifier: ^1.4.7
+    version: 1.4.7
   dotenv:
     specifier: ^16.4.7
     version: 16.6.1
@@ -37,6 +40,9 @@ dependencies:
     version: 3.25.76
 
 devDependencies:
+  '@types/cookie-parser':
+    specifier: ^1.4.10
+    version: 1.4.10(@types/express@5.0.6)
   '@types/express':
     specifier: ^5.0.0
     version: 5.0.6
@@ -1097,6 +1103,14 @@ packages:
       '@types/node': 22.20.0
     dev: true
 
+  /@types/cookie-parser@1.4.10(@types/express@5.0.6):
+    resolution: {integrity: sha512-B4xqkqfZ8Wek+rCOeRxsjMS9OgvzebEzzLYw7NHYuvzb7IdxOkI0ZHGgeEBX4PUM7QGVvNSK60T3OvWj3YfBRg==}
+    peerDependencies:
+      '@types/express': '*'
+    dependencies:
+      '@types/express': 5.0.6
+    dev: true
+
   /@types/express-serve-static-core@5.1.1:
     resolution: {integrity: sha512-v4zIMr/cX7/d2BpAEX3KNKL/JrT1s43s96lLvvdTmza1oEvDudCqK9aF/djc/SWgy8Yh0h30TZx5VpzqFCxk5A==}
     dependencies:
@@ -1350,6 +1364,18 @@ packages:
   /content-type@1.0.5:
     resolution: {integrity: sha512-nTjqfcBFEipKdXCv4YDQWCfmcLZKm81ldF0pAopTvyrFGVbcR6P/VAAd5G7N+0tTr8QqiU0tFadD6FK4NtJwOA==}
     engines: {node: '>= 0.6'}
+    dev: false
+
+  /cookie-parser@1.4.7:
+    resolution: {integrity: sha512-nGUvgXnotP3BsjiLX2ypbQnWoGUPIIfHQNZkkC668ntrzGWEZVW70HDEB1qnNGMicPje6EttlIgzo51YSwNQGw==}
+    engines: {node: '>= 0.8.0'}
+    dependencies:
+      cookie: 0.7.2
+      cookie-signature: 1.0.6
+    dev: false
+
+  /cookie-signature@1.0.6:
+    resolution: {integrity: sha512-QADzlaHc8icV8I7vbaJXJwod9HWYp8uCqf1xa4OfNu1T7JVxQIrUgOWtHdNDtPiywmFbiS12VjotIXLrKM3orQ==}
     dev: false
 
   /cookie-signature@1.0.7:
