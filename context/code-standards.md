@@ -371,7 +371,7 @@ Never install a new package without a clear reason. Before installing anything c
 
 Approved dependencies:
 
-**backend/** — `express`, `drizzle-orm` + `drizzle-kit` (data layer — see `library-docs.md`'s "Drizzle ORM" section), `pg` (the underlying driver Drizzle and better-auth's pool connect through — never queried directly), `better-auth`, `resend` (verification + password reset emails), `stripe`, `@aws-sdk/client-s3`, `zod`, `dotenv`
+**backend/** — `express`, `drizzle-orm` + `drizzle-kit` (data layer — see `library-docs.md`'s "Drizzle ORM" section), `pg` (the underlying driver Drizzle and better-auth's pool connect through — never queried directly), `better-auth`, `resend` (verification + password reset emails), `stripe`, `@aws-sdk/client-s3`, `zod`, `dotenv`, `cookie-parser` (reads the guest `stayzy_guest_id` cookie for recent searches/favorites — Express itself doesn't parse cookies without it, added Feature 10)
 
 **frontend/** — `next`, `react`, `better-auth` (client), `@stripe/stripe-js`, `@stripe/react-stripe-js`, `tailwindcss`, `shadcn/ui` components, `lucide-react`, `react-day-picker` + `date-fns` (shadcn's `Calendar` primitive and its date-math peer dependency, added in Feature 05 for the homepage date-range picker), `react-map-gl` + `mapbox-gl` (Map view on `/search`, added in Feature 06 — `mapbox-gl` ships its own TypeScript types, no `@types/` package needed)
 

@@ -56,6 +56,8 @@ backend/
 │   │   ├── amenities.routes.ts          → public GET — amenity id/name lookup for search filter options
 │   │   ├── room-features.routes.ts      → public GET — room feature id/name lookup for search filter options
 │   │   ├── meal-plans.routes.ts         → public GET — meal plan id/name lookup for search filter options
+│   │   ├── recent-searches.routes.ts    → public GET — owner's last 5 distinct-tuple searches, for the homepage
+│   │   ├── search-suggestions.routes.ts → public GET ?q= — destination-input autocomplete (recent + place matches)
 │   │   ├── bookings.routes.ts
 │   │   ├── payments.routes.ts           → PaymentIntent creation
 │   │   ├── reviews.routes.ts
@@ -73,7 +75,8 @@ backend/
 │   │   ├── booking.service.ts
 │   │   ├── payment.service.ts
 │   │   ├── review.service.ts
-│   │   └── favorite.service.ts          → guest-cookie to account merge logic lives here
+│   │   ├── recent-search.service.ts     → record/list/suggest + guest-cookie to account merge (recentSearches only for now)
+│   │   └── favorite.service.ts          → guest-cookie to account merge logic will live here too (Feature 17)
 │   ├── models/                          → Drizzle `pgTable(...)` schema files, one per domain (the DB blueprint) — `*.schema.ts`
 │   ├── queries/                         → Drizzle query builder functions per model, one file per model — no raw SQL strings
 │   ├── webhooks/
@@ -85,6 +88,7 @@ backend/
 │   │   └── errorHandler.ts
 │   ├── types/
 │   └── utils/
+│       └── resolveOwner.ts              → logged-in user id, or a guest stayzy_guest_id cookie (minted on first use)
 ├── drizzle/                              → drizzle-kit-generated migrations (`<tag>.sql`) + hand-authored `<tag>.down.sql` siblings + meta/ journal
 ├── drizzle.config.ts                     → drizzle-kit config (schema glob, output folder, DB credentials)
 ├── package.json
@@ -113,8 +117,11 @@ frontend/
 │   └── profile/page.tsx
 ├── features/
 │   ├── search/
-│   │   ├── components/                          → SearchWidget, FilterSidebar, HotelCard, ...
-│   │   └── hooks/                                → useSearchResults, useRecentSearches, ...
+│   │   ├── components/                          → SearchWidget, FilterSidebar, HotelCard, DestinationInput (destination + suggestions dropdown), ...
+│   │   └── hooks/                                → useSearchResults, useSearchSuggestions, ...
+│   ├── recent-searches/                          → homepage-only, sibling feature to search/ (not a subfolder of it, same pattern as trending-destinations/)
+│   │   ├── components/                           → RecentSearches
+│   │   └── hooks/                                → useRecentSearches
 │   ├── hotel-details/
 │   │   ├── components/                           → Gallery, RoomList, ReviewsSection, SimilarHotels, ...
 │   │   └── hooks/
@@ -224,6 +231,26 @@ Response includes per-hotel lowest available price and location coordinates for 
 
 `availability.service.ts`'s per-date effective-inventory/price check (`available_override ?? total_inventory`, `price ?? base_price`) is done in plain JS over `enumerateStayDates(checkIn, checkOut)`, not a SQL `generate_series`/CTE — `queries/search.queries.ts` only ever runs plain `db.select()` builder queries (a date range is always small, so per-date aggregation client-side is simpler than forcing it into one SQL statement). Any future feature needing "is this room type available for these dates" (Feature 12/13's hotel details and room selection) should reuse `findQualifyingRoomTypes`/`pickCheapestPerHotel` rather than re-deriving the math.
 
+### Recent Searches + Search Suggestions
+
+```
+GET /search resolves owner via utils/resolveOwner.ts (logged-in user id, or a guest
+session_token cookie — minted on first visit, name stayzy_guest_id)
+        ↓
+recent-search.service.ts's recordSearchIfChanged compares (destination, checkIn,
+checkOut, adults, kids, rooms) against that owner's single most-recent recent_searches
+row — inserts a new row only if the tuple actually changed
+        ↓
+Homepage GET /recent-searches lists the owner's last 5 distinct-tuple searches
+        ↓
+Destination input's GET /search-suggestions merges the owner's own past destinations
+with hotels.city/country matches into one dropdown, tagged "recent" vs "place"
+```
+
+Recording rides along with every `GET /search` response (`Promise.all` alongside `searchHotels`) rather than a dedicated "log this search" call from the frontend — this way it fires identically whether the search came from the homepage widget, a bookmarked `/search` URL, or the back button, and sort/filter/pagination changes on the same destination+dates+guests never spam the table (those fields aren't part of the table's identity tuple). Recording is best-effort: a failure there never fails the search response itself.
+
+"Place" suggestions render as `"City, Country"` — `findCandidateHotels` (`search.queries.ts`) matches that combined form via a third `ilike` branch against the concatenated `` `city || ', ' || country` `` in addition to matching city/country individually, so both a bare city/country and the full suggestion label resolve to the same hotels. (Bug found post-launch via `/review`: the combined form originally matched neither column alone, so every place suggestion returned zero results.)
+
 ### Booking + Payment
 
 ```
@@ -258,17 +285,24 @@ Hotel's aggregate rating + review count recalculated from all reviews for that h
 Updated aggregate reflected immediately on hotel details and search cards
 ```
 
-### Favorites (Guest → Account Merge)
+### Guest → Account Merge (Recent Searches, Favorites)
 
 ```
-Guest favorites a hotel — stored against an anonymous session cookie (favorites.session_token)
+Guest performs an action scoped to the stayzy_guest_id cookie (a search, a favorite)
         ↓
-User logs in or signs up
+User logs in or signs up — email/password or Google OAuth, both create a session
         ↓
-favorite.service.ts re-points every favorites row matching that session_token to the user_id
+config/auth.ts's hooks.after middleware fires on every new-session creation
+(ctx.context.newSession), reads the stayzy_guest_id cookie via ctx.getCookie
         ↓
-Session-token cookie is cleared; favorites are now fully account-scoped
+Re-points every guest-scoped row matching that session_token to the new user_id
+(recent-search.service.ts's mergeGuestRecentSearches; favorite.service.ts's
+equivalent will hook in the same place)
+        ↓
+ctx.setCookie clears stayzy_guest_id; the data is now fully account-scoped
 ```
+
+The merge runs from this single server-side hook rather than a frontend call after login — it fires identically for email/password sign-in/up and the Google OAuth callback (which redirects straight to `/` with no custom callback page), so there's exactly one place that ever needs to know about guest→account merging. This pattern was established in Feature 10 for `recent_searches`; Feature 17 (Favorites) reuses the same hook rather than adding a second one.
 
 ### Admin Hotel Management
 

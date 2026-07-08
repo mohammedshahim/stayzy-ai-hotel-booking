@@ -126,7 +126,7 @@ Notes: Homepage-only per `ui-rules.md` — rendered from `app/page.tsx` directly
 
 File: frontend/features/search/components/{HeroSearchWidget,DestinationInput,DateRangePicker,GuestsRoomsPicker}.tsx
 App: frontend
-Last updated: 2026-07-05
+Last updated: 2026-07-08 (Feature 10 — DestinationInput suggestions dropdown)
 
 Wrapper: `rounded-2xl border border-border-default bg-surface p-5 shadow-elevated`
 Segment row: `flex flex-col lg:flex-row` — no divider lines; each segment is its own bordered box (see below) with its own `m-2` margin creating the visual gap between segments, so a separate `divide-x`/`divide-y` would be redundant (double lines).
@@ -139,6 +139,7 @@ Date popover content: `w-auto border border-border-default bg-elevated p-4 shado
 Guests popover content: `w-64 border border-border-default bg-elevated p-4 shadow-elevated`, one row per Adults/Kids/Rooms — stepper buttons use the Ghost Button (icon-only) pattern exactly, count is a plain centered `text-sm text-text-primary`
 Search button: Primary Button pattern, `h-11 w-full ... lg:w-auto`, no `onClick` — per `build-plan.md`, Feature 05's search button holds local state only and does not navigate or call an API yet (no `/search` page exists until Feature 06)
 Notes: Adding `react-day-picker` required setting `nativeButton={false}` on any shadcn `Button` rendered as a `<Link>` via the `render` prop (base-ui logs a console warning otherwise, since `Link` renders an `<a>`, not a `<button>`) — same fix applied to the Navbar's Log-in button.
+Destination suggestions dropdown (Feature 10): plain absolutely-positioned `<ul>`, not the shadcn `Popover` — the popover primitives (`@base-ui/react/popover`) are trigger-driven (click to open), and this needed to open on focus and stay anchored under a plain `<input>`, so a custom `relative` wrapper + `absolute inset-x-0 top-full z-50 mt-2` list was simpler than fighting the trigger model. Dropdown box: `overflow-hidden rounded-xl border border-border-default bg-elevated py-1 shadow-elevated` (same "elevated surface" recipe as the Date/Guests popover content, for visual consistency even though it isn't the same component). Each row: `flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-text-primary hover:bg-subtle`, leading icon `h-4 w-4 shrink-0 text-text-muted` — `ClockIcon` for a `"recent"`-type suggestion, `MapPinIcon` for `"place"`. Each row's `button` sets `onMouseDown={(e) => e.preventDefault()}` — without it, the input's `onBlur` (which closes the dropdown) fires before the row's `onClick`, and the click never registers.
 
 ### Trending Destination Card
 
@@ -150,6 +151,17 @@ Card: `relative aspect-[3/4] overflow-hidden rounded-2xl bg-elevated` (matches t
 Placeholder visual: centered `MapPinIcon` (`h-10 w-10 text-text-faint strokeWidth={1.5}`) — no real photography exists yet, this is a stand-in watermark, not a final visual
 Scrim + label: `absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-4`, city `font-medium text-white`, country `text-xs text-white/70`
 Notes: Static hardcoded array of 8 destinations (Feature 11 will replace this with a real ranked-by-bookings endpoint — the component itself, not just its data source, may need revisiting then since it currently has no loading/empty state).
+
+### Recent Search Card
+
+File: frontend/features/recent-searches/components/RecentSearches.tsx
+App: frontend
+Last updated: 2026-07-08 (Feature 10)
+
+Section: same rhythm as Trending Destinations — `mx-auto max-w-7xl px-6 py-14`, eyebrow `text-sm text-accent-text` + `h2` `mt-1 text-3xl font-semibold text-text-primary`. Placed between the hero widget and Trending Destinations on the homepage — a returning visitor's own history reads as more immediately relevant than global trending.
+Grid: `grid gap-4 sm:grid-cols-2 lg:grid-cols-5` (up to 5 cards, never more — matches the backend's cap).
+Card: plain `<button>`, not the aspect-ratio photo-card pattern Trending Destinations uses — `flex flex-col gap-2 rounded-2xl border border-border-default bg-surface p-4 text-left`, hover `hover:border-accent-border hover:shadow-accent`. Three stacked rows (destination / date range / guest count), each `flex items-center gap-2 text-xs text-text-muted` (destination row is `text-sm font-medium text-text-primary` instead, as the primary label) with a leading `h-3.5 w-3.5 shrink-0` icon (`h-4 w-4` for the destination row's `MapPinIcon`) — `ClockIcon` for dates, `UsersIcon` for guest count.
+Notes: Renders `null` entirely when the owner has no history yet — no empty-state placeholder (confirmed during `/architect`, matches the backend's "hidden if empty" contract). Clicking a card navigates straight to `/search?...` (same param-building pattern as `HeroSearchWidget.handleSearch`), it does not just prefill the hero widget's fields.
 
 ### StarRating / GuestRatingBadge / EmptyState / Pagination
 
