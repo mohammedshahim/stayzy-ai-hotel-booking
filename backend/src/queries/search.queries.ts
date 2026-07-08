@@ -58,7 +58,16 @@ export async function findCandidateHotels(filters: HotelSearchFilters): Promise<
       and(
         isNull(hotels.deletedAt),
         eq(hotels.status, "published"),
-        destination ? or(ilike(hotels.city, destinationPattern), ilike(hotels.country, destinationPattern)) : undefined,
+        destination
+          ? or(
+              ilike(hotels.city, destinationPattern),
+              ilike(hotels.country, destinationPattern),
+              // Search-suggestions (recent-search.service.ts) format "place" matches as
+              // "City, Country" — city/country alone never substring-match that combined
+              // form, so it's matched explicitly here too (see /review, Feature 10 bug).
+              ilike(sql`${hotels.city} || ', ' || ${hotels.country}`, destinationPattern),
+            )
+          : undefined,
         filters.starRatings.length > 0 ? inArray(hotels.starRating, filters.starRatings) : undefined,
         filters.minGuestRating !== null ? gte(hotels.averageRating, filters.minGuestRating) : undefined,
         filters.amenityIds.length > 0
