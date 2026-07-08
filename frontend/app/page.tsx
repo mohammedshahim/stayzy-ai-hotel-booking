@@ -2,6 +2,7 @@ import { HotelIcon } from "lucide-react";
 
 import { Footer } from "@/components/layout/Footer";
 import { HeroSearchWidget } from "@/features/search/components/HeroSearchWidget";
+import { RecentSearches } from "@/features/recent-searches/components/RecentSearches";
 import { TrendingDestinations } from "@/features/trending-destinations/components/TrendingDestinations";
 
 export default function Home() {
@@ -28,6 +29,7 @@ export default function Home() {
           <HeroSearchWidget />
         </div>
       </section>
+      <RecentSearches />
       <TrendingDestinations />
       <Footer />
     </>
