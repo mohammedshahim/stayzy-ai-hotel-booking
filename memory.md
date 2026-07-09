@@ -1,55 +1,50 @@
-# Memory — Feature 09 Search Backend Wiring (+ post-/review fixes)
+# Memory — Feature 10 Recent Searches + Search Suggestions (+ post-/review fix)
 
-Last updated: 2026-07-07
+Last updated: 2026-07-09
 
 ## What was built
 
-Backend: `GET /search` wired to real data, replacing Feature 06's mock array.
-- `backend/src/queries/search.queries.ts` — `findCandidateHotels` (destination/star/guest-rating/amenity-id hotel-level filters), `findCandidateRoomTypes` (capacity/meal-plan/room-feature-id room-level filters), `findRateOverridesForRoomTypes` — all plain Drizzle builder queries, no raw SQL.
-- `backend/src/services/availability.service.ts` (new) — `enumerateStayDates`, `findQualifyingRoomTypes`, `pickCheapestPerHotel`. Per-date effective-inventory/price math done in plain JS over the query results, not a SQL `generate_series`/CTE.
-- `backend/src/services/search.service.ts` — orchestrates candidates → qualifying room types → price/amenity filtering → sort (`price_asc`/`desc`/`guest_rating`/`star_rating`/`distance`/`recommended`) → pagination.
-- `backend/src/controllers/search.controller.ts` + `routes/search.routes.ts` — `GET /search`, zod-validated query params, defaults `checkIn`/`checkOut` to today/tomorrow when omitted.
-- Three new public lookup endpoints: `GET /amenities`, `/room-features`, `/meal-plans` (`controllers/{amenities,room-features,meal-plans}.controller.ts` + matching routes, no `requireAdmin`) — reuse the existing admin `list*ForPicker` service functions.
-- `backend/src/types/search.schemas.ts` — zod schema for all query params.
+Backend:
+- `backend/src/utils/resolveOwner.ts` + `guestCookie.ts` (new) — resolves a logged-in user id or mints/reads a guest `stayzy_guest_id` cookie. First guest-identity mechanism in the codebase; `cookie-parser` added as a new dependency and wired into `app.ts` (Express doesn't parse cookies without it).
+- `backend/src/services/recent-search.service.ts` (new) — `recordSearchIfChanged` (dedups against the owner's most-recent row by `(destination, checkIn, checkOut, adults, kids, rooms)`), `listRecentSearches`, `buildSuggestions`, `mergeGuestRecentSearches`.
+- `backend/src/queries/recent-searches.queries.ts` (new) — all Drizzle queries backing the service.
+- `backend/src/controllers/recent-searches.controller.ts` + `routes/{recent-searches,search-suggestions}.routes.ts` — `GET /recent-searches` (homepage, last 5) and `GET /search-suggestions?q=` (autocomplete, recent + place matches).
+- `backend/src/controllers/search.controller.ts` — `GET /search` now also resolves owner and calls `recordSearchIfChanged` (`Promise.all`'d alongside `searchHotels`, best-effort).
+- `backend/src/config/auth.ts` — new `hooks.after` (`createAuthMiddleware`, gated on `ctx.context.newSession`) merges guest `recent_searches` rows to the new user id and clears the guest cookie on login/signup (email/password and Google OAuth both flow through this one hook).
+- `backend/src/queries/search.queries.ts` — **bug fix**, see Problems Solved below.
 
-Frontend: `frontend/features/search/`
-- `useSearchResults.ts` rewritten to call the real API via the existing `apiClient` (no new dependency), deriving `isLoading` by comparing the query the held data was fetched for vs. the current query (avoids the `set-state-in-effect` lint rule).
-- `useSearchCatalogs.ts` (new) — fetches `/amenities`, `/room-features`, `/meal-plans` once, shared by `FilterSidebar`/`ActiveFilterChips` via a `catalogs` prop from `SearchPageContent`.
-- `FilterSidebar.tsx`/`ActiveFilterChips.tsx` — amenities/room-features/meal-plans now id-based (real UUIDs), Landmarks section/filter removed entirely.
-- `HotelCard.tsx` — discount badge and "X km from landmark" line removed; "View on map" pin-button `onLocate` is now a **required** prop (every call site provides it).
-- `MapView.tsx` — `selectedHotelId` lifted out to `SearchPageContent` (controlled `selectedHotelId`/`onSelectHotel` props, not local state), so Grid/List's "View on map" can select a hotel *and* switch views in one action.
-- `SearchPageContent.tsx` — owns `selectedHotelId`, `handleLocate(hotelId)` (sets it + switches `view` to `"map"`), passes `catalogs` down.
-- `types.ts` — `SearchResultHotel`/`SearchApiResponse`/`CatalogOption` added; `landmarks` removed from `SearchState`.
-- `mock-hotels.ts` deleted (nothing references it anymore).
+Frontend:
+- `features/search/hooks/useSearchSuggestions.ts` (new, debounced + `AbortController`) wired into `DestinationInput.tsx`'s new suggestions dropdown (clock icon = recent, pin icon = place; `onMouseDown` `preventDefault` on options so blur doesn't eat the click).
+- `features/recent-searches/` (new sibling feature, same pattern as `trending-destinations/`) — `useRecentSearches.ts` + `RecentSearches.tsx`, renders nothing when history is empty, otherwise up to 5 cards on the homepage that navigate straight to `/search?...` on click.
+- `app/page.tsx` — renders `<RecentSearches />` between the hero widget and Trending Destinations.
 
 ## Decisions made
 
-- **Landmarks filter and discount badge dropped, not stubbed** — neither has schema backing (`architecture.md` has no landmarks table or discount column; Feature 06's mock data invented both). `distance` sort instead orders by distance from the centroid (mean lat/lng) of the matched result set, computed in JS in `search.service.ts` — no external geocoding call per search.
-- **Availability math lives in JS, not SQL** — `code-standards.md` forbids raw SQL strings, and `generate_series`/CTE joins don't fit Drizzle's chained builder. A stay's date range is always small, so per-date JS aggregation in `availability.service.ts` is simpler and equally correct. Reusable by Feature 12/13 (hotel details, room selection) — call `findQualifyingRoomTypes`/`pickCheapestPerHotel` rather than re-deriving.
-- **Filters switched from name-strings to real UUIDs** — matches what the DB actually stores; 3 new public catalog endpoints supply `{id, name}` option lists.
-- **Map view pageSize capped at 100** (frontend `MAP_VIEW_PAGE_SIZE`) to match the backend's zod cap — a public unauthenticated endpoint shouldn't allow unbounded result sizes.
+- **Recording happens backend-side inside `GET /search` itself**, not via a dedicated "log this search" endpoint — fires identically for the homepage widget, bookmarked URLs, and back-button nav; dedup means sort/filter/pagination changes never spam the table.
+- **Guest→account merge is one `hooks.after` in `config/auth.ts`**, not a frontend call after login — covers email/password and Google OAuth identically (OAuth redirects straight to `/` with no custom callback page to hook a client call into). Feature 17 (Favorites) will hook its own merge into this same place rather than adding a second mechanism.
+- **Suggestions merge two sources**: owner's own past destinations (recency-ordered, capped 3) + `hotels.city`/`country` matches (capped 5), tagged `"recent"`/`"place"`.
 
 ## Problems solved
 
-- **Drizzle `sql` template array gotcha**: `sql\`... = ANY(${array}::uuid[])\`` is wrong — Drizzle spreads an interpolated JS array into a parenthesized comma-list (`IN (...)` shape), not a bound Postgres array. Caused `malformed array literal` at runtime, not caught by `tsc`. Fixed everywhere to `column IN ${array}`. Documented in `library-docs.md`'s Drizzle ORM section — watch for this pattern in any future filter.
-- **`/review` pass caught 4 more issues, all fixed and verified:**
-  1. "View on map" was a dead button outside Map view (`onLocate` was `undefined` in Grid/List). Fixed via Option B: lifted `selectedHotelId` state up, clicking it now switches view *and* selects/centers that specific hotel (verified: clicking the 2nd card selects the 2nd hotel, not just `hotels[0]`).
-  2. Map view silently could show 0 results after paginating in Grid/List first (`state.page` leaked into the map request). Fixed by forcing `page: 1` for map-view requests.
-  3. A degenerate date range (only one of `checkIn`/`checkOut` supplied) slipped past zod's `.refine` and produced `NaN` pricing while still marking a room type "available" — violates the "money/inventory not best-effort" rule. Fixed with a controller-level check on the resolved dates (400) plus a defensive guard in `findQualifyingRoomTypes`.
-  4. `FilterSidebar`/`ActiveFilterChips` each independently fetched the same 3 catalog endpoints (6 requests instead of 3, no error handling). Fixed with the shared `useSearchCatalogs()` hook.
+- **Bug found via `/review` after a developer report** (destination `"Al Khobar, Saudi Arabia"` returned zero results for a hotel that exists): `findCandidateHotels` only matched free-text `destination` against `city` OR `country` individually, but "place" suggestions are formatted as the combined `"City, Country"` string, which substring-matches neither column alone. Fixed with a third `ilike` branch matching the concatenated `city || ', ' || country` form. This also slipped through Feature 10's own end-to-end verification — the Playwright pass checked that navigation to `/search` happened but never checked the result count, and the screenshot from that pass actually showed "0 hotels found" the whole time. **Lesson: assert on the outcome (result count / rendered content), not just that navigation occurred.**
+- Stale zero-result rows this bug had written into `recent_searches` (all test data) were deleted from the dev DB.
 
 ## Current state
 
-Feature 09 fully built, reviewed, fixed, and verified. Both `tsc --noEmit`, `eslint`, and production builds (`pnpm build` / `next build`) are clean on backend and frontend. Verified end-to-end against the real seeded local Postgres via direct `curl` (destination/star/guest-rating/amenity-id/room-feature-id/free-cancellation filters, sort, pagination, a real blackout-date rate override, a real seasonal-price override, the date-validation 400) and a real headless-browser pass (Playwright via a hand-rolled script — no project `chromium-cli`/run-skill exists yet, none was created since nothing beyond ad hoc verification was needed).
+Feature 10 fully built, reviewed, bug-fixed, and re-verified (curl + real headless-browser pass confirming "1 hotel found" for the previously-broken query). `tsc --noEmit` and both `pnpm build`/`next build` clean for backend and frontend. All work committed as 4 separate commits and pushed to `origin/main`:
+1. `feat(backend): add recent searches + search suggestions backend`
+2. `feat(frontend): add destination suggestions dropdown and recent searches`
+3. `fix(backend): match combined "City, Country" destination search strings`
+4. `docs: log Feature 10 completion, decisions, and destination-matching fix`
 
-Context docs all updated: `progress-tracker.md` (Feature 09 marked complete, Completed Features entry, 5 Architecture Decisions entries including the post-review-fixes one), `architecture.md` (routes tree, Search data-flow section note on the landmark/discount cut and JS-based availability math), `library-docs.md` (new Drizzle `IN` vs `ANY` gotcha section), `ui-registry.md` (`HotelCard`/`FilterSidebar`/`ActiveFilterChips`/`MapView` entries corrected to reflect current reality — no new visual patterns were introduced this session, only removals and data-plumbing changes).
+Context docs updated: `progress-tracker.md` (Feature 10 marked complete, 3 `/architect` decisions, the bug-fix entry, Feature 11 flagged as needing a decision since `bookings` doesn't exist until Phase 5), `architecture.md` (new Recent Searches data-flow section, generalized Favorites' guest-merge section into the actual shared `hooks.after` mechanism, destination-matching fix noted), `ui-registry.md` (suggestions dropdown + new Recent Search Card), `code-standards.md` (`cookie-parser` added to approved backend dependencies).
 
-Backend dev server (`tsx watch`, port 4000) and frontend dev server (port 3000) were both left running.
+Dev servers were left running (backend :4000, frontend :3000) — may or may not still be up depending on machine state between sessions.
 
 ## Next session starts with
 
-Feature 10 — Recent Searches + Search Suggestions, per `progress-tracker.md`'s "Next up": `recent_searches` written on every search (scoped to guest cookie or logged-in user), search-while-typing suggestions from previously searched destinations plus known hotel/city names, guest→account merge on login (same pattern Feature 17 will use for favorites).
+Feature 11 — Trending Destinations, per `progress-tracker.md`'s "Next up": a derived query over `bookings` grouped by `hotels.city`, ordered by recent booking volume, cached briefly at the API layer. **Flag before starting**: `bookings` doesn't exist as a populated table until Phase 5 (Booking, Checkout, Payment) — worth a `/architect` check with the developer on whether to stub Feature 11 with a simpler interim ranking (e.g. hotel count per city, or `averageRating`) or defer it until real booking data exists.
 
 ## Open questions
 
-None blocking. Pre-existing, unrelated to this feature: seeded hotel images use a fake placeholder domain (`images.stayzy.dev`) that doesn't resolve — the real S3 upload path was already proven working in Feature 08 via an actual upload, just not for the seed script's own demo image URLs.
+None blocking. Pre-existing, unrelated: seeded hotel images use a fake placeholder domain (`images.stayzy.dev`) that doesn't resolve for some entries — the real S3 upload path was already proven working in Feature 08.
