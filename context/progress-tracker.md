@@ -24,10 +24,10 @@ After completing any feature:
 ## Current Status
 
 **Phase:** 3 — Hotel Details
-**Current feature:** 12 Hotel Details UI
-**Next up:** 12 Hotel Details UI — read `build-plan.md`'s section for it (`/hotels/[id]` page: main image + gallery, description, amenities, policies, skeleton loading; backend `GET /hotels/:id` returns the full detail payload).
+**Current feature:** 13 Room Selection
+**Next up:** 13 Room Selection — read `build-plan.md`'s section for it (room type list on hotel details with per-room pricing for the selected dates, remaining inventory, Reserve action; availability resolved through the existing `availability.service.ts` from Feature 09).
 **Blocking issues:** None. Real S3 credentials (`S3_BUCKET`/`S3_REGION`/`S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY`) confirmed working (developer-tested).
-**Latest completed addition:** 11 Trending Destinations — 2026-07-10.
+**Latest completed addition:** 12 Hotel Details UI — 2026-07-10.
 
 ---
 
@@ -52,7 +52,7 @@ After completing any feature:
 
 ### Phase 3 — Hotel Details
 
-- [ ] 12 Hotel details UI
+- [x] 12 Hotel details UI
 - [ ] 13 Room selection
 - [ ] 14 Map integration
 - [ ] 15 Similar hotels
@@ -102,6 +102,11 @@ Not broken into features yet — planning starts after Phase 9 is complete and s
 ---
 
 ## Completed Features
+
+### ✅ 12 Hotel Details UI — completed 2026-07-10
+Notes: New public `GET /hotels/:id` (`hotels.controller.ts`/`hotels.routes.ts`, mounted at `/hotels` in `routes/index.ts`) reuses the admin's existing `HotelWithDetails` shape (hotel fields + `amenities[]` + `images[]`) via a new `getPublishedHotelDetails(id)` in `hotel.service.ts` — gated to `status === "published"`, returns `null` (not a thrown error) for missing/draft/deleted, so the controller can do an explicit `if (!hotel) res.status(404)` check. This is the first endpoint in the app that needed a real 404; kept to the codebase's existing explicit-check-in-controller style rather than adding error-class/status-throwing infrastructure for one endpoint. Frontend: new `features/hotel-details/` (types, `useHotelDetails.ts` hook, `lib/amenity-icons.ts`, and `HotelGallery`/`AmenitiesList`/`PoliciesSection`/`HotelDetailsSkeleton`/`HotelDetailsContent` components) wired into `/hotels/[id]` (`app/hotels/[id]/page.tsx`, a thin Server Component awaiting the route param and passing `id` to the Client Component) — the route `HotelCard` was already linking to since Feature 09. Gallery is a hero image (the `is_main` one) plus a clickable thumbnail strip that swaps the hero via local state, no lightbox. Amenities render with real icons for the first time in this app (`amenities.icon` was stored but never rendered — `FilterSidebar`'s amenity checkboxes stayed text-only) via a small icon-slug → lucide-icon lookup with a fallback for any unmapped slug. Star rating + guest rating badge reuse `StarRating`/`GuestRatingBadge`/`getGuestRatingLabel` exactly as `HotelCard` does, rendered unconditionally regardless of review count (matching that precedent, not gated on `reviewCount > 0`).
+Decision (confirmed during `/architect`): route stays keyed by hotel `id` (not `slug`) — matches `HotelCard`'s existing placeholder link. Payload reuses the admin's `HotelWithDetails` shape rather than a new public-specific shape. Data fetching follows the same client-hook-plus-inline-skeleton pattern as every other feature (`useSearchResults`/`useTrendingDestinations`), not Next's `loading.tsx`/Server Component convention. 404 (draft/missing/deleted) renders the already-locked `EmptyState` pattern in-page, not a new `not-found.tsx`. `useHotelDetails.ts` uses the same `forId`-comparison trick as `useSearchResults`'s `forQuery` (rather than a synchronous `setState` at the top of the effect) to derive `isLoading` — the naive version tripped the same `react-hooks/set-state-in-effect` lint rule the price-slider fix hit back in Feature 06.
+Verified end-to-end in a real headless browser (Playwright, no project-specific run skill exists yet for this app): a real seeded hotel (Hotel Marais Charme) renders its hero image (`naturalWidth` confirmed non-zero), clicking the second thumbnail swaps the hero image `src`, amenities render with correct icons (wine glass for Bar, wifi icon, utensils icon), policies show the correct check-in/check-out times and cancellation text, star rating renders 4/5 filled stars. A nonexistent hotel id renders the "Hotel not found" `EmptyState`. A throttled-network pass confirmed the skeleton is visible immediately after navigation before real content loads. Clicking a hotel card on `/search` navigates correctly to its real details page. Zero console errors beyond the expected/benign logged 404 network response for the not-found case. `tsc --noEmit`, `eslint`, and both `pnpm build`/`next build` clean for backend and frontend.
 
 ### ✅ 11 Trending Destinations — completed 2026-07-10
 Notes: New `GET /trending-destinations` (public, no auth) follows the same `queries → service → controller → routes` layering as every other feature. `trending-destinations.queries.ts`'s `findTopCitiesByHotelCount` groups published, non-deleted hotels by `(city, country)`, ordered by `COUNT(*)` descending with `AVG(average_rating)` as tiebreaker, `LIMIT 8`. `findTopHotelImageForCity` then runs one small follow-up query per city (not a single correlated subquery over the grouped result) to get the main image of that city's highest-rated hotel — kept as two simple queries rather than one complex one, per the developer's steer toward MVP simplicity. `trending-destinations.service.ts`'s `getTrendingDestinations` is a thin passthrough; deliberately isolated so only it (not the controller/route/frontend) needs to change once Phase 5 bookings exist and the ranking becomes real booking volume instead of hotel count. Frontend: `features/trending-destinations/hooks/useTrendingDestinations.ts` (same `useState`/`useEffect`/`apiClient.get` shape as `useRecentSearches.ts`) wired into `TrendingDestinations.tsx`, which now renders real city cards with real photos (falling back to the original `MapPinIcon` tile if a city has no main image) instead of 8 hardcoded placeholder destinations, and links each card to `/search?destination="City, Country"` — the same combined format the Feature 10 destination-matching fix already handles correctly.
@@ -159,6 +164,16 @@ Decision: [what was decided]
 Reason: [why]
 Impact: [what files or components this affects]
 ```
+
+### 12 Hotel Details UI — 2026-07-10
+Decision: New `GET /hotels/:id` reuses the admin's `HotelWithDetails` shape (hotel fields + amenities + images) via a new `getPublishedHotelDetails(id)` in `hotel.service.ts`, gated on `status === "published"` and returning `null` (not throwing) for missing/draft/deleted — the controller does an explicit `if (!hotel) res.status(404)` check.
+Reason: No endpoint in this app needed a real 404 before this one (every prior "not found" case is admin-only and just throws → 500 via `errorHandler`, since the admin never expects a missing row mid-edit). Rather than introduce a new error-class/thrown-status convention for one endpoint, this matches the codebase's existing explicit-check-in-controller style (e.g. `uploadHotelImage`'s `if (!req.file)` check).
+Impact: `backend/src/services/hotel.service.ts` (`getPublishedHotelDetails`, duplicates `attachDetails`'s small amenities+images join rather than reusing it, since `attachDetails` intentionally throws), `backend/src/controllers/hotels.controller.ts` + `routes/hotels.routes.ts` (new, public), `routes/index.ts`.
+
+### 12 Hotel Details UI — 2026-07-10
+Decision: Amenity icons (`amenities.icon`) are rendered for the first time via a new small icon-slug → lucide-icon lookup (`frontend/features/hotel-details/lib/amenity-icons.ts`), instead of staying text-only like `FilterSidebar`'s amenity checkboxes.
+Reason: Confirmed during `/architect` — the `icon` field has existed on `amenities` since Feature 02 but nothing in the frontend had rendered it yet; a hotel details page is exactly where a customer-facing amenity list benefits from icons, and the lookup is small (~10 lines) with a fallback icon for any unmapped slug.
+Impact: `frontend/features/hotel-details/lib/amenity-icons.ts` (new), `frontend/features/hotel-details/components/AmenitiesList.tsx`. Any future amenity slug added via the admin panel that isn't in this map falls back to a generic checkmark icon rather than breaking.
 
 ### 10 Recent Searches + Search Suggestions — 2026-07-08
 Decision: `recent_searches` rows are written by the backend itself (inside `GET /search`, `Promise.all`'d alongside `searchHotels`), deduped against the owner's single most-recent row by the `(destinationQuery, checkIn, checkOut, adults, kids, rooms)` tuple — not by a dedicated "log this search" endpoint the frontend calls explicitly.

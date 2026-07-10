@@ -267,6 +267,31 @@ Homepage's TrendingDestinations.tsx renders real cards, linking into
 
 This ranks by hotel count, not real booking volume, because `bookings` doesn't exist until Phase 5 — `build-plan.md`'s Feature 11 spec calls for "ordered by recent booking volume." The ranking query (`findTopCitiesByHotelCount` in `trending-destinations.queries.ts`) is isolated from the rest of the read path specifically so that once bookings exist, only that one query needs to change — the endpoint contract, service shape, and frontend all stay the same. No caching layer was added (decided during `/architect` — the query is cheap and there's no cache infra anywhere else in this project yet; add one later only if it becomes a real cost).
 
+### Hotel Details
+
+```
+GET /hotels/:id — public, no auth
+        ↓
+hotel.service.ts's getPublishedHotelDetails: getHotelById, gated to
+status === "published" (draft/missing/deleted all → null)
+        ↓
+Attaches amenities (hotel_amenities join) + images (hotel_images) —
+same HotelWithDetails shape the admin GET /admin/hotels/:id already returns
+        ↓
+404 if null; else 200 with the full payload
+        ↓
+/hotels/[id] (frontend/app/hotels/[id]/page.tsx) — thin Server Component
+awaiting the route param, wrapping the Client Component HotelDetailsContent
+        ↓
+useHotelDetails(id) fetches via apiClient, drives a skeleton (locked
+`bg-subtle animate-pulse rounded-xl` pattern) while loading, and an
+EmptyState ("Hotel not found") on any fetch failure — draft/missing/deleted
+are indistinguishable from a genuine error at the frontend, same limitation
+every other apiClient-based hook in this app already has
+```
+
+Reuses the admin's existing `attachDetails`-shaped payload rather than inventing a second response shape — `getPublishedHotelDetails` duplicates the small amenities+images join rather than calling `attachDetails` itself, since `attachDetails` intentionally throws for the admin's always-exists expectation and this endpoint needs a `null` return instead (see Architecture Decisions). Amenity icons (`amenities.icon`, e.g. `"wifi"`, `"pool"`) are rendered for the first time here via a small icon-slug → lucide-icon lookup (`features/hotel-details/lib/amenity-icons.ts`) — every other feature that lists amenities (`FilterSidebar`) has stayed text-only until now.
+
 ### Booking + Payment
 
 ```
