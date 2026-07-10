@@ -145,12 +145,12 @@ Destination suggestions dropdown (Feature 10): plain absolutely-positioned `<ul>
 
 File: frontend/features/trending-destinations/components/TrendingDestinations.tsx
 App: frontend
-Last updated: 2026-07-05
+Last updated: 2026-07-10 (Feature 11)
 
-Card: `relative aspect-[3/4] overflow-hidden rounded-2xl bg-elevated` (matches the Homepage Specific Rules destination-card spec in `ui-rules.md`)
-Placeholder visual: centered `MapPinIcon` (`h-10 w-10 text-text-faint strokeWidth={1.5}`) — no real photography exists yet, this is a stand-in watermark, not a final visual
+Card: `relative aspect-[3/4] overflow-hidden rounded-2xl bg-elevated`, now a `Link` (not a static `div`) to `/search?destination="City, Country"` (matches the Homepage Specific Rules destination-card spec in `ui-rules.md`)
+Photo: real S3-hosted `<img>` (`h-full w-full object-cover`, `group-hover:scale-105` transition) — the city's highest-rated hotel's main image, from `GET /trending-destinations`. Falls back to the original centered `MapPinIcon` (`h-10 w-10 text-text-faint strokeWidth={1.5}`) placeholder tile only if a city has no main image.
 Scrim + label: `absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-4`, city `font-medium text-white`, country `text-xs text-white/70`
-Notes: Static hardcoded array of 8 destinations (Feature 11 will replace this with a real ranked-by-bookings endpoint — the component itself, not just its data source, may need revisiting then since it currently has no loading/empty state).
+Notes: Renders `null` entirely when the endpoint returns no cities (matches `RecentSearches`' "hidden if empty" convention) — same `useState`/`useEffect`/`apiClient.get` hook shape as `useRecentSearches.ts`. Ranked by hotel count per city (real booking volume isn't available until Phase 5) — see `architecture.md`'s Trending Destinations data-flow section.
 
 ### Recent Search Card
 

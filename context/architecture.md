@@ -251,6 +251,22 @@ Recording rides along with every `GET /search` response (`Promise.all` alongside
 
 "Place" suggestions render as `"City, Country"` — `findCandidateHotels` (`search.queries.ts`) matches that combined form via a third `ilike` branch against the concatenated `` `city || ', ' || country` `` in addition to matching city/country individually, so both a bare city/country and the full suggestion label resolve to the same hotels. (Bug found post-launch via `/review`: the combined form originally matched neither column alone, so every place suggestion returned zero results.)
 
+### Trending Destinations
+
+```
+GET /trending-destinations groups published hotels by (city, country)
+        ↓
+Ranked by hotel count descending, hotels.averageRating as tiebreaker
+        ↓
+Top 8 cities returned, each with the main image of that city's
+highest-rated hotel (hotel_images.is_main = true)
+        ↓
+Homepage's TrendingDestinations.tsx renders real cards, linking into
+/search?destination="City, Country" (same combined format as place suggestions)
+```
+
+This ranks by hotel count, not real booking volume, because `bookings` doesn't exist until Phase 5 — `build-plan.md`'s Feature 11 spec calls for "ordered by recent booking volume." The ranking query (`findTopCitiesByHotelCount` in `trending-destinations.queries.ts`) is isolated from the rest of the read path specifically so that once bookings exist, only that one query needs to change — the endpoint contract, service shape, and frontend all stay the same. No caching layer was added (decided during `/architect` — the query is cheap and there's no cache infra anywhere else in this project yet; add one later only if it becomes a real cost).
+
 ### Booking + Payment
 
 ```

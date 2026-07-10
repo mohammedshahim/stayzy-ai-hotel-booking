@@ -23,11 +23,11 @@ After completing any feature:
 
 ## Current Status
 
-**Phase:** 2 — Homepage + Search Foundation
-**Current feature:** 11 Trending Destinations
-**Next up:** 11 Trending Destinations — read `build-plan.md`'s section for it (derived query over `bookings` grouped by `hotels.city`, ordered by recent booking volume, cached briefly at the API layer). Note: `bookings` doesn't exist until Phase 5 — check with the developer whether to stub with a simpler interim ranking (e.g. hotel count per city, or `averageRating`) or defer this feature until bookings exist.
+**Phase:** 3 — Hotel Details
+**Current feature:** 12 Hotel Details UI
+**Next up:** 12 Hotel Details UI — read `build-plan.md`'s section for it (`/hotels/[id]` page: main image + gallery, description, amenities, policies, skeleton loading; backend `GET /hotels/:id` returns the full detail payload).
 **Blocking issues:** None. Real S3 credentials (`S3_BUCKET`/`S3_REGION`/`S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY`) confirmed working (developer-tested).
-**Latest completed addition:** 10 Recent Searches + Search Suggestions — 2026-07-08.
+**Latest completed addition:** 11 Trending Destinations — 2026-07-10.
 
 ---
 
@@ -48,7 +48,7 @@ After completing any feature:
 - [x] 08 Admin room type CRUD
 - [x] 09 Search backend wiring
 - [x] 10 Recent searches + search suggestions
-- [ ] 11 Trending destinations
+- [x] 11 Trending destinations
 
 ### Phase 3 — Hotel Details
 
@@ -102,6 +102,12 @@ Not broken into features yet — planning starts after Phase 9 is complete and s
 ---
 
 ## Completed Features
+
+### ✅ 11 Trending Destinations — completed 2026-07-10
+Notes: New `GET /trending-destinations` (public, no auth) follows the same `queries → service → controller → routes` layering as every other feature. `trending-destinations.queries.ts`'s `findTopCitiesByHotelCount` groups published, non-deleted hotels by `(city, country)`, ordered by `COUNT(*)` descending with `AVG(average_rating)` as tiebreaker, `LIMIT 8`. `findTopHotelImageForCity` then runs one small follow-up query per city (not a single correlated subquery over the grouped result) to get the main image of that city's highest-rated hotel — kept as two simple queries rather than one complex one, per the developer's steer toward MVP simplicity. `trending-destinations.service.ts`'s `getTrendingDestinations` is a thin passthrough; deliberately isolated so only it (not the controller/route/frontend) needs to change once Phase 5 bookings exist and the ranking becomes real booking volume instead of hotel count. Frontend: `features/trending-destinations/hooks/useTrendingDestinations.ts` (same `useState`/`useEffect`/`apiClient.get` shape as `useRecentSearches.ts`) wired into `TrendingDestinations.tsx`, which now renders real city cards with real photos (falling back to the original `MapPinIcon` tile if a city has no main image) instead of 8 hardcoded placeholder destinations, and links each card to `/search?destination="City, Country"` — the same combined format the Feature 10 destination-matching fix already handles correctly.
+Decision (confirmed during `/architect`): no caching layer, despite `build-plan.md`'s Feature 11 spec saying "cached briefly at the API layer" — there's no cache infra (in-memory or external) anywhere else in this codebase yet, and the query is cheap at current data volume. Add one later only if it becomes a real cost, not preemptively.
+Also fixed in this session (prerequisite, not part of Feature 11 itself): every hotel/room-type image in `backend/src/config/seed.ts` pointed at a fake, non-resolving `images.stayzy.dev` domain — noticed because Trending Destinations needed real images to look right. Wrote a one-off script (`backend/src/config/seed-images.ts`, run via `pnpm seed:images`) that downloads real photos and pushes them through the app's actual `uploadImage()`/S3 pipeline (real credentials, already confirmed working), then hardcoded the resulting real `*.s3.amazonaws.com` URLs into `seed.ts`. Re-ran `pnpm seed`; verified a resulting URL resolves with a real `curl` (200, JPEG). Images are generic stock photography (Lorem Picsum, seeded deterministically per hotel/room slug) rather than literal photos of each named city — acceptable for MVP, worth swapping for real destination-specific photography later.
+Verified end-to-end in a real headless browser (Playwright, no project-specific run skill exists yet for this app): homepage renders 3 real cities (Paris, Tokyo, New York — matching current seed data) each with a real loaded photo (`naturalWidth` confirmed non-zero, not a broken image icon), clicking the Paris card navigates to `/search?destination=Paris%2C%20France` and shows "2 hotels found" with real photos on the results cards, zero console errors. `tsc --noEmit` and both `pnpm build`/`next build` clean for backend and frontend.
 
 ### ✅ 10 Recent Searches + Search Suggestions — completed 2026-07-08
 Notes: `GET /search` now records a `recent_searches` row via `recent-search.service.ts`'s `recordSearchIfChanged`, run in `Promise.all` alongside `searchHotels` inside `search.controller.ts` so it rides the same request rather than needing a separate "log this search" call. It compares the incoming `(destinationQuery, checkIn, checkOut, adults, kids, rooms)` tuple against the owner's single most-recent row and only inserts when it actually differs — sort/filter/pagination changes on the same destination+dates+guests never create a new row, and it fires identically for the homepage widget, a bookmarked `/search` URL, or the back button. Recording is best-effort (try/catch, logged, never fails the search response) and skipped entirely when `destination` is empty (a browse-all search isn't a meaningful "recent search"). New `backend/src/utils/resolveOwner.ts` resolves either the logged-in user id or a guest `stayzy_guest_id` cookie (minted on first use via `res.cookie`) — first guest-identity mechanism in the codebase; added `cookie-parser` as a new approved backend dependency since Express doesn't parse cookies without it. Two new public endpoints: `GET /recent-searches` (homepage, owner's last 5 distinct-tuple searches, empty list if none) and `GET /search-suggestions?q=` (destination-input autocomplete, merging up to 3 of the owner's own past destinations with up to 5 `hotels.city`/`country` matches, tagged `"recent"`/`"place"`, obvious duplicates collapsed). Frontend: `features/search/hooks/useSearchSuggestions.ts` (debounced, `AbortController`-cancelled) wired into `DestinationInput.tsx`'s new dropdown (clock icon for recent, pin icon for place; `onMouseDown` `preventDefault` on each option so the input's `onBlur` doesn't close the list before the click registers); new sibling feature `features/recent-searches/` (matching `trending-destinations/`'s pattern of being its own top-level feature, not a subfolder of `search/`) renders nothing when the owner has no history yet, otherwise up to 5 cards that navigate straight to `/search?...` on click, same param-building pattern as `HeroSearchWidget.handleSearch`.
