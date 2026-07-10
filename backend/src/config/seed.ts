@@ -77,8 +77,8 @@ const HOTELS: HotelSeed[] = [
     cancellationPolicy: "Free cancellation up to 48 hours before check-in.",
     amenities: ["Free Wi-Fi", "Bar", "Restaurant"],
     images: [
-      "https://images.stayzy.dev/seed/hotel-marais-charme/1.jpg",
-      "https://images.stayzy.dev/seed/hotel-marais-charme/2.jpg",
+      "https://stayzy-storage.s3.ap-south-1.amazonaws.com/hotels/seed/hotel-marais-charme/81a2a292-69ac-40a1-88ff-79a259466e9d.jpg",
+      "https://stayzy-storage.s3.ap-south-1.amazonaws.com/hotels/seed/hotel-marais-charme/65056ea2-1672-486a-b3a5-3b294c1a4cc2.jpg",
     ],
     roomTypes: [
       {
@@ -90,7 +90,9 @@ const HOTELS: HotelSeed[] = [
         totalInventory: 10,
         mealPlan: "Room Only",
         features: ["City View", "Air Conditioning"],
-        images: ["https://images.stayzy.dev/seed/hotel-marais-charme/room-classic.jpg"],
+        images: [
+          "https://stayzy-storage.s3.ap-south-1.amazonaws.com/room-types/seed/hotel-marais-charme/room-classic/830847b5-d059-47c5-84c1-5e3155a3d231.jpg",
+        ],
       },
       {
         name: "Deluxe Suite",
@@ -101,7 +103,9 @@ const HOTELS: HotelSeed[] = [
         totalInventory: 5,
         mealPlan: "Breakfast Included",
         features: ["City View", "Balcony", "Air Conditioning"],
-        images: ["https://images.stayzy.dev/seed/hotel-marais-charme/room-suite.jpg"],
+        images: [
+          "https://stayzy-storage.s3.ap-south-1.amazonaws.com/room-types/seed/hotel-marais-charme/room-suite/7460567e-2e68-4676-903e-011e1794216b.jpg",
+        ],
       },
     ],
   },
@@ -122,8 +126,8 @@ const HOTELS: HotelSeed[] = [
     cancellationPolicy: "Non-refundable within 7 days of check-in.",
     amenities: ["Free Wi-Fi", "Spa", "Gym", "Restaurant", "Bar"],
     images: [
-      "https://images.stayzy.dev/seed/le-louvre-riverside/1.jpg",
-      "https://images.stayzy.dev/seed/le-louvre-riverside/2.jpg",
+      "https://stayzy-storage.s3.ap-south-1.amazonaws.com/hotels/seed/le-louvre-riverside/3d8ac5d7-1762-4b07-a2de-52dbe91f7f78.jpg",
+      "https://stayzy-storage.s3.ap-south-1.amazonaws.com/hotels/seed/le-louvre-riverside/b80bc355-0440-40c7-9436-c1ee0163938e.jpg",
     ],
     roomTypes: [
       {
@@ -135,7 +139,9 @@ const HOTELS: HotelSeed[] = [
         totalInventory: 8,
         mealPlan: "Breakfast Included",
         features: ["Sea View", "Air Conditioning"],
-        images: ["https://images.stayzy.dev/seed/le-louvre-riverside/room-king.jpg"],
+        images: [
+          "https://stayzy-storage.s3.ap-south-1.amazonaws.com/room-types/seed/le-louvre-riverside/room-king/46f7dd6a-90e4-4d33-8eaf-6ff26a2adb87.jpg",
+        ],
       },
       {
         name: "Executive Suite",
@@ -146,7 +152,9 @@ const HOTELS: HotelSeed[] = [
         totalInventory: 3,
         mealPlan: "Full Board",
         features: ["Sea View", "Balcony", "Extra Bed"],
-        images: ["https://images.stayzy.dev/seed/le-louvre-riverside/room-suite.jpg"],
+        images: [
+          "https://stayzy-storage.s3.ap-south-1.amazonaws.com/room-types/seed/le-louvre-riverside/room-suite/ac1b8d86-7039-4c56-9f33-faa805015a01.jpg",
+        ],
       },
     ],
   },
@@ -167,8 +175,8 @@ const HOTELS: HotelSeed[] = [
     cancellationPolicy: "Free cancellation up to 24 hours before check-in.",
     amenities: ["Free Wi-Fi", "Gym", "Restaurant", "Air Conditioning"],
     images: [
-      "https://images.stayzy.dev/seed/shibuya-sky-hotel/1.jpg",
-      "https://images.stayzy.dev/seed/shibuya-sky-hotel/2.jpg",
+      "https://stayzy-storage.s3.ap-south-1.amazonaws.com/hotels/seed/shibuya-sky-hotel/6952dc3b-44c1-4066-8185-b7268a9df5de.jpg",
+      "https://stayzy-storage.s3.ap-south-1.amazonaws.com/hotels/seed/shibuya-sky-hotel/76a7c08d-0333-4eac-90e8-61890e082bc9.jpg",
     ],
     roomTypes: [
       {
@@ -180,7 +188,9 @@ const HOTELS: HotelSeed[] = [
         totalInventory: 15,
         mealPlan: "Room Only",
         features: ["City View", "Air Conditioning"],
-        images: ["https://images.stayzy.dev/seed/shibuya-sky-hotel/room-twin.jpg"],
+        images: [
+          "https://stayzy-storage.s3.ap-south-1.amazonaws.com/room-types/seed/shibuya-sky-hotel/room-twin/e0dd81f5-0dbd-4493-861b-06c22cf50701.jpg",
+        ],
       },
       {
         name: "Sky Corner Suite",
@@ -191,7 +201,9 @@ const HOTELS: HotelSeed[] = [
         totalInventory: 4,
         mealPlan: "Half Board",
         features: ["City View", "Air Conditioning"],
-        images: ["https://images.stayzy.dev/seed/shibuya-sky-hotel/room-suite.jpg"],
+        images: [
+          "https://stayzy-storage.s3.ap-south-1.amazonaws.com/room-types/seed/shibuya-sky-hotel/room-suite/342debef-0d39-4239-b145-527db752341f.jpg",
+        ],
       },
     ],
   },
@@ -212,8 +224,8 @@ const HOTELS: HotelSeed[] = [
     cancellationPolicy: "Free cancellation up to 72 hours before check-in.",
     amenities: ["Free Wi-Fi", "Parking"],
     images: [
-      "https://images.stayzy.dev/seed/asakusa-ryokan-inn/1.jpg",
-      "https://images.stayzy.dev/seed/asakusa-ryokan-inn/2.jpg",
+      "https://stayzy-storage.s3.ap-south-1.amazonaws.com/hotels/seed/asakusa-ryokan-inn/0b4c034d-6964-44da-b9bd-799a7f6fe3c3.jpg",
+      "https://stayzy-storage.s3.ap-south-1.amazonaws.com/hotels/seed/asakusa-ryokan-inn/211783ee-ceab-4534-987c-698bf4fde8e1.jpg",
     ],
     roomTypes: [
       {
@@ -225,7 +237,9 @@ const HOTELS: HotelSeed[] = [
         totalInventory: 12,
         mealPlan: "Breakfast Included",
         features: ["City View"],
-        images: ["https://images.stayzy.dev/seed/asakusa-ryokan-inn/room-tatami.jpg"],
+        images: [
+          "https://stayzy-storage.s3.ap-south-1.amazonaws.com/room-types/seed/asakusa-ryokan-inn/room-tatami/34860bde-d1c3-4712-aca8-5ea766fd6a68.jpg",
+        ],
       },
       {
         name: "Family Tatami Suite",
@@ -236,7 +250,9 @@ const HOTELS: HotelSeed[] = [
         totalInventory: 6,
         mealPlan: "Half Board",
         features: ["City View", "Extra Bed"],
-        images: ["https://images.stayzy.dev/seed/asakusa-ryokan-inn/room-family.jpg"],
+        images: [
+          "https://stayzy-storage.s3.ap-south-1.amazonaws.com/room-types/seed/asakusa-ryokan-inn/room-family/9e0e5725-b8ce-4f01-8e1f-7ecb687aaafa.jpg",
+        ],
       },
     ],
   },
@@ -257,8 +273,8 @@ const HOTELS: HotelSeed[] = [
     cancellationPolicy: "Non-refundable within 5 days of check-in.",
     amenities: ["Free Wi-Fi", "Gym", "Bar", "Air Conditioning", "Parking"],
     images: [
-      "https://images.stayzy.dev/seed/midtown-manhattan-hotel/1.jpg",
-      "https://images.stayzy.dev/seed/midtown-manhattan-hotel/2.jpg",
+      "https://stayzy-storage.s3.ap-south-1.amazonaws.com/hotels/seed/midtown-manhattan-hotel/2418050f-555e-4a56-a781-f1722816d7d5.jpg",
+      "https://stayzy-storage.s3.ap-south-1.amazonaws.com/hotels/seed/midtown-manhattan-hotel/b59e5468-d56e-4aea-810f-dfbd3e967859.jpg",
     ],
     roomTypes: [
       {
@@ -270,7 +286,9 @@ const HOTELS: HotelSeed[] = [
         totalInventory: 20,
         mealPlan: "Room Only",
         features: ["City View", "Air Conditioning"],
-        images: ["https://images.stayzy.dev/seed/midtown-manhattan-hotel/room-queen.jpg"],
+        images: [
+          "https://stayzy-storage.s3.ap-south-1.amazonaws.com/room-types/seed/midtown-manhattan-hotel/room-queen/5345aa4a-9bda-4a87-b416-7b5c752bdc67.jpg",
+        ],
       },
       {
         name: "Skyline Suite",
@@ -281,7 +299,9 @@ const HOTELS: HotelSeed[] = [
         totalInventory: 4,
         mealPlan: "Breakfast Included",
         features: ["City View", "Balcony", "Air Conditioning", "Extra Bed"],
-        images: ["https://images.stayzy.dev/seed/midtown-manhattan-hotel/room-suite.jpg"],
+        images: [
+          "https://stayzy-storage.s3.ap-south-1.amazonaws.com/room-types/seed/midtown-manhattan-hotel/room-suite/19ebf543-4637-4356-bf68-ea9235e648b6.jpg",
+        ],
       },
     ],
   },
