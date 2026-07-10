@@ -1,6 +1,7 @@
 import { Router } from "express";
 import healthRoutes from "./health.routes";
 import searchRoutes from "./search.routes";
+import hotelsRoutes from "./hotels.routes";
 import amenitiesRoutes from "./amenities.routes";
 import roomFeaturesRoutes from "./room-features.routes";
 import mealPlansRoutes from "./meal-plans.routes";
@@ -16,6 +17,7 @@ import adminMealPlansRoutes from "./admin/meal-plans.routes";
 const router = Router();
 router.use("/health", healthRoutes);
 router.use("/search", searchRoutes);
+router.use("/hotels", hotelsRoutes);
 router.use("/amenities", amenitiesRoutes);
 router.use("/room-features", roomFeaturesRoutes);
 router.use("/meal-plans", mealPlansRoutes);

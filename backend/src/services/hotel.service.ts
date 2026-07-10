@@ -63,6 +63,15 @@ export async function getHotelForAdmin(id: string): Promise<HotelWithDetails> {
   return attachDetails(id);
 }
 
+export async function getPublishedHotelDetails(id: string): Promise<HotelWithDetails | null> {
+  const hotel = await getHotelById(id);
+  if (!hotel || hotel.status !== "published") {
+    return null;
+  }
+  const [amenities, images] = await Promise.all([getHotelAmenities(id), listHotelImages(id)]);
+  return { ...hotel, amenities, images };
+}
+
 export async function createHotel(input: CreateHotelInput): Promise<HotelWithDetails> {
   const slug = await generateUniqueSlug(input.name);
   const { latitude, longitude } = await geocodingProvider.geocode(formatAddress(input));
