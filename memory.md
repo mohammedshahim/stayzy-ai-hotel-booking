@@ -1,50 +1,56 @@
-# Memory — Feature 10 Recent Searches + Search Suggestions (+ post-/review fix)
+# Memory — Feature 11 Trending Destinations (+ seed image fix)
 
-Last updated: 2026-07-09
+Last updated: 2026-07-10
 
 ## What was built
 
+Prerequisite fix (found before starting Feature 11):
+- `backend/src/config/seed.ts` — all 20 hotel/room-type image URLs were pointing at a fake, non-resolving `images.stayzy.dev` domain. Replaced with real S3-hosted URLs.
+- `backend/src/config/seed-images.ts` (new, one-off script, run via `pnpm seed:images`) — downloads real photos (Lorem Picsum, deterministic per hotel/room slug) and pushes them through the app's actual `uploadImage()`/S3 service (real credentials, already confirmed working), producing real `*.s3.ap-south-1.amazonaws.com` URLs that were then hardcoded into `seed.ts`. Re-ran `pnpm seed` to reload the DB with real images.
+
+Feature 11 — Trending Destinations:
 Backend:
-- `backend/src/utils/resolveOwner.ts` + `guestCookie.ts` (new) — resolves a logged-in user id or mints/reads a guest `stayzy_guest_id` cookie. First guest-identity mechanism in the codebase; `cookie-parser` added as a new dependency and wired into `app.ts` (Express doesn't parse cookies without it).
-- `backend/src/services/recent-search.service.ts` (new) — `recordSearchIfChanged` (dedups against the owner's most-recent row by `(destination, checkIn, checkOut, adults, kids, rooms)`), `listRecentSearches`, `buildSuggestions`, `mergeGuestRecentSearches`.
-- `backend/src/queries/recent-searches.queries.ts` (new) — all Drizzle queries backing the service.
-- `backend/src/controllers/recent-searches.controller.ts` + `routes/{recent-searches,search-suggestions}.routes.ts` — `GET /recent-searches` (homepage, last 5) and `GET /search-suggestions?q=` (autocomplete, recent + place matches).
-- `backend/src/controllers/search.controller.ts` — `GET /search` now also resolves owner and calls `recordSearchIfChanged` (`Promise.all`'d alongside `searchHotels`, best-effort).
-- `backend/src/config/auth.ts` — new `hooks.after` (`createAuthMiddleware`, gated on `ctx.context.newSession`) merges guest `recent_searches` rows to the new user id and clears the guest cookie on login/signup (email/password and Google OAuth both flow through this one hook).
-- `backend/src/queries/search.queries.ts` — **bug fix**, see Problems Solved below.
+- `backend/src/queries/trending-destinations.queries.ts` (new) — `findTopCitiesByHotelCount` (groups published hotels by city/country, `COUNT(*)` desc + `AVG(average_rating)` tiebreak, limit param) and `findTopHotelImageForCity` (one small follow-up query per city for that city's top-rated hotel's main image — deliberately two simple queries instead of one correlated subquery over a GROUP BY).
+- `backend/src/services/trending-destinations.service.ts` (new) — `getTrendingDestinations()`, thin passthrough with `TRENDING_LIMIT = 8`.
+- `backend/src/controllers/trending-destinations.controller.ts` + `routes/trending-destinations.routes.ts` — `GET /trending-destinations`, public, registered in `routes/index.ts`.
 
 Frontend:
-- `features/search/hooks/useSearchSuggestions.ts` (new, debounced + `AbortController`) wired into `DestinationInput.tsx`'s new suggestions dropdown (clock icon = recent, pin icon = place; `onMouseDown` `preventDefault` on options so blur doesn't eat the click).
-- `features/recent-searches/` (new sibling feature, same pattern as `trending-destinations/`) — `useRecentSearches.ts` + `RecentSearches.tsx`, renders nothing when history is empty, otherwise up to 5 cards on the homepage that navigate straight to `/search?...` on click.
-- `app/page.tsx` — renders `<RecentSearches />` between the hero widget and Trending Destinations.
+- `frontend/features/trending-destinations/hooks/useTrendingDestinations.ts` (new, same `useState`/`useEffect`/`apiClient.get` shape as `useRecentSearches.ts`).
+- `frontend/features/trending-destinations/components/TrendingDestinations.tsx` — rewritten from 8 hardcoded placeholder cities to real data; cards are now `Link`s to `/search?destination="City, Country"`, real `<img>` photo with `MapPinIcon` fallback if a city has no main image, renders `null` if the endpoint returns nothing.
+
+Context docs updated: `progress-tracker.md` (Feature 11 marked complete, moved to Phase 3 / Feature 12 Hotel Details UI), `architecture.md` (new Trending Destinations data-flow section), `ui-registry.md` (Trending Destination Card entry rewritten for real photos + no-caching decision).
 
 ## Decisions made
 
-- **Recording happens backend-side inside `GET /search` itself**, not via a dedicated "log this search" endpoint — fires identically for the homepage widget, bookmarked URLs, and back-button nav; dedup means sort/filter/pagination changes never spam the table.
-- **Guest→account merge is one `hooks.after` in `config/auth.ts`**, not a frontend call after login — covers email/password and Google OAuth identically (OAuth redirects straight to `/` with no custom callback page to hook a client call into). Feature 17 (Favorites) will hook its own merge into this same place rather than adding a second mechanism.
-- **Suggestions merge two sources**: owner's own past destinations (recency-ordered, capped 3) + `hotels.city`/`country` matches (capped 5), tagged `"recent"`/`"place"`.
+- **Ranking signal is hotel count per city (rating as tiebreaker), not real booking volume** — `bookings` table has no service/controller/data yet (Phase 5 territory). The ranking query (`findTopCitiesByHotelCount`) is isolated specifically so only it needs to change once real bookings exist; endpoint contract, service shape, and frontend all stay the same.
+- **No caching layer**, despite `build-plan.md`'s spec text saying "cached briefly at the API layer" — explicit developer call, prioritizing MVP simplicity. No cache infra (in-memory or external) exists anywhere else in this codebase. Add one later only if it becomes a real cost.
+- **Real hotel photos on trending cards** (my call during `/architect`, not explicitly requested) — reuses the same main-image subquery pattern already in `hotels.queries.ts`/`search.queries.ts`, low cost, makes the homepage look finished rather than a wireframe.
+- **Seed images sourced via the real upload pipeline, not a third-party placeholder host** — developer's explicit choice (over just pointing at a public image host) so the seed data exercises genuine S3 storage rather than depending on an external domain staying up.
 
 ## Problems solved
 
-- **Bug found via `/review` after a developer report** (destination `"Al Khobar, Saudi Arabia"` returned zero results for a hotel that exists): `findCandidateHotels` only matched free-text `destination` against `city` OR `country` individually, but "place" suggestions are formatted as the combined `"City, Country"` string, which substring-matches neither column alone. Fixed with a third `ilike` branch matching the concatenated `city || ', ' || country` form. This also slipped through Feature 10's own end-to-end verification — the Playwright pass checked that navigation to `/search` happened but never checked the result count, and the screenshot from that pass actually showed "0 hotels found" the whole time. **Lesson: assert on the outcome (result count / rendered content), not just that navigation occurred.**
-- Stale zero-result rows this bug had written into `recent_searches` (all test data) were deleted from the dev DB.
+- Seed data's fake `images.stayzy.dev` domain (never resolved) — root-caused before Feature 11 could show meaningful photos, fixed via the one-off `seed-images.ts` upload script described above.
+- Confirmed no Drizzle/SQL correlated-subquery pitfalls by deliberately avoiding a single grouped-query-plus-correlated-subquery approach for the per-city main image — used two simple sequential queries instead (see Decisions).
 
 ## Current state
 
-Feature 10 fully built, reviewed, bug-fixed, and re-verified (curl + real headless-browser pass confirming "1 hotel found" for the previously-broken query). `tsc --noEmit` and both `pnpm build`/`next build` clean for backend and frontend. All work committed as 4 separate commits and pushed to `origin/main`:
-1. `feat(backend): add recent searches + search suggestions backend`
-2. `feat(frontend): add destination suggestions dropdown and recent searches`
-3. `fix(backend): match combined "City, Country" destination search strings`
-4. `docs: log Feature 10 completion, decisions, and destination-matching fix`
+Feature 11 fully built, architected (`/architect` session), implemented, and verified end-to-end in a real headless browser (Playwright, ad hoc in scratchpad — still no project-specific run skill for this app): homepage shows 3 real cities (Paris, Tokyo, New York, matching current seed data) each with a real loaded photo (non-zero `naturalWidth`, not broken), clicking the Paris card navigates to `/search?destination=Paris%2C%20France` and shows "2 hotels found" with real photos on result cards, zero console errors. `tsc --noEmit` and both `pnpm build`/`next build` clean for backend and frontend.
 
-Context docs updated: `progress-tracker.md` (Feature 10 marked complete, 3 `/architect` decisions, the bug-fix entry, Feature 11 flagged as needing a decision since `bookings` doesn't exist until Phase 5), `architecture.md` (new Recent Searches data-flow section, generalized Favorites' guest-merge section into the actual shared `hooks.after` mechanism, destination-matching fix noted), `ui-registry.md` (suggestions dropdown + new Recent Search Card), `code-standards.md` (`cookie-parser` added to approved backend dependencies).
+Known cosmetic limitation, not a bug: trending card photos are generic stock photography (Lorem Picsum), not literal photos of Paris/Tokyo/etc. — acceptable for MVP, flagged to the developer, worth swapping for real destination-specific photography later if desired.
+
+All work committed as 4 separate commits, NOT pushed to origin/main yet (developer hasn't been asked/confirmed a push):
+1. `fix(backend): seed real S3-hosted hotel/room images instead of a fake domain`
+2. `feat(backend): add trending destinations endpoint`
+3. `feat(frontend): wire trending destinations to real backend data`
+4. `docs: log Feature 11 completion and the seed image fix`
 
 Dev servers were left running (backend :4000, frontend :3000) — may or may not still be up depending on machine state between sessions.
 
 ## Next session starts with
 
-Feature 11 — Trending Destinations, per `progress-tracker.md`'s "Next up": a derived query over `bookings` grouped by `hotels.city`, ordered by recent booking volume, cached briefly at the API layer. **Flag before starting**: `bookings` doesn't exist as a populated table until Phase 5 (Booking, Checkout, Payment) — worth a `/architect` check with the developer on whether to stub Feature 11 with a simpler interim ranking (e.g. hotel count per city, or `averageRating`) or defer it until real booking data exists.
+Feature 12 — Hotel Details UI, per `progress-tracker.md`'s "Next up": `/hotels/[id]` page (main image + gallery, description, amenities, policies, skeleton loading while data loads) backed by a new `GET /hotels/:id` endpoint returning the full hotel detail payload. No flagged blockers or decisions needed before starting — straightforward next feature in Phase 3.
 
 ## Open questions
 
-None blocking. Pre-existing, unrelated: seeded hotel images use a fake placeholder domain (`images.stayzy.dev`) that doesn't resolve for some entries — the real S3 upload path was already proven working in Feature 08.
+- Whether to push the 4 unpushed commits to `origin/main` — ask the developer at the start of next session if it's still unpushed.
+- None blocking on Feature 12 itself.
