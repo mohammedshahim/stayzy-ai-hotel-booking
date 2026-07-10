@@ -55,3 +55,18 @@ export const deleteRateOverrideRangeSchema = z
   });
 
 export type DeleteRateOverrideRangeInput = z.infer<typeof deleteRateOverrideRangeSchema>;
+
+export const roomTypeAvailabilityQuerySchema = z
+  .object({
+    checkIn: dateSchema.optional(),
+    checkOut: dateSchema.optional(),
+    adults: z.coerce.number().int().min(1).default(2),
+    kids: z.coerce.number().int().min(0).default(0),
+    rooms: z.coerce.number().int().min(1).default(1),
+  })
+  .refine((data) => !data.checkIn || !data.checkOut || data.checkIn < data.checkOut, {
+    message: "checkOut must be after checkIn",
+    path: ["checkOut"],
+  });
+
+export type RoomTypeAvailabilityQuery = z.infer<typeof roomTypeAvailabilityQuerySchema>;

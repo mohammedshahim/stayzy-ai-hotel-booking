@@ -1,5 +1,5 @@
 import { findCandidateRoomTypes, findRateOverridesForRoomTypes } from "../queries/search.queries";
-import type { CandidateHotel } from "../queries/search.queries";
+import type { CandidateHotel, RateOverrideRow } from "../queries/search.queries";
 
 export interface QualifyingRoomType {
   roomTypeId: string;
@@ -110,4 +110,55 @@ export function pickCheapestPerHotel(roomTypes: QualifyingRoomType[]): Map<strin
     }
   }
   return cheapestByHotel;
+}
+
+export interface RoomTypeAvailability {
+  roomTypeId: string;
+  avgNightlyPrice: number;
+  remainingInventory: number;
+}
+
+interface RoomTypeForAvailability {
+  id: string;
+  basePrice: number;
+  totalInventory: number;
+}
+
+// Same per-night rate-override math as findQualifyingRoomTypes, generalized to report the
+// actual remaining stock (min effective inventory across the stay) instead of a pass/fail
+// boolean gated on a specific `rooms` count — used by the hotel details page, where a
+// sold-out room type should still render (with 0 remaining), not silently disappear.
+export function resolveRoomTypeAvailability(
+  roomTypes: RoomTypeForAvailability[],
+  stayDates: string[],
+  overrides: RateOverrideRow[],
+): Map<string, RoomTypeAvailability> {
+  const overridesByRoomType = new Map<string, Map<string, RateOverrideRow>>();
+  for (const row of overrides) {
+    if (!overridesByRoomType.has(row.roomTypeId)) {
+      overridesByRoomType.set(row.roomTypeId, new Map());
+    }
+    overridesByRoomType.get(row.roomTypeId)?.set(row.date, row);
+  }
+
+  const result = new Map<string, RoomTypeAvailability>();
+  for (const roomType of roomTypes) {
+    const overridesByDate = overridesByRoomType.get(roomType.id);
+
+    let remainingInventory = roomType.totalInventory;
+    let totalPrice = 0;
+    for (const date of stayDates) {
+      const override = overridesByDate?.get(date);
+      const effectiveInventory = override?.availableOverride ?? roomType.totalInventory;
+      remainingInventory = Math.min(remainingInventory, effectiveInventory);
+      totalPrice += override?.price ?? roomType.basePrice;
+    }
+
+    result.set(roomType.id, {
+      roomTypeId: roomType.id,
+      avgNightlyPrice: stayDates.length > 0 ? totalPrice / stayDates.length : roomType.basePrice,
+      remainingInventory,
+    });
+  }
+  return result;
 }

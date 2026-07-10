@@ -17,6 +17,9 @@ import {
 } from "../queries/room-type-images.queries";
 import { deleteImageByUrl, uploadImage, type UploadableFile } from "./upload.service";
 import type { CreateRoomTypeInput, UpdateRoomTypeInput } from "../types/room-type.schemas";
+import { enumerateStayDates, resolveRoomTypeAvailability } from "./availability.service";
+import { findRateOverridesForRoomTypes } from "../queries/search.queries";
+import { listMealPlansForPicker } from "./meal-plan.service";
 
 export interface RoomTypeWithDetails extends RoomType {
   features: RoomFeature[];
@@ -35,6 +38,60 @@ async function attachDetails(roomTypeId: string): Promise<RoomTypeWithDetails> {
 export async function listRoomTypesForHotel(hotelId: string): Promise<RoomTypeWithDetails[]> {
   const roomTypes = await listRoomTypesByHotel(hotelId);
   return Promise.all(roomTypes.map((roomType) => attachDetails(roomType.id)));
+}
+
+const DEFAULT_MEAL_PLAN_LABEL = "Room Only";
+
+export interface RoomTypeAvailabilityDetails extends RoomTypeWithDetails {
+  mealPlanName: string;
+  avgNightlyPrice: number;
+  remainingInventory: number;
+  isSoldOut: boolean;
+}
+
+export interface RoomTypeAvailabilityParams {
+  hotelId: string;
+  checkIn: string;
+  checkOut: string;
+  adults: number;
+  kids: number;
+  rooms: number;
+}
+
+// Room types that don't fit the party (maxAdults/maxKids) are dropped entirely, matching
+// /search's existing capacity-filter behavior. Room types that fit but lack inventory for
+// the selected dates are kept (isSoldOut: true) — this is a single-hotel page, so a room
+// type silently disappearing would read as a bug rather than a filter.
+export async function listRoomTypesWithAvailability(
+  params: RoomTypeAvailabilityParams,
+): Promise<RoomTypeAvailabilityDetails[]> {
+  const [roomTypes, mealPlans] = await Promise.all([listRoomTypesForHotel(params.hotelId), listMealPlansForPicker()]);
+  const fittingRoomTypes = roomTypes.filter(
+    (roomType) => roomType.maxAdults >= params.adults && roomType.maxKids >= params.kids,
+  );
+  if (fittingRoomTypes.length === 0) return [];
+
+  const mealPlanNameById = new Map(mealPlans.map((mealPlan) => [mealPlan.id, mealPlan.name]));
+  const stayDates = enumerateStayDates(params.checkIn, params.checkOut);
+  const overrides = await findRateOverridesForRoomTypes(
+    fittingRoomTypes.map((roomType) => roomType.id),
+    stayDates,
+  );
+  const availabilityByRoomType = resolveRoomTypeAvailability(fittingRoomTypes, stayDates, overrides);
+
+  return fittingRoomTypes
+    .map((roomType) => {
+      const availability = availabilityByRoomType.get(roomType.id);
+      const remainingInventory = availability?.remainingInventory ?? 0;
+      return {
+        ...roomType,
+        mealPlanName: roomType.mealPlanId ? (mealPlanNameById.get(roomType.mealPlanId) ?? DEFAULT_MEAL_PLAN_LABEL) : DEFAULT_MEAL_PLAN_LABEL,
+        avgNightlyPrice: Math.round(availability?.avgNightlyPrice ?? roomType.basePrice),
+        remainingInventory,
+        isSoldOut: remainingInventory < params.rooms,
+      };
+    })
+    .sort((a, b) => a.basePrice - b.basePrice);
 }
 
 export async function getRoomTypeForAdmin(id: string): Promise<RoomTypeWithDetails> {

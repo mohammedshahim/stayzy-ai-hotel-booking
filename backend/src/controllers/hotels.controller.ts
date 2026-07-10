@@ -1,6 +1,16 @@
 import type { NextFunction, Request, Response } from "express";
 import { getPublishedHotelDetails } from "../services/hotel.service";
+import { listRoomTypesWithAvailability } from "../services/room-type.service";
+import { roomTypeAvailabilityQuerySchema } from "../types/room-type.schemas";
 import { requireParam } from "../utils/requireParam";
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function tomorrowIso(): string {
+  return new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
 
 export async function getHotel(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -11,6 +21,45 @@ export async function getHotel(req: Request, res: Response, next: NextFunction):
       return;
     }
     res.json({ success: true, data: hotel });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getHotelRoomTypes(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = requireParam(req.params.id, "id");
+    const parsed = roomTypeAvailabilityQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: parsed.error.issues[0]?.message ?? "Invalid query" });
+      return;
+    }
+    const query = parsed.data;
+
+    // Same post-default ordering re-check as /search's controller — the schema's refine only
+    // validates ordering when both dates are supplied together.
+    const checkIn = query.checkIn ?? todayIso();
+    const checkOut = query.checkOut ?? tomorrowIso();
+    if (checkOut <= checkIn) {
+      res.status(400).json({ success: false, error: "checkOut must be after checkIn" });
+      return;
+    }
+
+    const hotel = await getPublishedHotelDetails(id);
+    if (!hotel) {
+      res.status(404).json({ success: false, error: "Hotel not found" });
+      return;
+    }
+
+    const roomTypes = await listRoomTypesWithAvailability({
+      hotelId: id,
+      checkIn,
+      checkOut,
+      adults: query.adults,
+      kids: query.kids,
+      rooms: query.rooms,
+    });
+    res.json({ success: true, data: roomTypes });
   } catch (error) {
     next(error);
   }
