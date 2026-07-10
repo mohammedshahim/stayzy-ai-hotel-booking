@@ -24,6 +24,8 @@ export type HotelDetails = {
   state: string | null;
   country: string;
   postalCode: string | null;
+  latitude: number;
+  longitude: number;
   starRating: number;
   checkInTime: string;
   checkOutTime: string;
