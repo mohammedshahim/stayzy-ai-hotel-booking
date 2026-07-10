@@ -10,13 +10,16 @@ import { useHotelDetails } from "@/features/hotel-details/hooks/useHotelDetails"
 import { HotelGallery } from "@/features/hotel-details/components/HotelGallery";
 import { AmenitiesList } from "@/features/hotel-details/components/AmenitiesList";
 import { PoliciesSection } from "@/features/hotel-details/components/PoliciesSection";
+import { RoomSelectionSection } from "@/features/hotel-details/components/RoomSelectionSection";
 import { HotelDetailsSkeleton } from "@/features/hotel-details/components/HotelDetailsSkeleton";
+import type { RoomSelectionSearch } from "@/features/hotel-details/types";
 
 type Props = {
   id: string;
+  initialSearch: RoomSelectionSearch;
 };
 
-export function HotelDetailsContent({ id }: Props) {
+export function HotelDetailsContent({ id, initialSearch }: Props) {
   const { hotel, isLoading } = useHotelDetails(id);
 
   if (isLoading) {
@@ -57,6 +60,8 @@ export function HotelDetailsContent({ id }: Props) {
       </div>
 
       <AmenitiesList amenities={hotel.amenities} />
+
+      <RoomSelectionSection hotelId={hotel.id} initialSearch={initialSearch} />
 
       <PoliciesSection
         checkInTime={hotel.checkInTime}

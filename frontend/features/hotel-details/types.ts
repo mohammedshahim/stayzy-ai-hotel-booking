@@ -34,3 +34,44 @@ export type HotelDetails = {
   amenities: HotelAmenity[];
   images: HotelImage[];
 };
+
+// Local page state driving the room type list — seeded from the search page's URL params
+// (see HotelCard's link) but not itself synced back to this page's URL.
+export type RoomSelectionSearch = {
+  checkIn: string | null;
+  checkOut: string | null;
+  adults: number;
+  kids: number;
+  rooms: number;
+};
+
+export type RoomTypeFeature = {
+  id: string;
+  name: string;
+};
+
+export type RoomTypeImage = {
+  id: string;
+  url: string;
+  isMain: boolean;
+  sortOrder: number;
+};
+
+// Shape returned by GET /hotels/:id/room-types — mirrors backend's
+// RoomTypeAvailabilityDetails (room-type.service.ts).
+export type RoomTypeAvailability = {
+  id: string;
+  name: string;
+  description: string;
+  maxAdults: number;
+  maxKids: number;
+  basePrice: number;
+  totalInventory: number;
+  freeCancellation: boolean | null;
+  mealPlanName: string;
+  avgNightlyPrice: number;
+  remainingInventory: number;
+  isSoldOut: boolean;
+  features: RoomTypeFeature[];
+  images: RoomTypeImage[];
+};

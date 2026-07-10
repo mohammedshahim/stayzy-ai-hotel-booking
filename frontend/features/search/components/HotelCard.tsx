@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { HeartIcon, MapPinIcon, ScaleIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -20,13 +21,25 @@ type Props = {
 
 const VISIBLE_AMENITY_COUNT = 3;
 
+// Carried over so the hotel details page's room selector starts pre-filled with the same
+// dates/guests the user already searched with, instead of resetting to today/tomorrow.
+const CARRIED_PARAM_KEYS = ["checkIn", "checkOut", "adults", "kids", "rooms"] as const;
+
 export function HotelCard({ hotel, variant, isSelected, onLocate }: Props) {
   const [isFavorited, setIsFavorited] = useState(false);
   const [isCompared, setIsCompared] = useState(false);
+  const searchParams = useSearchParams();
 
   const guestRatingLabel = getGuestRatingLabel(hotel.guestRating);
   const visibleAmenities = hotel.amenities.slice(0, VISIBLE_AMENITY_COUNT);
   const extraAmenityCount = hotel.amenities.length - visibleAmenities.length;
+
+  const detailsParams = new URLSearchParams();
+  for (const key of CARRIED_PARAM_KEYS) {
+    const value = searchParams.get(key);
+    if (value) detailsParams.set(key, value);
+  }
+  const detailsHref = detailsParams.size > 0 ? `/hotels/${hotel.id}?${detailsParams.toString()}` : `/hotels/${hotel.id}`;
 
   return (
     <div
@@ -113,7 +126,7 @@ export function HotelCard({ hotel, variant, isSelected, onLocate }: Props) {
         <div className="mt-auto flex items-end justify-between pt-2">
           <span className="text-xl font-bold text-text-primary">${hotel.pricePerNight}</span>
           <Button
-            render={<Link href={`/hotels/${hotel.id}`} />}
+            render={<Link href={detailsHref} />}
             nativeButton={false}
             className="h-9 rounded-xl border border-border-default bg-elevated px-4 font-medium text-text-secondary transition-colors hover:border-border-subtle hover:bg-subtle hover:text-text-primary"
           >
