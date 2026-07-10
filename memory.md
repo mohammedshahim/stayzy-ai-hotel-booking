@@ -1,54 +1,57 @@
-# Memory — Feature 12 Hotel Details UI
+# Memory — Feature 13 Room Selection
 
 Last updated: 2026-07-10
 
 ## What was built
 
-Feature 12 — Hotel Details UI:
+Feature 13 — Room Selection:
 
 Backend:
-- `backend/src/services/hotel.service.ts` — new `getPublishedHotelDetails(id)`, returns the admin's existing `HotelWithDetails` shape (hotel fields + amenities + images) gated to `status === "published"` and non-deleted; returns `null` (not a thrown error) for missing/draft/deleted so the controller can 404 explicitly.
-- `backend/src/controllers/hotels.controller.ts` (new, public) + `backend/src/routes/hotels.routes.ts` (new, public) — `GET /hotels/:id`, mounted in `routes/index.ts`. First endpoint in the app with a real 404 (every prior "not found" case was admin-only and just threw → 500).
+- `backend/src/types/room-type.schemas.ts` — new `roomTypeAvailabilityQuerySchema` (`checkIn`/`checkOut`/`adults`/`kids`/`rooms`, same refine-based ordering check as `searchQuerySchema`).
+- `backend/src/services/availability.service.ts` — new `resolveRoomTypeAvailability(roomTypes, stayDates, overrides)`, generalizing `findQualifyingRoomTypes`'s per-night rate-override loop to return a `remainingInventory` count (min effective inventory across the stay) instead of just a pass/fail boolean.
+- `backend/src/services/room-type.service.ts` — new `listRoomTypesWithAvailability(params)`: combines the existing (previously admin-only) `listRoomTypesForHotel` with `resolveRoomTypeAvailability`, drops room types whose capacity doesn't fit the party, keeps sold-out ones with `isSoldOut: true`, resolves meal plan names, sorts by `basePrice` ascending.
+- `backend/src/controllers/hotels.controller.ts` (new `getHotelRoomTypes`) + `backend/src/routes/hotels.routes.ts` (`GET /hotels/:id/room-types`, sibling to `GET /hotels/:id`) — same published/non-deleted 404 check and post-default date-ordering re-check as the existing `getHotel`/`GET /search`.
 
-Frontend — new `frontend/features/hotel-details/`:
-- `types.ts`, `hooks/useHotelDetails.ts` (same `useState`/`useEffect`/`apiClient.get` hook shape as every other feature; uses `useSearchResults`'s `forId`-comparison trick to derive `isLoading` rather than a synchronous `setState` in the effect, to avoid the `react-hooks/set-state-in-effect` lint rule).
-- `lib/amenity-icons.ts` — icon-slug → lucide-icon lookup (first real render of `amenities.icon` anywhere in the app; `FilterSidebar` stayed text-only).
-- `components/{HotelGallery,AmenitiesList,PoliciesSection,HotelDetailsSkeleton,HotelDetailsContent}.tsx`.
-- `frontend/app/hotels/[id]/page.tsx` — thin async Server Component (`params` is a Promise in this Next.js version — must `await`), wraps the Client Component.
+Frontend:
+- `frontend/features/search/components/HotelCard.tsx` — now reads `checkIn`/`checkOut`/`adults`/`kids`/`rooms` via `useSearchParams()` and appends them to its own `/hotels/[id]` link.
+- `frontend/app/hotels/[id]/page.tsx` — now also awaits `searchParams`, parses them into a `RoomSelectionSearch` (defaults: today/tomorrow, 2 adults/0 kids/1 room), passed to `HotelDetailsContent` as `initialSearch`.
+- `frontend/features/hotel-details/types.ts` — added `RoomSelectionSearch`, `RoomTypeFeature`, `RoomTypeImage`, `RoomTypeAvailability`.
+- `frontend/features/hotel-details/hooks/useRoomTypes.ts` (new) — same `AbortController` + `forQuery`-comparison re-fetch pattern as `useSearchResults`.
+- `frontend/features/hotel-details/components/{RoomSelectionSection,RoomTypeCard}.tsx` (new) — date/guest picker (reusing `DateRangePicker`/`GuestsRoomsPicker` from `features/search/components/` verbatim) + room type list; wired into `HotelDetailsContent` between `AmenitiesList` and `PoliciesSection`.
 
-Context docs updated: `progress-tracker.md` (Feature 12 marked complete, moved to Phase 3 / Feature 13 Room Selection), `architecture.md` (new "Hotel Details" data-flow section), `ui-registry.md` (new "Hotel Details Page" entry via `/imprint`, following this project's established prose format rather than the skill's generic table template).
+Context docs updated: `progress-tracker.md` (Feature 13 marked complete, moved to Feature 14 Map Integration), `architecture.md` (new "Room Selection" Data Flow subsection), `ui-registry.md` (new "Room Selection" entry, imprinted while building — prose format matching every other entry).
 
 ## Decisions made
 
-- **Route stays keyed by hotel `id`, not `slug`** — matches `HotelCard`'s existing placeholder link from Feature 09. `slug` remains unused for routing.
-- **Public payload reuses the admin's `HotelWithDetails` shape** rather than a new public-specific shape — same hotel fields + amenities + images, just published-only and unauthenticated.
-- **404 handled via explicit null-return + controller-side status check**, not a thrown-error/status-class convention — matches the codebase's existing explicit-check style (e.g. `uploadHotelImage`'s `if (!req.file)`), since this is the first endpoint that ever needed a real 404.
-- **Amenity icons added now** (icon-slug → lucide lookup, ~10 lines, fallback icon for unmapped slugs) — developer's call during `/architect`, first real use of `amenities.icon`.
-- **Client-hook + inline-skeleton fetch pattern**, not Next's `loading.tsx`/Server Component convention — matches `useSearchResults`/`useTrendingDestinations` precedent exactly.
-- **In-page EmptyState for not-found**, not a new `not-found.tsx` — the frontend can't distinguish a 404 from any other fetch failure through `apiClient`'s response shape (same limitation every other hook already has), so both render the same "Hotel not found" state.
-- **Gallery**: hero (`is_main` image) + clickable thumbnail strip swapping the hero via local state, no lightbox — kept minimal per this project's repeated MVP-simplicity pattern. No-image fallback uses `ImageOffIcon`, not `MapPinIcon` (deliberately different from Trending Destinations' fallback — "no photo" reads better than "place" for an empty gallery).
-- **Star rating + guest rating badge rendered unconditionally**, not gated on `reviewCount > 0` — matches `HotelCard`'s existing precedent exactly.
+- **Dates/guests carried from search into hotel details via URL query params** on `HotelCard`'s link, used only to seed the details page's own local state (not synced back to that page's own URL) — otherwise a user who searched specific dates would land on hotel details seeing today/tomorrow pricing instead.
+- **`GET /hotels/:id/room-types` is a separate endpoint**, not folded into `GET /hotels/:id` — the room list is date/guest-dependent and re-fetched on every change, while the rest of the hotel payload loads once.
+- **Capacity mismatch → room type hidden entirely** (matches `/search`'s existing behavior). **Sold out (fits party, no inventory for dates) → room type shown, disabled, "Sold out for these dates"** — this is a single-hotel page, so silently vanishing would read as a bug, not a filter.
+- **Reserve button is always disabled** (label swaps "Coming soon" / "Sold out") — real, correctly-styled UI, not hidden and not wired to a not-yet-built route, since `POST /bookings` doesn't exist until Feature 19. This is the one call site Feature 19 needs to update.
+- **Room list dims (`opacity-60`) during a date/guest-change re-fetch**, no skeleton — the page around it is already loaded, so a full skeleton flash on every date tweak would be jarring.
 
 ## Problems solved
 
-- First naive version of `useHotelDetails` called `setState` synchronously at the top of the effect body (to reset loading state on `id` change) — tripped `react-hooks/set-state-in-effect`, the same rule the Feature 06 price-slider fix hit. Fixed by adopting `useSearchResults`'s `forId`-comparison pattern (derive `isLoading` from comparing the id the held data was fetched for against the current id) instead of an explicit reset call.
-- Confirmed Next.js in this app has `params` as a `Promise<{id: string}>` (not synchronous) — verified against `node_modules/next/dist/docs` before writing the page, per this repo's `AGENTS.md` warning that this Next.js version has breaking changes from training-data assumptions.
+Nothing that took real debugging this session — implementation went cleanly against the existing `availability.service.ts`/`listRoomTypesForHotel` foundations from Features 08/09/12. All verification (rate-override price/inventory shift, capacity filtering, sold-out state, interactive re-fetch on a real Guests+ click) passed on the first pass.
 
 ## Current state
 
-Feature 12 fully built, architected (`/architect` session), implemented, and verified end-to-end in a real headless browser (Playwright, ad hoc in scratchpad — still no project-specific run skill for this app): a real seeded hotel (Hotel Marais Charme) renders hero image (`naturalWidth` confirmed non-zero) + working thumbnail-click gallery swap, amenities render with correct icons (wine glass/wifi/utensils), policies show correct check-in/out times and cancellation text, star rating renders correctly, guest rating badge + review count render unconditionally. A nonexistent hotel id renders the "Hotel not found" EmptyState (backend confirmed 404 via curl). A throttled-network pass confirmed the skeleton renders immediately after navigation before content loads. Clicking a hotel card on `/search` navigates correctly to the real details page. Zero console errors beyond the expected/benign logged 404 network response for the not-found case. `tsc --noEmit`, `eslint`, and both `pnpm build`/`next build` clean for backend and frontend.
+Feature 13 fully built, architected (`/architect` session), implemented, and verified end-to-end:
+- `tsc --noEmit`, `eslint`, and both `pnpm build`/`next build` clean for backend and frontend.
+- Direct `curl` against the seeded DB confirmed: default-date fallback, explicit dates, 400 on inverted dates, 404 on a missing hotel, a real inserted `rate_overrides` row correctly shifting `avgNightlyPrice` and flipping `remainingInventory`/`isSoldOut` only for the date range/room type it applies to, and a party size exceeding every room type's capacity returning an empty list. Test override rows were deleted after.
+- Real headless-browser pass (Playwright, ad hoc in scratchpad): dates carry over correctly from a `/search` link into hotel details (date picker pre-filled "Aug 1 – Aug 5"), both room types render with real images/prices/remaining-inventory/disabled "Coming soon" buttons, the sold-out scenario reproduced live as dimmed cards with disabled "Sold out" buttons, a 10-adult party rendered the "No rooms available" empty state, and clicking the real Guests "+" control triggered a real network re-fetch (`adults=3`). Zero console errors across every scenario.
+- Ran `/imprint` after building — `ui-registry.md`'s "Room Selection" entry confirmed accurate against a fresh read of both component files, no gaps.
 
 All changes are uncommitted (developer has not yet been asked to commit):
-- Modified: `backend/src/routes/index.ts`, `backend/src/services/hotel.service.ts`, `context/architecture.md`, `context/progress-tracker.md`, `context/ui-registry.md`
-- New: `backend/src/controllers/hotels.controller.ts`, `backend/src/routes/hotels.routes.ts`, `frontend/app/hotels/[id]/`, `frontend/features/hotel-details/`
+- Modified: `backend/src/types/room-type.schemas.ts`, `backend/src/services/availability.service.ts`, `backend/src/services/room-type.service.ts`, `backend/src/controllers/hotels.controller.ts`, `backend/src/routes/hotels.routes.ts`, `frontend/features/search/components/HotelCard.tsx`, `frontend/app/hotels/[id]/page.tsx`, `frontend/features/hotel-details/types.ts`, `frontend/features/hotel-details/components/HotelDetailsContent.tsx`, `context/architecture.md`, `context/progress-tracker.md`, `context/ui-registry.md`
+- New: `frontend/features/hotel-details/hooks/useRoomTypes.ts`, `frontend/features/hotel-details/components/{RoomSelectionSection,RoomTypeCard}.tsx`
 
 Dev servers were left running (backend :4000, frontend :3000) — may or may not still be up depending on machine state between sessions.
 
 ## Next session starts with
 
-Feature 13 — Room Selection, per `progress-tracker.md`'s "Next up": room type list on the hotel details page with per-room pricing for the selected dates, remaining inventory, and a Reserve action — availability resolved through the existing `availability.service.ts` (`enumerateStayDates`/`findQualifyingRoomTypes`/`pickCheapestPerHotel`, built in Feature 09 and already noted there as reusable for Feature 12/13). No flagged blockers — straightforward next feature in Phase 3, and the hotel details page it slots into already exists.
+Feature 14 — Map Integration, per `progress-tracker.md`'s "Next up": a map on the hotel details page showing the hotel's location via `hotels.location` (PostGIS point, already populated since Feature 07's geocoding). `ui-rules.md`'s "Hotel Details Layout" spec describes a `grid gap-8 lg:grid-cols-[1fr_22rem]` two-column layout with a sticky right rail holding "map panel + booking summary panel" — Features 12/13 deliberately built a single-column layout instead since neither the map nor a booking summary existed yet. Feature 14 may be the natural point to decide whether to introduce that two-column restructure (this hasn't been discussed with the developer yet — flag it during `/architect`, don't assume). `MapView`'s existing `react-map-gl`/`mapbox-gl` pin pattern from Feature 06/09's search results is the likely component to reuse for a single-pin map here.
 
 ## Open questions
 
-- Whether to commit the uncommitted Feature 12 changes — ask the developer at the start of next session (not yet requested this session).
-- None blocking on Feature 13 itself.
+- Whether to commit the uncommitted Feature 13 changes — ask the developer at the start of next session (not yet requested this session).
+- Whether Feature 14 should also revisit the hotel details page's overall layout (single-column vs. the two-column `ui-rules.md` spec) — not yet discussed with the developer.
