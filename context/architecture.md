@@ -292,6 +292,41 @@ every other apiClient-based hook in this app already has
 
 Reuses the admin's existing `attachDetails`-shaped payload rather than inventing a second response shape — `getPublishedHotelDetails` duplicates the small amenities+images join rather than calling `attachDetails` itself, since `attachDetails` intentionally throws for the admin's always-exists expectation and this endpoint needs a `null` return instead (see Architecture Decisions). Amenity icons (`amenities.icon`, e.g. `"wifi"`, `"pool"`) are rendered for the first time here via a small icon-slug → lucide-icon lookup (`features/hotel-details/lib/amenity-icons.ts`) — every other feature that lists amenities (`FilterSidebar`) has stayed text-only until now.
 
+### Room Selection (Feature 13)
+
+```
+GET /hotels/:id/room-types?checkIn&checkOut&adults&kids&rooms — public,
+sibling to GET /hotels/:id, not folded into it (date-dependent, re-fetched
+on every date/guest change instead of once on page load)
+        ↓
+hotels.controller.ts's getHotelRoomTypes: same published/non-deleted 404
+check as GET /hotels/:id, then room-type.service.ts's
+listRoomTypesWithAvailability
+        ↓
+listRoomTypesForHotel(hotelId) (existing, previously admin-only — description
++ capacity + images + features) filtered to room types whose maxAdults/
+maxKids fit the party (same capacity-filter behavior as GET /search)
+        ↓
+availability.service.ts's resolveRoomTypeAvailability (new, generalizes
+findQualifyingRoomTypes's per-night rate-override loop) returns
+remainingInventory (min effective inventory across the stay) and
+avgNightlyPrice per room type — sold-out room types (remainingInventory <
+rooms) are kept in the list with isSoldOut: true, not dropped, since this
+is a single-hotel page where a room type vanishing would read as a bug
+        ↓
+RoomSelectionSection (frontend/features/hotel-details/) owns local
+checkIn/checkOut/adults/kids/rooms state — seeded from the search page's
+URL params (HotelCard's link now carries them forward) but not itself
+synced back to this page's URL — reusing DateRangePicker/GuestsRoomsPicker
+from features/search/components/ verbatim
+        ↓
+useRoomTypes(hotelId, search) re-fetches on every change (AbortController +
+forQuery-comparison pattern, same shape as useSearchResults), rendering
+RoomTypeCard per room type — Reserve is a real, always-disabled button
+("Coming soon" / "Sold out") since booking creation doesn't exist until
+Feature 19
+```
+
 ### Booking + Payment
 
 ```

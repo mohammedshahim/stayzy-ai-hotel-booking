@@ -24,10 +24,10 @@ After completing any feature:
 ## Current Status
 
 **Phase:** 3 — Hotel Details
-**Current feature:** 13 Room Selection
-**Next up:** 13 Room Selection — read `build-plan.md`'s section for it (room type list on hotel details with per-room pricing for the selected dates, remaining inventory, Reserve action; availability resolved through the existing `availability.service.ts` from Feature 09).
+**Current feature:** 14 Map Integration
+**Next up:** 14 Map Integration — read `build-plan.md`'s section for it (map showing the hotel's location on the details page, using `hotels.location`).
 **Blocking issues:** None. Real S3 credentials (`S3_BUCKET`/`S3_REGION`/`S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY`) confirmed working (developer-tested).
-**Latest completed addition:** 12 Hotel Details UI — 2026-07-10.
+**Latest completed addition:** 13 Room Selection — 2026-07-10.
 
 ---
 
@@ -53,7 +53,7 @@ After completing any feature:
 ### Phase 3 — Hotel Details
 
 - [x] 12 Hotel details UI
-- [ ] 13 Room selection
+- [x] 13 Room selection
 - [ ] 14 Map integration
 - [ ] 15 Similar hotels
 - [ ] 16 Reviews display
@@ -102,6 +102,11 @@ Not broken into features yet — planning starts after Phase 9 is complete and s
 ---
 
 ## Completed Features
+
+### ✅ 13 Room Selection — completed 2026-07-10
+Notes: New public `GET /hotels/:id/room-types?checkIn&checkOut&adults&kids&rooms` (`hotels.controller.ts`'s `getHotelRoomTypes`, mounted alongside `GET /hotels/:id` in `hotels.routes.ts`) — kept as a sibling endpoint rather than folded into the existing hotel payload, since it's date-dependent and re-fetched on every date/guest change while the rest of the hotel payload only loads once. `room-type.service.ts`'s new `listRoomTypesWithAvailability` combines the already-existing (previously admin-only) `listRoomTypesForHotel` — which already had the rich shape needed (description, capacity, images, features) — with a new `resolveRoomTypeAvailability` in `availability.service.ts` that generalizes Feature 09's per-night rate-override loop to return a `remainingInventory` count instead of just a pass/fail boolean. Room types whose capacity doesn't fit the party are dropped entirely (matching `/search`'s existing behavior); room types that fit but lack inventory for the selected dates stay in the list with `isSoldOut: true` rather than being hidden, since this is a single-hotel page where a room type silently disappearing would read as a bug. Frontend: `HotelCard.tsx` (search results) now carries `checkIn`/`checkOut`/`adults`/`kids`/`rooms` as query params on its link into `/hotels/[id]`, read by the page as *initial* values only (not URL-synced back) for a new `RoomSelectionSection` that owns its own date/guest picker state, reusing `DateRangePicker`/`GuestsRoomsPicker` from `features/search/components/` verbatim. New `useRoomTypes` hook (same `AbortController` + `forQuery`-comparison re-fetch pattern as `useSearchResults`) drives a `RoomTypeCard` per room type — image, capacity, meal plan, features, price, remaining inventory, and a Reserve button that is always disabled (label swaps between "Coming soon" and "Sold out") since booking creation doesn't exist until Feature 19.
+Decision (confirmed during `/architect`): dates/guests are carried from search into hotel details via URL query params rather than the details page always starting fresh — otherwise a user who searched specific dates would see room prices for today/tomorrow after clicking into a hotel, a real UX mismatch. Capacity-mismatched room types are hidden (consistency with `/search`); sold-out room types are shown, disabled, not hidden. Reserve is real, correctly-styled UI that's honestly non-functional today rather than hidden or wired to a broken route.
+Verified end-to-end: `tsc --noEmit`, `eslint`, and both `pnpm build`/`next build` clean for backend and frontend. Direct `curl` against the seeded DB confirmed default-date fallback, explicit dates, a 400 on inverted dates, a 404 on a missing hotel, and — after inserting a real `rate_overrides` row (`available_override: 0`, `price: 300`) — the affected room type's `avgNightlyPrice` correctly blends the override into the average and `remainingInventory`/`isSoldOut` flip correctly for a date range covering it, while an unaffected date range and room type are untouched; a party size exceeding every room type's capacity correctly returns an empty list. Real headless-browser pass (Playwright, scratchpad ad hoc — still no project-specific run skill): clicking "See availability" from `/search?destination=Paris&checkIn=2026-08-01&checkOut=2026-08-05...` lands on the hotel details page with the date picker already showing "Aug 1 – Aug 5" and both room types rendering with real images/prices/remaining-inventory text and disabled "Coming soon" buttons; the same sold-out rate override reproduced live in the UI as dimmed cards with disabled "Sold out" buttons; a 10-adult party correctly rendered the "No rooms available" empty state; clicking the real Guests & Rooms "+" control in the browser (not a URL change) triggered a real re-fetch to `/hotels/.../room-types?...adults=3...`, confirming the interactive picker actually drives the re-fetch build-plan's test calls for. Zero console errors across every scenario.
 
 ### ✅ 12 Hotel Details UI — completed 2026-07-10
 Notes: New public `GET /hotels/:id` (`hotels.controller.ts`/`hotels.routes.ts`, mounted at `/hotels` in `routes/index.ts`) reuses the admin's existing `HotelWithDetails` shape (hotel fields + `amenities[]` + `images[]`) via a new `getPublishedHotelDetails(id)` in `hotel.service.ts` — gated to `status === "published"`, returns `null` (not a thrown error) for missing/draft/deleted, so the controller can do an explicit `if (!hotel) res.status(404)` check. This is the first endpoint in the app that needed a real 404; kept to the codebase's existing explicit-check-in-controller style rather than adding error-class/status-throwing infrastructure for one endpoint. Frontend: new `features/hotel-details/` (types, `useHotelDetails.ts` hook, `lib/amenity-icons.ts`, and `HotelGallery`/`AmenitiesList`/`PoliciesSection`/`HotelDetailsSkeleton`/`HotelDetailsContent` components) wired into `/hotels/[id]` (`app/hotels/[id]/page.tsx`, a thin Server Component awaiting the route param and passing `id` to the Client Component) — the route `HotelCard` was already linking to since Feature 09. Gallery is a hero image (the `is_main` one) plus a clickable thumbnail strip that swaps the hero via local state, no lightbox. Amenities render with real icons for the first time in this app (`amenities.icon` was stored but never rendered — `FilterSidebar`'s amenity checkboxes stayed text-only) via a small icon-slug → lucide-icon lookup with a fallback for any unmapped slug. Star rating + guest rating badge reuse `StarRating`/`GuestRatingBadge`/`getGuestRatingLabel` exactly as `HotelCard` does, rendered unconditionally regardless of review count (matching that precedent, not gated on `reviewCount > 0`).
@@ -164,6 +169,21 @@ Decision: [what was decided]
 Reason: [why]
 Impact: [what files or components this affects]
 ```
+
+### 13 Room Selection — 2026-07-10
+Decision: `checkIn`/`checkOut`/`adults`/`kids`/`rooms` are carried from the search page into hotel details as URL query params on `HotelCard`'s link (read via `useSearchParams()` directly inside `HotelCard.tsx`), used only to seed the details page's own local date/guest state — not synced back to the details page's own URL.
+Reason: Without this, a user who searched specific dates on `/search` would land on hotel details seeing prices for today/tomorrow instead, a real mismatch. Confirmed during `/architect`; the details page's own picker state doesn't need to be bookmarkable, so full URL-sync (like `/search`'s `useSearchState`) would be more than this feature needs.
+Impact: `frontend/features/search/components/HotelCard.tsx`, `frontend/app/hotels/[id]/page.tsx` (now also awaits `searchParams`), `frontend/features/hotel-details/types.ts` (`RoomSelectionSearch`).
+
+### 13 Room Selection — 2026-07-10
+Decision: New `GET /hotels/:id/room-types` is a separate endpoint from `GET /hotels/:id`, not merged into that response. Room types whose capacity doesn't fit the party are dropped entirely (same behavior as `/search`); room types that fit but have insufficient inventory for the dates are kept in the response with `isSoldOut: true` instead of being dropped.
+Reason: The room type list is date/guest-dependent and re-fetched on every change, while the rest of the hotel payload loads once — folding them together would mean re-fetching hotel-static data (gallery, policies) on every date tweak. Showing sold-out room types (rather than hiding them, as `/search`'s multi-hotel list does) was a deliberate choice for this single-hotel page — a room type vanishing here would read as a bug, not a filter, per `/architect`.
+Impact: `backend/src/controllers/hotels.controller.ts` (`getHotelRoomTypes`), `backend/src/routes/hotels.routes.ts`, `backend/src/types/room-type.schemas.ts` (`roomTypeAvailabilityQuerySchema`), `backend/src/services/room-type.service.ts` (`listRoomTypesWithAvailability`), `backend/src/services/availability.service.ts` (`resolveRoomTypeAvailability`, generalizes `findQualifyingRoomTypes`'s per-night loop to also return a count).
+
+### 13 Room Selection — 2026-07-10
+Decision: The Reserve button on every room type card is always disabled — label swaps between "Coming soon" (available room types) and "Sold out" (no inventory for the dates) — rather than being hidden, wired to a not-yet-built checkout route, or left fully interactive.
+Reason: `POST /bookings` doesn't exist until Feature 19. Confirmed during `/architect`: the button should be honest real UI (correctly styled, visibly present) about what's actually functional today, not hidden (which would look incomplete) or wired to something broken.
+Impact: `frontend/features/hotel-details/components/RoomTypeCard.tsx`. Feature 19 will need to replace the `disabled` prop with a real click handler — this is the one call site.
 
 ### 12 Hotel Details UI — 2026-07-10
 Decision: New `GET /hotels/:id` reuses the admin's `HotelWithDetails` shape (hotel fields + amenities + images) via a new `getPublishedHotelDetails(id)` in `hotel.service.ts`, gated on `status === "published"` and returning `null` (not throwing) for missing/draft/deleted — the controller does an explicit `if (!hotel) res.status(404)` check.
