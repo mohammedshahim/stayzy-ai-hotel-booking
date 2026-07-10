@@ -24,10 +24,10 @@ After completing any feature:
 ## Current Status
 
 **Phase:** 3 — Hotel Details
-**Current feature:** 14 Map Integration
-**Next up:** 14 Map Integration — read `build-plan.md`'s section for it (map showing the hotel's location on the details page, using `hotels.location`).
+**Current feature:** 15 Similar Hotels
+**Next up:** 15 Similar Hotels — read `build-plan.md`'s section for it (`ST_DWithin`/`ST_Distance` query for nearby hotels in the same destination, ranked by proximity and rating, rendered below the fold on hotel details).
 **Blocking issues:** None. Real S3 credentials (`S3_BUCKET`/`S3_REGION`/`S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY`) confirmed working (developer-tested).
-**Latest completed addition:** 13 Room Selection — 2026-07-10.
+**Latest completed addition:** 14 Map Integration — 2026-07-10.
 
 ---
 
@@ -54,7 +54,7 @@ After completing any feature:
 
 - [x] 12 Hotel details UI
 - [x] 13 Room selection
-- [ ] 14 Map integration
+- [x] 14 Map integration
 - [ ] 15 Similar hotels
 - [ ] 16 Reviews display
 
@@ -102,6 +102,11 @@ Not broken into features yet — planning starts after Phase 9 is complete and s
 ---
 
 ## Completed Features
+
+### ✅ 14 Map Integration — completed 2026-07-10
+Notes: No backend change was needed — `GET /hotels/:id` already returned `latitude`/`longitude` since Feature 12 (`hotels.queries.ts`'s `HOTEL_COLUMNS` derives them from `hotels.location` via `ST_Y`/`ST_X`); only `frontend/features/hotel-details/types.ts`'s `HotelDetails` type needed the two fields added. `HotelDetailsContent.tsx` was restructured into the two-column layout `ui-rules.md`'s Hotel Details Layout spec always called for (`grid gap-8 lg:grid-cols-[1fr_22rem]` below the gallery/title header, main column unchanged content, right rail `sticky top-20`) — Features 12/13 had deliberately stayed single-column since neither the map nor a booking summary existed yet; page container grew from `max-w-5xl` to `max-w-6xl` to fit the new column without cramping the main content. New `LocationMapPanel` (`frontend/features/hotel-details/components/`) is the rail's first (and so far only) panel: a `react-map-gl` single-pin map reusing `MapView`'s exact `mapStyle`/pin styling (no fly-to/selection state needed for one point) plus a "Get directions" link built straight from the hotel's own lat/lng to Google Maps (`https://www.google.com/maps/dir/?api=1&destination={lat},{lng}`), opened in a new tab. First real usage of `ui-registry.md`'s locked Panel pattern (header + body, `border-b` divider) anywhere in either app.
+Decision (confirmed during `/architect`): introduce the two-column right rail now rather than deferring until the booking summary panel exists (Feature 19+/21) — restructures the layout once instead of twice. The booking summary panel slot stays empty below `LocationMapPanel` in the same rail `div` until then.
+Verified end-to-end: `tsc --noEmit`, `eslint`, and `next build` all clean. Direct `curl` against the real seeded DB confirmed `GET /hotels/:id` returns correct `latitude`/`longitude` (Hotel Marais Charme: 48.8586, 2.3603). Real headless-browser pass (Playwright, scratchpad ad hoc): the map renders real Mapbox tiles (Le Marais streets) with the pin at the correct location, the "Get directions" link's `href` resolves to the correct Google Maps URL with the real coordinates, the right rail sits correctly beside the main column and stays sticky at a 1440px desktop viewport, and at a 390px mobile viewport the panel correctly stacks below Policies with no horizontal overflow. Zero console errors at either width.
 
 ### ✅ 13 Room Selection — completed 2026-07-10
 Notes: New public `GET /hotels/:id/room-types?checkIn&checkOut&adults&kids&rooms` (`hotels.controller.ts`'s `getHotelRoomTypes`, mounted alongside `GET /hotels/:id` in `hotels.routes.ts`) — kept as a sibling endpoint rather than folded into the existing hotel payload, since it's date-dependent and re-fetched on every date/guest change while the rest of the hotel payload only loads once. `room-type.service.ts`'s new `listRoomTypesWithAvailability` combines the already-existing (previously admin-only) `listRoomTypesForHotel` — which already had the rich shape needed (description, capacity, images, features) — with a new `resolveRoomTypeAvailability` in `availability.service.ts` that generalizes Feature 09's per-night rate-override loop to return a `remainingInventory` count instead of just a pass/fail boolean. Room types whose capacity doesn't fit the party are dropped entirely (matching `/search`'s existing behavior); room types that fit but lack inventory for the selected dates stay in the list with `isSoldOut: true` rather than being hidden, since this is a single-hotel page where a room type silently disappearing would read as a bug. Frontend: `HotelCard.tsx` (search results) now carries `checkIn`/`checkOut`/`adults`/`kids`/`rooms` as query params on its link into `/hotels/[id]`, read by the page as *initial* values only (not URL-synced back) for a new `RoomSelectionSection` that owns its own date/guest picker state, reusing `DateRangePicker`/`GuestsRoomsPicker` from `features/search/components/` verbatim. New `useRoomTypes` hook (same `AbortController` + `forQuery`-comparison re-fetch pattern as `useSearchResults`) drives a `RoomTypeCard` per room type — image, capacity, meal plan, features, price, remaining inventory, and a Reserve button that is always disabled (label swaps between "Coming soon" and "Sold out") since booking creation doesn't exist until Feature 19.
@@ -169,6 +174,11 @@ Decision: [what was decided]
 Reason: [why]
 Impact: [what files or components this affects]
 ```
+
+### 14 Map Integration — 2026-07-10
+Decision: `HotelDetailsContent` adopts `ui-rules.md`'s two-column Hotel Details Layout (`grid gap-8 lg:grid-cols-[1fr_22rem]`, sticky right rail) now, holding only a new `LocationMapPanel`, rather than waiting until the booking summary panel (Feature 19+/21) also exists to justify the restructure.
+Reason: Confirmed during `/architect` — restructuring once now avoids a second layout migration later; the right rail is designed to hold multiple stacked panels, so adding `LocationMapPanel` alone today doesn't preclude a booking summary panel slotting in below it later.
+Impact: `frontend/features/hotel-details/components/HotelDetailsContent.tsx` (page container `max-w-5xl` → `max-w-6xl`), `frontend/features/hotel-details/components/LocationMapPanel.tsx` (new), `frontend/features/hotel-details/types.ts` (`HotelDetails.latitude`/`longitude` added — no backend change, `GET /hotels/:id` already returned them via `HOTEL_COLUMNS`).
 
 ### 13 Room Selection — 2026-07-10
 Decision: `checkIn`/`checkOut`/`adults`/`kids`/`rooms` are carried from the search page into hotel details as URL query params on `HotelCard`'s link (read via `useSearchParams()` directly inside `HotelCard.tsx`), used only to seed the details page's own local date/guest state — not synced back to the details page's own URL.

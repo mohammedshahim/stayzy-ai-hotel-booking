@@ -327,6 +327,28 @@ RoomTypeCard per room type — Reserve is a real, always-disabled button
 Feature 19
 ```
 
+### Map Integration (Feature 14)
+
+```
+No new endpoint — GET /hotels/:id already returns latitude/longitude
+(hotels.queries.ts's HOTEL_COLUMNS derives them from hotels.location via
+ST_Y/ST_X); Feature 12 just hadn't typed or rendered them on the frontend
+yet
+        ↓
+HotelDetailsContent now renders a ui-rules.md-specified two-column layout
+below the gallery/title header: grid gap-8 lg:grid-cols-[1fr_22rem], main
+column (description, amenities, room selection, policies) + a sticky
+lg:top-20 right rail
+        ↓
+LocationMapPanel (frontend/features/hotel-details/) — right rail's first
+panel, a react-map-gl single-pin map (same mapStyle as search's MapView,
+no pan/select logic needed for one point) plus a "Get directions" link
+out to Google Maps, built from the hotel's own lat/lng — no click handler,
+no popup
+```
+
+The booking summary panel `ui-rules.md` also specifies for this right rail doesn't exist yet — it arrives with Feature 19+/21 (Checkout) and slots in below `LocationMapPanel` in the same rail `div`.
+
 ### Booking + Payment
 
 ```
