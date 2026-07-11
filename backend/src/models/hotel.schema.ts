@@ -146,6 +146,17 @@ export interface HotelListItem {
   createdAt: string;
 }
 
+export interface SimilarHotel {
+  id: string;
+  name: string;
+  city: string;
+  country: string;
+  starRating: number;
+  averageRating: number;
+  reviewCount: number;
+  mainImageUrl: string | null;
+}
+
 export interface HotelInput {
   name: string;
   description: string;

@@ -1,5 +1,6 @@
-import type { HotelImage, HotelWithDetails } from "../models/hotel.schema";
+import type { Hotel, HotelImage, HotelWithDetails, SimilarHotel } from "../models/hotel.schema";
 import {
+  findSimilarHotels,
   getHotelAmenities,
   getHotelById,
   insertHotel,
@@ -70,6 +71,16 @@ export async function getPublishedHotelDetails(id: string): Promise<HotelWithDet
   }
   const [amenities, images] = await Promise.all([getHotelAmenities(id), listHotelImages(id)]);
   return { ...hotel, amenities, images };
+}
+
+export async function getSimilarHotels(hotel: Hotel): Promise<SimilarHotel[]> {
+  return findSimilarHotels({
+    excludeId: hotel.id,
+    city: hotel.city,
+    country: hotel.country,
+    latitude: hotel.latitude,
+    longitude: hotel.longitude,
+  });
 }
 
 export async function createHotel(input: CreateHotelInput): Promise<HotelWithDetails> {

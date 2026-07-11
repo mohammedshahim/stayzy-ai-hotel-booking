@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
-import { getPublishedHotelDetails } from "../services/hotel.service";
+import { getPublishedHotelDetails, getSimilarHotels } from "../services/hotel.service";
 import { listRoomTypesWithAvailability } from "../services/room-type.service";
 import { roomTypeAvailabilityQuerySchema } from "../types/room-type.schemas";
 import { requireParam } from "../utils/requireParam";
@@ -60,6 +60,21 @@ export async function getHotelRoomTypes(req: Request, res: Response, next: NextF
       rooms: query.rooms,
     });
     res.json({ success: true, data: roomTypes });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getHotelSimilar(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = requireParam(req.params.id, "id");
+    const hotel = await getPublishedHotelDetails(id);
+    if (!hotel) {
+      res.status(404).json({ success: false, error: "Hotel not found" });
+      return;
+    }
+    const similarHotels = await getSimilarHotels(hotel);
+    res.json({ success: true, data: similarHotels });
   } catch (error) {
     next(error);
   }

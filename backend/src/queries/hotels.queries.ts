@@ -1,7 +1,7 @@
 import { and, asc, count, desc, eq, isNull, ne, sql } from "drizzle-orm";
 import { db } from "../config/db";
 import { amenities, hotelAmenities, hotelImages, hotels } from "../models/hotel.schema";
-import type { Amenity, Hotel, HotelInput, HotelListItem, HotelStatus } from "../models/hotel.schema";
+import type { Amenity, Hotel, HotelInput, HotelListItem, HotelStatus, SimilarHotel } from "../models/hotel.schema";
 
 const HOTEL_COLUMNS = {
   id: hotels.id,
@@ -132,6 +132,46 @@ export async function isSlugTaken(slug: string, excludeId?: string): Promise<boo
     .where(condition)
     .limit(1);
   return row !== undefined;
+}
+
+export interface FindSimilarHotelsParams {
+  excludeId: string;
+  city: string;
+  country: string;
+  latitude: number;
+  longitude: number;
+}
+
+const SIMILAR_HOTELS_LIMIT = 6;
+
+export async function findSimilarHotels(params: FindSimilarHotelsParams): Promise<SimilarHotel[]> {
+  const referencePoint = sql`ST_SetSRID(ST_MakePoint(${params.longitude}, ${params.latitude}), 4326)::geography`;
+  return db
+    .select({
+      id: hotels.id,
+      name: hotels.name,
+      city: hotels.city,
+      country: hotels.country,
+      starRating: hotels.starRating,
+      averageRating: hotels.averageRating,
+      reviewCount: hotels.reviewCount,
+      // "hotels"."id" hardcoded — see listHotels' mainImageUrl for why.
+      mainImageUrl: sql<
+        string | null
+      >`(SELECT url FROM ${hotelImages} WHERE ${hotelImages.hotelId} = "hotels"."id" AND ${hotelImages.isMain} = true LIMIT 1)`,
+    })
+    .from(hotels)
+    .where(
+      and(
+        eq(hotels.city, params.city),
+        eq(hotels.country, params.country),
+        ne(hotels.id, params.excludeId),
+        eq(hotels.status, "published"),
+        isNull(hotels.deletedAt),
+      ),
+    )
+    .orderBy(sql`ST_Distance(${hotels.location}, ${referencePoint})`)
+    .limit(SIMILAR_HOTELS_LIMIT);
 }
 
 export async function getHotelAmenities(hotelId: string): Promise<Amenity[]> {
