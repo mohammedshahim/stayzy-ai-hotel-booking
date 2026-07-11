@@ -2,6 +2,8 @@ import { sql } from "drizzle-orm";
 import { db, pool } from "./db";
 import { amenities, hotelAmenities, hotelImages, hotels } from "../models/hotel.schema";
 import { mealPlans, roomFeatures, roomTypeFeatures, roomTypeImages, roomTypes } from "../models/room-type.schema";
+import { bookings, reviews } from "../models/booking.schema";
+import { user } from "../models/auth.schema";
 
 const AMENITIES = [
   { name: "Free Wi-Fi", icon: "wifi" },
@@ -58,6 +60,112 @@ interface HotelSeed {
     images: string[];
   }[];
 }
+
+// Reviews requires a booking, but Booking Creation (Feature 19) doesn't exist yet — these
+// demo reviewer accounts and their bookings exist purely to satisfy the FK chain for
+// Feature 16's seed reviews below. Additive only: never truncated, never modified.
+const DEMO_REVIEWERS = [
+  { id: "seed-reviewer-amara-chen", name: "Amara Chen", email: "amara.chen@stayzy-seed.example" },
+  { id: "seed-reviewer-diego-alvarez", name: "Diego Alvarez", email: "diego.alvarez@stayzy-seed.example" },
+  { id: "seed-reviewer-priya-nair", name: "Priya Nair", email: "priya.nair@stayzy-seed.example" },
+] as const;
+
+interface ReviewSeed {
+  hotelSlug: string;
+  reviewerId: string;
+  rating: number;
+  description: string;
+  checkIn: string;
+  checkOut: string;
+  nightlyRate: number;
+  reviewCreatedAt: string;
+}
+
+// Only 2 of the 5 hotels get seeded reviews on purpose — the rest exercise the
+// "no reviews yet" empty state. hotel-marais-charme also gets 6 (more than the
+// pageSize of 5) so "load more" pagination has something real to fetch.
+const REVIEWS: ReviewSeed[] = [
+  {
+    hotelSlug: "hotel-marais-charme",
+    reviewerId: "seed-reviewer-amara-chen",
+    rating: 5,
+    description: "Loved the location right in the Marais — walked everywhere. Room was small but charming.",
+    checkIn: "2026-04-10",
+    checkOut: "2026-04-13",
+    nightlyRate: 145,
+    reviewCreatedAt: "2026-04-15T09:00:00.000Z",
+  },
+  {
+    hotelSlug: "hotel-marais-charme",
+    reviewerId: "seed-reviewer-diego-alvarez",
+    rating: 4,
+    description: "Great breakfast and friendly staff, though the walls are a bit thin.",
+    checkIn: "2026-04-20",
+    checkOut: "2026-04-22",
+    nightlyRate: 145,
+    reviewCreatedAt: "2026-04-24T14:30:00.000Z",
+  },
+  {
+    hotelSlug: "hotel-marais-charme",
+    reviewerId: "seed-reviewer-priya-nair",
+    rating: 5,
+    description: "Beautiful boutique hotel, felt like staying in a real Parisian apartment.",
+    checkIn: "2026-05-02",
+    checkOut: "2026-05-05",
+    nightlyRate: 145,
+    reviewCreatedAt: "2026-05-07T11:15:00.000Z",
+  },
+  {
+    hotelSlug: "hotel-marais-charme",
+    reviewerId: "seed-reviewer-amara-chen",
+    rating: 3,
+    description: "Second stay wasn't as good — the AC struggled during the heatwave.",
+    checkIn: "2026-06-01",
+    checkOut: "2026-06-03",
+    nightlyRate: 145,
+    reviewCreatedAt: "2026-06-05T18:45:00.000Z",
+  },
+  {
+    hotelSlug: "hotel-marais-charme",
+    reviewerId: "seed-reviewer-diego-alvarez",
+    rating: 5,
+    description: "Perfect base for exploring the city, would come back in a heartbeat.",
+    checkIn: "2026-06-15",
+    checkOut: "2026-06-18",
+    nightlyRate: 145,
+    reviewCreatedAt: "2026-06-20T08:20:00.000Z",
+  },
+  {
+    hotelSlug: "hotel-marais-charme",
+    reviewerId: "seed-reviewer-priya-nair",
+    rating: 4,
+    description: "Cozy and well located, just wish the elevator was faster.",
+    checkIn: "2026-07-01",
+    checkOut: "2026-07-03",
+    nightlyRate: 145,
+    reviewCreatedAt: "2026-07-05T10:00:00.000Z",
+  },
+  {
+    hotelSlug: "midtown-manhattan-hotel",
+    reviewerId: "seed-reviewer-diego-alvarez",
+    rating: 4,
+    description: "Solid Midtown location, easy walk to Times Square. Rooms are a bit compact.",
+    checkIn: "2026-05-10",
+    checkOut: "2026-05-13",
+    nightlyRate: 190,
+    reviewCreatedAt: "2026-05-15T16:00:00.000Z",
+  },
+  {
+    hotelSlug: "midtown-manhattan-hotel",
+    reviewerId: "seed-reviewer-priya-nair",
+    rating: 5,
+    description: "Skyline suite was worth every penny — incredible views toward the Hudson.",
+    checkIn: "2026-06-08",
+    checkOut: "2026-06-11",
+    nightlyRate: 380,
+    reviewCreatedAt: "2026-06-13T13:10:00.000Z",
+  },
+];
 
 const HOTELS: HotelSeed[] = [
   {
@@ -335,11 +443,18 @@ async function insertNamedLookup(
   return idsByName;
 }
 
+interface HotelRef {
+  hotelId: string;
+  roomTypeId: string;
+}
+
 async function seedHotels(
   amenityIdsByName: Map<string, string>,
   roomFeatureIdsByName: Map<string, string>,
   mealPlanIdsByName: Map<string, string>
-): Promise<void> {
+): Promise<Map<string, HotelRef>> {
+  const hotelRefsBySlug = new Map<string, HotelRef>();
+
   for (const hotel of HOTELS) {
     const [hotelRow] = await db
       .insert(hotels)
@@ -376,6 +491,8 @@ async function seedHotels(
       })
     );
 
+    let firstRoomTypeId: string | null = null;
+
     for (const roomType of hotel.roomTypes) {
       const mealPlanId = mealPlanIdsByName.get(roomType.mealPlan);
       if (!mealPlanId) throw new Error(`[seed] unknown meal plan: ${roomType.mealPlan}`);
@@ -396,6 +513,7 @@ async function seedHotels(
 
       if (!roomTypeRow) throw new Error(`[seed] failed to insert room type: ${roomType.name}`);
       const roomTypeId = roomTypeRow.id;
+      firstRoomTypeId ??= roomTypeId;
 
       await db
         .insert(roomTypeImages)
@@ -409,6 +527,60 @@ async function seedHotels(
         })
       );
     }
+
+    if (firstRoomTypeId) {
+      hotelRefsBySlug.set(hotel.slug, { hotelId, roomTypeId: firstRoomTypeId });
+    }
+  }
+
+  return hotelRefsBySlug;
+}
+
+async function seedDemoReviewers(): Promise<void> {
+  for (const reviewer of DEMO_REVIEWERS) {
+    await db
+      .insert(user)
+      .values({ id: reviewer.id, name: reviewer.name, email: reviewer.email, emailVerified: true })
+      .onConflictDoNothing({ target: user.id });
+  }
+}
+
+async function seedReviews(hotelRefsBySlug: Map<string, HotelRef>): Promise<void> {
+  for (const review of REVIEWS) {
+    const ref = hotelRefsBySlug.get(review.hotelSlug);
+    if (!ref) throw new Error(`[seed] unknown hotel slug for review seed: ${review.hotelSlug}`);
+
+    const nights = Math.round(
+      (new Date(review.checkOut).getTime() - new Date(review.checkIn).getTime()) / (24 * 60 * 60 * 1000)
+    );
+
+    const [bookingRow] = await db
+      .insert(bookings)
+      .values({
+        userId: review.reviewerId,
+        hotelId: ref.hotelId,
+        roomTypeId: ref.roomTypeId,
+        checkIn: review.checkIn,
+        checkOut: review.checkOut,
+        adults: 2,
+        kids: 0,
+        roomsBooked: 1,
+        totalPrice: nights * review.nightlyRate,
+        status: "completed",
+      })
+      .returning({ id: bookings.id });
+
+    if (!bookingRow) throw new Error(`[seed] failed to insert booking for review seed: ${review.hotelSlug}`);
+
+    await db.insert(reviews).values({
+      bookingId: bookingRow.id,
+      userId: review.reviewerId,
+      hotelId: ref.hotelId,
+      rating: review.rating,
+      description: review.description,
+      createdAt: review.reviewCreatedAt,
+      updatedAt: review.reviewCreatedAt,
+    });
   }
 }
 
@@ -419,9 +591,13 @@ async function seed(): Promise<void> {
   const roomFeatureIdsByName = await insertNamedLookup("room_features", roomFeatures, ROOM_FEATURES);
   const mealPlanIdsByName = await insertNamedLookup("meal_plans", mealPlans, MEAL_PLANS);
 
-  await seedHotels(amenityIdsByName, roomFeatureIdsByName, mealPlanIdsByName);
+  const hotelRefsBySlug = await seedHotels(amenityIdsByName, roomFeatureIdsByName, mealPlanIdsByName);
+
+  await seedDemoReviewers();
+  await seedReviews(hotelRefsBySlug);
 
   console.log(`[seed] inserted ${HOTELS.length} hotels across ${new Set(HOTELS.map((h) => h.city)).size} cities`);
+  console.log(`[seed] inserted ${REVIEWS.length} reviews across ${new Set(REVIEWS.map((r) => r.hotelSlug)).size} hotels`);
 }
 
 seed()
