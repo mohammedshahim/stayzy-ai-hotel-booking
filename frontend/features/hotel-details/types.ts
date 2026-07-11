@@ -47,6 +47,18 @@ export type RoomSelectionSearch = {
   rooms: number;
 };
 
+// Shape returned by GET /hotels/:id/similar — mirrors backend's SimilarHotel.
+export type SimilarHotel = {
+  id: string;
+  name: string;
+  city: string;
+  country: string;
+  starRating: number;
+  averageRating: number;
+  reviewCount: number;
+  mainImageUrl: string | null;
+};
+
 export type RoomTypeFeature = {
   id: string;
   name: string;

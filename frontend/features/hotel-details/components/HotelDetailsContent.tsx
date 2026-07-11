@@ -11,6 +11,7 @@ import { HotelGallery } from "@/features/hotel-details/components/HotelGallery";
 import { AmenitiesList } from "@/features/hotel-details/components/AmenitiesList";
 import { PoliciesSection } from "@/features/hotel-details/components/PoliciesSection";
 import { RoomSelectionSection } from "@/features/hotel-details/components/RoomSelectionSection";
+import { SimilarHotelsSection } from "@/features/hotel-details/components/SimilarHotelsSection";
 import { LocationMapPanel } from "@/features/hotel-details/components/LocationMapPanel";
 import { HotelDetailsSkeleton } from "@/features/hotel-details/components/HotelDetailsSkeleton";
 import type { RoomSelectionSearch } from "@/features/hotel-details/types";
@@ -73,6 +74,8 @@ export function HotelDetailsContent({ id, initialSearch }: Props) {
             freeCancellation={hotel.freeCancellation}
             cancellationPolicy={hotel.cancellationPolicy}
           />
+
+          <SimilarHotelsSection hotelId={hotel.id} />
         </div>
 
         <div className="flex flex-col gap-6 lg:sticky lg:top-20 lg:h-fit">
