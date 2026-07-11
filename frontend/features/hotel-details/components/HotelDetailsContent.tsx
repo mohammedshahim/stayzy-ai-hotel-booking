@@ -1,11 +1,13 @@
 "use client";
 
-import { MapPinOffIcon, MapPinIcon } from "lucide-react";
+import { HeartIcon, MapPinOffIcon, MapPinIcon } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/common/EmptyState";
 import { StarRating } from "@/components/common/StarRating";
 import { GuestRatingBadge } from "@/components/common/GuestRatingBadge";
 import { getGuestRatingLabel } from "@/features/search/lib/guest-rating";
+import { useFavoriteHotelIds } from "@/features/favorites/hooks/useFavoriteHotelIds";
 import { useHotelDetails } from "@/features/hotel-details/hooks/useHotelDetails";
 import { HotelGallery } from "@/features/hotel-details/components/HotelGallery";
 import { AmenitiesList } from "@/features/hotel-details/components/AmenitiesList";
@@ -24,6 +26,7 @@ type Props = {
 
 export function HotelDetailsContent({ id, initialSearch }: Props) {
   const { hotel, isLoading } = useHotelDetails(id);
+  const { favoritedIds, toggleFavorite } = useFavoriteHotelIds();
 
   if (isLoading) {
     return <HotelDetailsSkeleton />;
@@ -50,7 +53,17 @@ export function HotelDetailsContent({ id, initialSearch }: Props) {
 
       <div className="flex flex-col gap-3">
         <StarRating rating={hotel.starRating} />
-        <h1 className="text-2xl font-semibold text-text-primary sm:text-3xl">{hotel.name}</h1>
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="text-2xl font-semibold text-text-primary sm:text-3xl">{hotel.name}</h1>
+          <button
+            type="button"
+            onClick={() => toggleFavorite(hotel.id)}
+            aria-pressed={favoritedIds.has(hotel.id)}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border-default bg-elevated text-text-muted transition-colors hover:text-text-secondary"
+          >
+            <HeartIcon className={cn("h-4 w-4", favoritedIds.has(hotel.id) && "fill-current text-accent-primary")} />
+          </button>
+        </div>
         <div className="flex flex-wrap items-center gap-3">
           <span className="inline-flex items-center gap-1.5 text-sm text-text-muted">
             <MapPinIcon className="h-4 w-4" strokeWidth={1.5} />

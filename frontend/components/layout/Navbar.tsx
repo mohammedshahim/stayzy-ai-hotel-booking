@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { HeartIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { AccountMenu } from "@/components/layout/AccountMenu";
@@ -13,17 +14,26 @@ export async function Navbar() {
         <Link href="/" className="text-lg font-semibold text-text-primary">
           Stayzy
         </Link>
-        {user ? (
-          <AccountMenu user={user} />
-        ) : (
-          <Button
-            render={<Link href="/login" />}
-            nativeButton={false}
-            className="h-9 rounded-xl bg-accent-primary px-4 font-medium text-white transition-colors hover:bg-accent-hover hover:shadow-accent"
+        <div className="flex items-center gap-3">
+          <Link
+            href="/favorites"
+            aria-label="Favorites"
+            className="flex h-9 w-9 items-center justify-center rounded-xl text-text-muted transition-colors hover:bg-subtle hover:text-text-secondary"
           >
-            Log in
-          </Button>
-        )}
+            <HeartIcon className="h-5 w-5" strokeWidth={1.5} />
+          </Link>
+          {user ? (
+            <AccountMenu user={user} />
+          ) : (
+            <Button
+              render={<Link href="/login" />}
+              nativeButton={false}
+              className="h-9 rounded-xl bg-accent-primary px-4 font-medium text-white transition-colors hover:bg-accent-hover hover:shadow-accent"
+            >
+              Log in
+            </Button>
+          )}
+        </div>
       </div>
     </header>
   );

@@ -17,6 +17,8 @@ type Props = {
   variant: "grid" | "list";
   isSelected?: boolean;
   onLocate: () => void;
+  isFavorited: boolean;
+  onToggleFavorite: () => void;
 };
 
 const VISIBLE_AMENITY_COUNT = 3;
@@ -25,8 +27,7 @@ const VISIBLE_AMENITY_COUNT = 3;
 // dates/guests the user already searched with, instead of resetting to today/tomorrow.
 const CARRIED_PARAM_KEYS = ["checkIn", "checkOut", "adults", "kids", "rooms"] as const;
 
-export function HotelCard({ hotel, variant, isSelected, onLocate }: Props) {
-  const [isFavorited, setIsFavorited] = useState(false);
+export function HotelCard({ hotel, variant, isSelected, onLocate, isFavorited, onToggleFavorite }: Props) {
   const [isCompared, setIsCompared] = useState(false);
   const searchParams = useSearchParams();
 
@@ -67,7 +68,7 @@ export function HotelCard({ hotel, variant, isSelected, onLocate }: Props) {
         <div className="absolute right-3 top-3 flex gap-2">
           <button
             type="button"
-            onClick={() => setIsFavorited((value) => !value)}
+            onClick={onToggleFavorite}
             aria-pressed={isFavorited}
             className="flex h-8 w-8 items-center justify-center rounded-xl bg-elevated/90 text-text-muted backdrop-blur-sm transition-colors hover:text-text-secondary"
           >

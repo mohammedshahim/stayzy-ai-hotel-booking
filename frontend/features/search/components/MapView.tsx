@@ -13,11 +13,13 @@ type Props = {
   hotels: SearchResultHotel[];
   selectedHotelId: string | null;
   onSelectHotel: (hotelId: string) => void;
+  favoritedIds: Set<string>;
+  onToggleFavorite: (hotelId: string) => void;
 };
 
 const MAPBOX_ACCESS_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
 
-export function MapView({ hotels, selectedHotelId, onSelectHotel }: Props) {
+export function MapView({ hotels, selectedHotelId, onSelectHotel, favoritedIds, onToggleFavorite }: Props) {
   const mapRef = useRef<MapRef>(null);
   // selectedHotelId is owned by SearchPageContent (so "View on map" from Grid/List can set it
   // before switching views) — fall back to the first result if it's unset or points at a hotel
@@ -46,6 +48,8 @@ export function MapView({ hotels, selectedHotelId, onSelectHotel }: Props) {
             variant="list"
             isSelected={hotel.id === effectiveSelectedId}
             onLocate={() => onSelectHotel(hotel.id)}
+            isFavorited={favoritedIds.has(hotel.id)}
+            onToggleFavorite={() => onToggleFavorite(hotel.id)}
           />
         ))}
       </div>

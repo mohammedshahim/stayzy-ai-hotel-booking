@@ -13,6 +13,7 @@ import { HotelCard } from "@/features/search/components/HotelCard";
 import { MapView } from "@/features/search/components/MapView";
 import { SortDropdown } from "@/features/search/components/SortDropdown";
 import { ViewToggle } from "@/features/search/components/ViewToggle";
+import { useFavoriteHotelIds } from "@/features/favorites/hooks/useFavoriteHotelIds";
 import { useSearchCatalogs } from "@/features/search/hooks/useSearchCatalogs";
 import { useSearchResults } from "@/features/search/hooks/useSearchResults";
 import { useSearchState } from "@/features/search/hooks/useSearchState";
@@ -33,6 +34,7 @@ export function SearchPageContent() {
   const { state, update } = useSearchState();
   const { results, totalResults, totalPages, currentPage, isEmpty, isLoading } = useSearchResults(state);
   const catalogs = useSearchCatalogs();
+  const { favoritedIds, toggleFavorite } = useFavoriteHotelIds();
 
   // Lifted above MapView so "View on map" from Grid/List can both switch the view and
   // tell MapView which hotel to open centered on — MapView no longer owns this itself.
@@ -80,7 +82,13 @@ export function SearchPageContent() {
         ) : (
           <div className={cn("transition-opacity", isLoading && "opacity-60")}>
             {state.view === "map" ? (
-              <MapView hotels={results} selectedHotelId={selectedHotelId} onSelectHotel={setSelectedHotelId} />
+              <MapView
+                hotels={results}
+                selectedHotelId={selectedHotelId}
+                onSelectHotel={setSelectedHotelId}
+                favoritedIds={favoritedIds}
+                onToggleFavorite={toggleFavorite}
+              />
             ) : (
               <div
                 className={cn(
@@ -93,6 +101,8 @@ export function SearchPageContent() {
                     hotel={hotel}
                     variant={state.view === "grid" ? "grid" : "list"}
                     onLocate={() => handleLocate(hotel.id)}
+                    isFavorited={favoritedIds.has(hotel.id)}
+                    onToggleFavorite={() => toggleFavorite(hotel.id)}
                   />
                 ))}
               </div>
