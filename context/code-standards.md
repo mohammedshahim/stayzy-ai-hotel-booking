@@ -332,7 +332,9 @@ Never hardcode any key, URL, or secret anywhere in the codebase. Each app has it
 | `S3_BUCKET` / `S3_REGION` / `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | backend | `config/s3.ts`   |
 | `NEXT_PUBLIC_API_BASE_URL`            | frontend          | `lib/api-client.ts`               |
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`  | frontend          | checkout page                     |
+| `NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN`     | frontend          | `features/search/components/MapView.tsx`, `features/hotel-details/components/LocationMapPanel.tsx` |
 | `VITE_API_BASE_URL`                   | frontend-admin    | `lib/apiBaseQuery.ts`             |
+| `VITE_MAPBOX_ACCESS_TOKEN`            | frontend-admin    | `features/hotels/components/HotelLocationPicker.tsx` |
 
 `NEXT_PUBLIC_` / `VITE_` prefixes mean the variable is exposed to the browser. Never add them to secret keys.
 
@@ -375,6 +377,6 @@ Approved dependencies:
 
 **frontend/** — `next`, `react`, `better-auth` (client), `@stripe/stripe-js`, `@stripe/react-stripe-js`, `tailwindcss`, `shadcn/ui` components, `lucide-react`, `react-day-picker` + `date-fns` (shadcn's `Calendar` primitive and its date-math peer dependency, added in Feature 05 for the homepage date-range picker), `react-map-gl` + `mapbox-gl` (Map view on `/search`, added in Feature 06 — `mapbox-gl` ships its own TypeScript types, no `@types/` package needed)
 
-**frontend-admin/** — `react`, `vite`, `@reduxjs/toolkit`, `react-redux` (required peer for using the store from components), `react-router-dom`, `tailwindcss`, `shadcn/ui` components, `lucide-react`
+**frontend-admin/** — `react`, `vite`, `@reduxjs/toolkit`, `react-redux` (required peer for using the store from components), `react-router-dom`, `tailwindcss`, `shadcn/ui` components, `lucide-react`, `react-map-gl` + `mapbox-gl` (draggable location pin on the hotel edit form, added for the manual-coordinate-override feature — same versions and usage pattern as `frontend/`'s `LocationMapPanel`/`MapView`, no new abstraction)
 
 Do not install any other packages without updating this list first.

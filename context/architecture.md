@@ -349,6 +349,33 @@ no popup
 
 The booking summary panel `ui-rules.md` also specifies for this right rail doesn't exist yet — it arrives with Feature 19+/21 (Checkout) and slots in below `LocationMapPanel` in the same rail `div`.
 
+### Similar Hotels (Feature 15)
+
+```
+GET /hotels/:id/similar
+        ↓
+hotels.controller.ts's getHotelSimilar calls getPublishedHotelDetails(id) first
+(same 404-check every other hotel-details endpoint does) — this also hands
+back the current hotel's own city/country/latitude/longitude, already
+computed via HOTEL_COLUMNS's ST_Y/ST_X, with no second lookup needed
+        ↓
+hotel.service.ts's getSimilarHotels passes those fields straight into
+hotels.queries.ts's findSimilarHotels
+        ↓
+findSimilarHotels builds a reference point (ST_SetSRID(ST_MakePoint(lng,
+lat), 4326)::geography) from the already-known coordinates, filters to
+published/non-deleted hotels in the same city+country excluding the
+current hotel, and orders by ST_Distance ascending — the GiST index on
+hotels.location (see PostGIS section) makes this fast — LIMIT 6, no
+rating factored into ranking (kept deliberately simple, see
+progress-tracker.md's Feature 15 Architecture Decision)
+        ↓
+SimilarHotelsSection (frontend/features/hotel-details/) renders the result
+as a card grid in HotelDetailsContent's main column, after PoliciesSection
+— renders nothing at all when the list is empty (no map/dates/party-size
+context exists on this page, so pricing isn't computed or shown)
+```
+
 ### Booking + Payment
 
 ```
