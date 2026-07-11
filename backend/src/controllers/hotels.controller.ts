@@ -1,7 +1,9 @@
 import type { NextFunction, Request, Response } from "express";
 import { getPublishedHotelDetails, getSimilarHotels } from "../services/hotel.service";
 import { listRoomTypesWithAvailability } from "../services/room-type.service";
+import { getHotelReviews as getHotelReviewsResult } from "../services/review.service";
 import { roomTypeAvailabilityQuerySchema } from "../types/room-type.schemas";
+import { hotelReviewsQuerySchema } from "../types/review.schemas";
 import { requireParam } from "../utils/requireParam";
 
 function todayIso(): string {
@@ -75,6 +77,28 @@ export async function getHotelSimilar(req: Request, res: Response, next: NextFun
     }
     const similarHotels = await getSimilarHotels(hotel);
     res.json({ success: true, data: similarHotels });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getHotelReviews(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = requireParam(req.params.id, "id");
+    const parsed = hotelReviewsQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: parsed.error.issues[0]?.message ?? "Invalid query" });
+      return;
+    }
+
+    const hotel = await getPublishedHotelDetails(id);
+    if (!hotel) {
+      res.status(404).json({ success: false, error: "Hotel not found" });
+      return;
+    }
+
+    const result = await getHotelReviewsResult(hotel, parsed.data.page, parsed.data.pageSize);
+    res.json({ success: true, data: result });
   } catch (error) {
     next(error);
   }
