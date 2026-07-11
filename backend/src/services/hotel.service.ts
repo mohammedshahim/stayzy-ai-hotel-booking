@@ -83,9 +83,18 @@ export async function getSimilarHotels(hotel: Hotel): Promise<SimilarHotel[]> {
   });
 }
 
+function hasManualCoordinates(input: { latitude?: number; longitude?: number }): input is {
+  latitude: number;
+  longitude: number;
+} {
+  return input.latitude !== undefined && input.longitude !== undefined;
+}
+
 export async function createHotel(input: CreateHotelInput): Promise<HotelWithDetails> {
   const slug = await generateUniqueSlug(input.name);
-  const { latitude, longitude } = await geocodingProvider.geocode(formatAddress(input));
+  const { latitude, longitude } = hasManualCoordinates(input)
+    ? input
+    : await geocodingProvider.geocode(formatAddress(input));
 
   const hotel = await insertHotel({ ...input, slug, latitude, longitude });
   await setHotelAmenities(hotel.id, input.amenityIds);
@@ -105,9 +114,11 @@ export async function updateHotelById(id: string, input: UpdateHotelInput): Prom
     existing.country !== input.country ||
     (existing.postalCode ?? "") !== (input.postalCode ?? "");
 
-  const { latitude, longitude } = addressChanged
-    ? await geocodingProvider.geocode(formatAddress(input))
-    : { latitude: existing.latitude, longitude: existing.longitude };
+  const { latitude, longitude } = hasManualCoordinates(input)
+    ? input
+    : addressChanged
+      ? await geocodingProvider.geocode(formatAddress(input))
+      : { latitude: existing.latitude, longitude: existing.longitude };
 
   const slug = existing.name === input.name ? existing.slug : await generateUniqueSlug(input.name, id);
 

@@ -11,6 +11,10 @@ export const hotelInputSchema = z.object({
   state: z.string().optional(),
   country: z.string().min(1, "Country is required"),
   postalCode: z.string().optional(),
+  // Admin-supplied override for the geocoded pin (e.g. dragged into place on the edit
+  // page) — when both are present, createHotel/updateHotelById skip geocoding entirely.
+  latitude: z.coerce.number().min(-90).max(90).optional(),
+  longitude: z.coerce.number().min(-180).max(180).optional(),
   starRating: z.coerce.number().int().min(1).max(5),
   checkInTime: timeSchema,
   checkOutTime: timeSchema,
