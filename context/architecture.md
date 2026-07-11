@@ -61,7 +61,7 @@ backend/
 │   │   ├── bookings.routes.ts
 │   │   ├── payments.routes.ts           → PaymentIntent creation
 │   │   ├── reviews.routes.ts            → review submission (Feature 24, not yet built) — GET /hotels/:id/reviews (Feature 16, read-only) lives in hotels.routes.ts instead, alongside /similar/room-types
-│   │   ├── favorites.routes.ts
+│   │   ├── favorites.routes.ts          → GET /favorites (full card data), GET /favorites/hotel-ids (bulk id set), POST /favorites, DELETE /favorites/:hotelId — all owner-scoped via resolveOwner (Feature 17)
 │   │   └── admin/
 │   │       ├── auth.routes.ts
 │   │       ├── hotels.routes.ts         → hotel/room CRUD
@@ -75,8 +75,8 @@ backend/
 │   │   ├── booking.service.ts
 │   │   ├── payment.service.ts
 │   │   ├── review.service.ts
-│   │   ├── recent-search.service.ts     → record/list/suggest + guest-cookie to account merge (recentSearches only for now)
-│   │   └── favorite.service.ts          → guest-cookie to account merge logic will live here too (Feature 17)
+│   │   ├── recent-search.service.ts     → record/list/suggest + guest-cookie to account merge
+│   │   └── favorite.service.ts          → list/add/remove + guest-cookie to account merge (Feature 17)
 │   ├── models/                          → Drizzle `pgTable(...)` schema files, one per domain (the DB blueprint) — `*.schema.ts`
 │   ├── queries/                         → Drizzle query builder functions per model, one file per model — no raw SQL strings
 │   ├── webhooks/
@@ -126,8 +126,8 @@ frontend/
 │   │   ├── components/                           → Gallery, RoomList, ReviewsSection, SimilarHotels, ...
 │   │   └── hooks/
 │   ├── favorites/
-│   │   ├── components/
-│   │   └── hooks/                                → useFavorites (cookie + account aware)
+│   │   ├── components/                           → FavoritesPageContent, FavoritesCard (Feature 17)
+│   │   └── hooks/                                → useFavoriteHotelIds (bulk id set + optimistic toggle, shared with HotelCard/hotel-details), useFavoritesList (full list + local removal, /favorites page only) — Feature 17
 │   ├── compare/
 │   │   ├── components/                           → CompareTray, CompareTable, ...
 │   │   └── hooks/                                → useCompareSelection (persisted client state)
@@ -449,14 +449,44 @@ User logs in or signs up — email/password or Google OAuth, both create a sessi
 config/auth.ts's hooks.after middleware fires on every new-session creation
 (ctx.context.newSession), reads the stayzy_guest_id cookie via ctx.getCookie
         ↓
-Re-points every guest-scoped row matching that session_token to the new user_id
-(recent-search.service.ts's mergeGuestRecentSearches; favorite.service.ts's
-equivalent will hook in the same place)
+Re-points every guest-scoped row matching that session_token to the new user_id —
+recent-search.service.ts's mergeGuestRecentSearches and favorite.service.ts's
+mergeGuestFavorites both run here (Promise.all, independent of each other)
         ↓
 ctx.setCookie clears stayzy_guest_id; the data is now fully account-scoped
 ```
 
-The merge runs from this single server-side hook rather than a frontend call after login — it fires identically for email/password sign-in/up and the Google OAuth callback (which redirects straight to `/` with no custom callback page), so there's exactly one place that ever needs to know about guest→account merging. This pattern was established in Feature 10 for `recent_searches`; Feature 17 (Favorites) reuses the same hook rather than adding a second one.
+The merge runs from this single server-side hook rather than a frontend call after login — it fires identically for email/password sign-in/up and the Google OAuth callback (which redirects straight to `/` with no custom callback page), so there's exactly one place that ever needs to know about guest→account merging. This pattern was established in Feature 10 for `recent_searches`; Feature 17 (Favorites) reuses the same hook.
+
+`favorites.queries.ts`'s `mergeGuestFavorites` can't be the same blind `UPDATE` `recent_searches` uses, though: `favorites` has a partial unique index on `(user_id, hotel_id)`, so if the logging-in account already favorited a hotel in a prior session, a blind re-point would throw a unique-violation. The merge runs inside a transaction that first deletes any guest-scoped row whose `hotel_id` already exists under the account (the account's existing favorite wins), then re-points the rest.
+
+### Favorites (Feature 17)
+
+```
+GET /favorites/hotel-ids (bulk, id-only) or GET /favorites (full card data)
+        ↓
+resolveOwner(req, res) — same util recent-searches/reviews use — resolves to
+either the logged-in user_id or the stayzy_guest_id cookie (minted on first use)
+        ↓
+favorites.queries.ts's findFavoriteHotelIds / findFavoritesForOwner —
+the latter joins hotels and adds two correlated subqueries (same "hotels"."id"-
+qualification pattern as hotels.queries.ts's listHotels/findSimilarHotels):
+mainImageUrl and fromPrice (MIN(room_types.base_price)::float8 — cast to float8
+since raw numeric-aggregate sql fragments otherwise come back from the pg driver
+as strings, unlike declared numeric(mode:"number") columns)
+        ↓
+Frontend: useFavoriteHotelIds() fetches the id set once per page (SearchPageContent,
+HotelDetailsContent — same lifting pattern useSearchCatalogs established) and
+threads favoritedIds/onToggleFavorite down as props to every HotelCard/MapView
+render, so a results page with many cards fires one fetch, not one per card.
+Toggling is optimistic (flips immediately, reverts on a failed response).
+        ↓
+POST /favorites { hotelId } / DELETE /favorites/:hotelId — addFavorite is
+idempotent server-side (a unique-violation on the partial index, surfaced via
+DrizzleQueryError's .cause.code — not .code itself — is caught and swallowed)
+```
+
+`/favorites` itself uses a separate hook, `useFavoritesList()` — full card data plus local-list removal on unfavorite — rather than reusing `useFavoriteHotelIds()`, since the two pages need different shapes (an id set to cross-reference vs. full cards to render and remove from directly).
 
 ### Admin Hotel Management
 
