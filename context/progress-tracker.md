@@ -23,11 +23,11 @@ After completing any feature:
 
 ## Current Status
 
-**Phase:** 3 — Hotel Details
-**Current feature:** 16 Reviews Display
-**Next up:** 16 Reviews Display — read `build-plan.md`'s section for it (`GET /hotels/:id/reviews`, aggregate rating breakdown + individual reviews list on hotel details).
+**Phase:** 4 — Favorites + Compare
+**Current feature:** 17 Favorites
+**Next up:** 17 Favorites — read `build-plan.md`'s section for it (favorite toggle on hotel cards/details, guest favorites via session cookie, `/favorites` page, guest→account merge on login/signup reusing the Feature 10 `hooks.after` merge point).
 **Blocking issues:** None. Real S3 credentials (`S3_BUCKET`/`S3_REGION`/`S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY`) confirmed working (developer-tested).
-**Latest completed addition:** 15 Similar Hotels — 2026-07-11.
+**Latest completed addition:** 16 Reviews Display — 2026-07-11.
 
 ---
 
@@ -56,7 +56,7 @@ After completing any feature:
 - [x] 13 Room selection
 - [x] 14 Map integration
 - [x] 15 Similar hotels
-- [ ] 16 Reviews display
+- [x] 16 Reviews display
 
 ### Phase 4 — Favorites + Compare
 
@@ -102,6 +102,12 @@ Not broken into features yet — planning starts after Phase 9 is complete and s
 ---
 
 ## Completed Features
+
+### ✅ 16 Reviews Display — completed 2026-07-11
+Notes: New public `GET /hotels/:id/reviews?page&pageSize` (`hotels.controller.ts`'s `getHotelReviews`, mounted alongside `/similar`/`/room-types` in `hotels.routes.ts`) computes an aggregate rating breakdown (per-star histogram, 1–5) and a paginated reviews list live from the `reviews` table, falling back to the hotel's own stored `averageRating`/`reviewCount` (empty breakdown/list) when a hotel has no real review rows — a real fallback need, not hypothetical, since Booking Creation (Feature 19) and Review Creation (Feature 24) don't exist yet, so no `reviews` rows exist anywhere by default. New `review.service.ts`'s `getHotelReviews` (backed by new `reviews.queries.ts`'s `countReviewsByHotel`/`getRatingBreakdown`/`findReviewsByHotel`, the latter joining `user` for reviewer `name`/`avatarUrl`) never writes back to `hotels` — the average/count are always computed at read time. Frontend: new `features/reviews/` (first real usage of the folder `architecture.md` had scaffolded but empty) — `useHotelReviews.ts` (same `forId`-comparison pattern as `useSimilarHotels`/`useHotelDetails` to avoid the `react-hooks/set-state-in-effect` trap), `RatingBreakdown.tsx` (average + `StarRating` + a 5-bar histogram on the `rating-star` gold token), `ReviewListItem.tsx` (reviewer avatar — real image or a `UserIcon` fallback circle; first real avatar-image rendering anywhere in the app, `AccountMenu`'s existing fallback pattern never actually branched on a real `avatarUrl`), `ReviewsSection.tsx` (Card-panel wrapper using a real `EmptyState` — "No reviews yet" — matching `RoomSelectionSection`'s precedent rather than `SimilarHotelsSection`'s render-nothing one, since reviews are primary page content). Pagination is a "Load more" button that appends the next page's results to accumulated client state, not the shared numbered `Pagination` component (that swaps pages rather than accumulating); default `pageSize` 5. Wired into `HotelDetailsContent.tsx` between `PoliciesSection` and `SimilarHotelsSection`, matching `ui-rules.md`'s already-locked Hotel Details Layout spec ("description, amenities, room list, reviews, similar hotels") — the first feature to actually place a section against that ordering, since Features 14/15 had left `SimilarHotelsSection` last with nothing after it yet.
+Seed data: `reviews.booking_id` is a required, unique FK to `bookings`, but no booking-creation flow exists until Feature 19 — `seed.ts` gained 3 additive-only demo reviewer `user` rows (fixed ids, `onConflictDoNothing` for idempotent re-seeds) and 8 synthetic `bookings`+`reviews` rows across 2 of the 5 seeded hotels (Hotel Marais Charme: 6 reviews, spanning more than one page to exercise "Load more" for real; Midtown Manhattan Hotel: 2). The other 3 hotels intentionally get none, to exercise the empty-state path. No existing `hotels` or `user` rows are ever modified — confirmed via a second `pnpm seed` run producing identical output.
+Decision (confirmed with the developer before building, `/architect`): live-compute the breakdown/average from real `reviews` with a stored-field fallback, rather than writing back to `hotels.averageRating`/`reviewCount` from the seed script — the developer explicitly didn't want the seed script touching existing hotel records. Accepted tradeoff: the page header (Feature 12, unchanged) reads `hotels.averageRating`/`reviewCount` directly and can show a different number than this section for the 2 hotels with seeded reviews (e.g. header "0.0 · 0 reviews" while the section below shows "4.3 · 6 reviews") until Feature 24 keeps `hotels` in sync with real review writes.
+Verified end-to-end: `tsc --noEmit`/`pnpm build` clean for backend; `tsc --noEmit`/`eslint`/`next build` clean for frontend. `pnpm seed` run twice back-to-back confirmed idempotent (no duplicate-key errors, identical row counts). Direct `curl` against the real seeded DB confirmed: Hotel Marais Charme returns a 4.3 average, correct `{1:0,2:0,3:1,4:2,5:3}` breakdown, page 1 returns 5 reviews newest-first, page 2 returns the 6th; Le Louvre Riverside (no seeded reviews) returns the stored-fallback shape (`0`/`0`, empty breakdown/list). Real headless-browser pass (Playwright, scratchpad ad hoc): Hotel Marais Charme renders the breakdown bars and, after clicking "Load more" once, all 6 reviews (button then correctly disappears); Le Louvre Riverside renders the "No reviews yet" empty state instead. 390px mobile viewport confirmed no horizontal overflow. Zero console errors across every scenario.
 
 ### ✅ Admin manual location override (post-Feature-07 enhancement) — completed 2026-07-11
 Notes: Developer-requested improvement to Feature 07's admin hotel geocoding — the Mapbox address→lat/lng geocode can be slightly off (rooftop vs. street centroid), so admins can now drag a pin to the exact spot instead of being stuck with whatever the geocoder returned. Kept additive rather than replacing geocoding: `hotelInputSchema` (`backend/src/types/hotel.schemas.ts`) gains optional `latitude`/`longitude`; `hotel.service.ts`'s new `hasManualCoordinates()` guard is checked first in both `createHotel` and `updateHotelById` — when both are present, they're used directly and the `geocodingProvider.geocode(...)` call (and, on update, the existing "did the address change" re-geocode check) is skipped entirely; when absent, both functions behave exactly as before Feature 07 shipped them. `GeocodingProvider` itself is untouched — no new abstraction. Admin flow (confirmed during a short `/architect`-style exchange with the developer, not a full session): geocode-first-then-adjust, not manual-only — create mode still geocodes from the address exactly as today and shows no picker (there's no hotel row/coordinates to show a pin for yet); a new `HotelLocationPicker` (`frontend-admin/src/features/hotels/components/`) appears only in edit mode, seeded from the hotel's current (geocoded or previously-adjusted) `latitude`/`longitude`. Built by copying `frontend/`'s existing `LocationMapPanel.tsx` map setup almost directly and adding `draggable` + `onDragEnd` to the `Marker` — no new map abstraction, same `mapStyle`, same pin visuals. `react-map-gl`/`mapbox-gl` added to `frontend-admin` for the first time (previously only in `frontend/`) at the same versions already in use there; new `VITE_MAPBOX_ACCESS_TOKEN` env var (reuses the same public Mapbox token already shipped in `frontend/`'s client bundle via `NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN` — same public-scoped `pk.` token, no new secret). `HotelFormPage.tsx`'s `form.latitude`/`form.longitude` are populated from the loaded hotel in edit mode and flow through the existing `body: form` update-mutation call unchanged — no new submit-handling code.
@@ -185,6 +191,21 @@ Decision: [what was decided]
 Reason: [why]
 Impact: [what files or components this affects]
 ```
+
+### 16 Reviews Display — 2026-07-11
+Decision: `GET /hotels/:id/reviews` computes the rating breakdown/average live from real `reviews` rows, falling back to the hotel's stored `averageRating`/`reviewCount` (empty breakdown/list) when none exist — never writes back to `hotels`.
+Reason: Booking/Review Creation (Features 19/24) don't exist yet, so no real review rows exist by default; the developer explicitly didn't want the seed script (or this endpoint) modifying existing `hotels` rows to fake consistency. The page header (Feature 12) can therefore show a different number than this section for the hotels with seeded reviews until Feature 24 ships and keeps `hotels` in sync for real — an accepted, temporary cosmetic gap.
+Impact: `backend/src/services/review.service.ts` (new), `backend/src/queries/reviews.queries.ts` (new). No changes to `hotel.service.ts`/`hotels.queries.ts`/the Feature 12 header.
+
+### 16 Reviews Display — 2026-07-11
+Decision: Seed data for reviews (demo reviewer `user` rows + synthetic `bookings`) is additive-only and scoped to 2 of the 5 hotels, not all 5.
+Reason: `reviews.booking_id` requires a real booking row that no booking-creation flow exists to produce yet; inserting synthetic bookings directly in `seed.ts` was the only way to get testable review data before Feature 19. Limiting it to 2 hotels (one with more than a page's worth of reviews) keeps a real "zero reviews" case to exercise the empty state, and exercises "Load more" pagination across a real page boundary.
+Impact: `backend/src/config/seed.ts` (`DEMO_REVIEWERS`, `REVIEWS`, `seedDemoReviewers`, `seedReviews`; `seedHotels` now returns a `hotelId`/`roomTypeId` map by slug for these to consume).
+
+### 16 Reviews Display — 2026-07-11
+Decision: Reviews use a "Load more" button that accumulates results client-side, not the shared numbered `Pagination` component.
+Reason: `Pagination` (search results, `frontend/components/common/Pagination.tsx`) swaps the visible page on click; a reviews list reads better as content accumulating underneath what's already shown. Confirmed with the developer during `/architect` before building.
+Impact: `frontend/features/reviews/hooks/useHotelReviews.ts` (new — `loadMore`/`hasMore`/accumulated `items` state), `frontend/features/reviews/components/ReviewsSection.tsx` (new). The backend endpoint's `page`/`pageSize` shape otherwise matches `/search`'s, so a numbered-pagination UI could still be swapped in later without a backend change.
 
 ### Admin manual location override — 2026-07-11
 Decision: Admins can override the geocoded `latitude`/`longitude` by dragging a pin on the hotel edit page (`HotelLocationPicker`), rather than being stuck with whatever Mapbox's address geocode returned. Geocoding stays the default on create (no picker exists until a hotel row exists); the override only ever fires on `updateHotelById` once an admin has actually dragged the pin, via a `hasManualCoordinates()` check in `hotel.service.ts` that takes priority over both the geocode call and the existing address-changed re-geocode check.
@@ -516,6 +537,11 @@ Built: [what was completed]
 Left off: [exactly where the session ended]
 Next session starts with: [first thing to do next time]
 ```
+
+### Session — 2026-07-11 (2)
+Built: Feature 16 Reviews Display, in full — see Completed Features and Architecture Decisions above (live-compute-with-fallback rating breakdown/list, the additive-only synthetic-bookings seed approach, and the "Load more" pagination decision).
+Left off: Verified end-to-end — `pnpm seed` run twice back-to-back confirmed idempotent, direct `curl` against the real seeded DB confirmed both the real-review and stored-fallback response shapes, and a real Playwright pass confirmed the breakdown/list/"Load more"/empty-state all render correctly with zero console errors at desktop and 390px mobile widths. `tsc --noEmit`/`pnpm build` clean for backend; `tsc --noEmit`/`eslint`/`next build` clean for frontend. Dev servers left running (`backend` :4000, `frontend` :3000, `frontend-admin` :5173).
+Next session starts with: Feature 17 Favorites — read `build-plan.md`'s section for it (favorite toggle on hotel cards/details, guest favorites via session cookie, `/favorites` page, guest→account merge reusing the Feature 10 `hooks.after` merge point in `config/auth.ts`).
 
 ### Session — 2026-07-07
 Built: Infra migration, not a numbered feature — moved the entire backend data layer from raw `pg` to Drizzle ORM, with a full clean-slate local DB rebuild and hand-rolled migration downgrade support on top of drizzle-kit. See Architecture Decisions above for the full breakdown (schema files, `drizzleAdapter` wiring for both better-auth instances, the `geographyPoint` customType, and the `migrate`/`migrate:down` mechanism).

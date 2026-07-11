@@ -60,7 +60,7 @@ backend/
 │   │   ├── search-suggestions.routes.ts → public GET ?q= — destination-input autocomplete (recent + place matches)
 │   │   ├── bookings.routes.ts
 │   │   ├── payments.routes.ts           → PaymentIntent creation
-│   │   ├── reviews.routes.ts
+│   │   ├── reviews.routes.ts            → review submission (Feature 24, not yet built) — GET /hotels/:id/reviews (Feature 16, read-only) lives in hotels.routes.ts instead, alongside /similar/room-types
 │   │   ├── favorites.routes.ts
 │   │   └── admin/
 │   │       ├── auth.routes.ts
@@ -376,6 +376,35 @@ as a card grid in HotelDetailsContent's main column, after PoliciesSection
 context exists on this page, so pricing isn't computed or shown)
 ```
 
+### Reviews — Display (Feature 16)
+
+```
+GET /hotels/:id/reviews?page&pageSize
+        ↓
+hotels.controller.ts's getHotelReviews calls getPublishedHotelDetails(id)
+first (same 404-check every other hotel-details endpoint does)
+        ↓
+review.service.ts's getHotelReviews counts real reviews.hotelId rows first
+        ↓
+count === 0 (no booking/review flow has run for this hotel yet — Features
+19/24 aren't built) → returns the hotel's own stored averageRating/
+reviewCount as-is, with an empty breakdown/list — never written back to
+hotels, purely a read-time fallback
+        ↓
+count > 0 → reviews.queries.ts's getRatingBreakdown (GROUP BY rating) and
+findReviewsByHotel (joins user for reviewer name/avatarUrl, ORDER BY
+created_at DESC, LIMIT/OFFSET by page/pageSize) run in parallel; the
+average is computed from the breakdown at read time, not read off hotels
+        ↓
+ReviewsSection (frontend/features/reviews/) renders the breakdown + list in
+HotelDetailsContent's main column, between PoliciesSection and
+SimilarHotelsSection (ui-rules.md's locked section order) — a real
+EmptyState ("No reviews yet") when reviewCount is 0, a "Load more" button
+that accumulates subsequent pages otherwise
+```
+
+Because `hotels.averageRating`/`reviewCount` are never written by this read path, the number shown in the page header (Feature 12, reads `hotels` directly) can differ from this section's live-computed number for any hotel with real reviews, until Feature 24 ships and starts keeping `hotels` in sync on every review write (see the "Reviews — Submission" flow above and `progress-tracker.md`'s Feature 16 Architecture Decisions).
+
 ### Booking + Payment
 
 ```
@@ -396,7 +425,7 @@ Booking only ever becomes "confirmed" from the webhook — never from the client
 
 A booking that never receives a webhook confirmation within a short expiry window is swept back to `cancelled` by a scheduled cleanup job, releasing its held inventory.
 
-### Reviews
+### Reviews — Submission (Feature 24, not yet built)
 
 ```
 Booking reaches status completed (check-out date has passed, booking wasn't cancelled)
