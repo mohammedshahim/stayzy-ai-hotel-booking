@@ -1,50 +1,47 @@
-# Memory — Feature 15 (Similar Hotels) + Admin Manual Location Override
+# Memory — Feature 16 (Reviews Display) + surfaced rating-consistency gap
 
 Last updated: 2026-07-11
 
 ## What was built
 
-**Feature 15 — Similar Hotels:**
-- Backend: `GET /hotels/:id/similar` (`hotels.controller.ts`'s `getHotelSimilar`, `hotels.routes.ts`) — returns up to 6 other published hotels in the same `city`+`country` as the given hotel, excluding itself, ordered by `ST_Distance` only (no rating in ranking). New `findSimilarHotels` in `hotels.queries.ts`, thin passthrough `getSimilarHotels` in `hotel.service.ts`. New `SimilarHotel` type in `backend/src/models/hotel.schema.ts`.
-- Frontend: `frontend/features/hotel-details/hooks/useSimilarHotels.ts`, `components/{SimilarHotelCard,SimilarHotelsSection}.tsx` (new), wired into `HotelDetailsContent.tsx`'s main column after `PoliciesSection`. New `SimilarHotel` type in `frontend/features/hotel-details/types.ts`.
-- Renders nothing (no heading, no empty state) when a hotel has no siblings in its city — confirmed intentional via real test (lone New York hotel).
-
-**Admin manual location override (post-Feature-07 enhancement):**
-- Backend: `hotelInputSchema` (`backend/src/types/hotel.schemas.ts`) gained optional `latitude`/`longitude`. `hotel.service.ts`'s new `hasManualCoordinates()` guard makes `createHotel`/`updateHotelById` use explicit coordinates when both are provided, skipping the Mapbox geocode call entirely; falls back to the original address-geocode behavior otherwise.
-- Admin frontend: new `frontend-admin/src/features/hotels/components/HotelLocationPicker.tsx` — a draggable-pin `react-map-gl` map, edit-mode-only (no picker on create; create still geocodes from the address as before). Wired into `HotelFormPage.tsx` right after the address fields. `HotelFormInput` (`frontend-admin/src/features/hotels/types.ts`) gained optional `latitude`/`longitude`.
-- New dependency: `react-map-gl`/`mapbox-gl` added to `frontend-admin` for the first time (same versions as `frontend/`). New `VITE_MAPBOX_ACCESS_TOKEN` env var in `frontend-admin/.env` + `.env.example` — reuses the same public Mapbox token already shipped in `frontend/`'s bundle (not a new secret).
-
-**Docs updated:** `context/progress-tracker.md` (Feature 15 marked complete, admin override logged as a post-Feature-07 enhancement, two new Architecture Decision entries, next up set to Feature 16 Reviews Display), `context/ui-registry.md` (`SimilarHotelsSection`/`SimilarHotelCard` and `HotelLocationPicker` entries added), `context/architecture.md` (new "Similar Hotels" data-flow section), `context/code-standards.md` (new `frontend-admin` dependency, `VITE_MAPBOX_ACCESS_TOKEN` env var row, and backfilled a pre-existing gap: `NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN` for `frontend/` was never in the env var table despite being used since Feature 06).
+**Feature 16 — Reviews Display:**
+- Backend: `GET /hotels/:id/reviews?page&pageSize` (`hotels.controller.ts`'s `getHotelReviews`, mounted in `hotels.routes.ts` alongside `/similar`/`/room-types`). New `backend/src/services/review.service.ts` (`getHotelReviews`) and `backend/src/queries/reviews.queries.ts` (`countReviewsByHotel`, `getRatingBreakdown`, `findReviewsByHotel` — the last joins `user` for reviewer name/avatar). New `backend/src/types/review.schemas.ts` (`hotelReviewsQuerySchema`, page/pageSize, default pageSize 5). New response types in `backend/src/models/booking.schema.ts`: `ReviewListItem`, `RatingBreakdown`, `PaginatedReviews`, `HotelReviewsResult`.
+- Frontend: new `frontend/features/reviews/` — `hooks/useHotelReviews.ts` (fetch page 1 on mount, `loadMore()`/`hasMore` accumulate subsequent pages), `components/{RatingBreakdown,ReviewListItem,ReviewsSection}.tsx`. New types in `frontend/features/hotel-details/types.ts` (`Review`, `RatingBreakdown`, `PaginatedReviews`, `HotelReviewsResult`). Wired into `HotelDetailsContent.tsx` **between `PoliciesSection` and `SimilarHotelsSection`** — matches `ui-rules.md`'s already-locked Hotel Details Layout order ("description, amenities, room list, reviews, similar hotels"), which the two prior features (14/15) hadn't actually needed to follow yet since nothing came after Similar Hotels before.
+- Seed data: `backend/src/config/seed.ts` gained 3 additive-only demo reviewer `user` rows (fixed ids, `onConflictDoNothing`) and 8 synthetic `bookings`+`reviews` rows across 2 of the 5 hotels (Hotel Marais Charme: 6 reviews spanning 2 pages; Midtown Manhattan Hotel: 2 reviews). The other 3 hotels intentionally have zero reviews to exercise the empty state. `seedHotels` now returns a `Map<slug, {hotelId, roomTypeId}>` for the new `seedReviews` to consume. Confirmed idempotent (`pnpm seed` run twice, identical output).
+- Docs updated: `context/progress-tracker.md` (Completed Features entry, 3 new Architecture Decisions, Session Notes entry, Current Status now pointing at Phase 4 / Feature 17 Favorites), `context/ui-registry.md` (new `ReviewsSection`/`RatingBreakdown`/`ReviewListItem` entry), `context/architecture.md` (new "Reviews — Display (Feature 16)" data-flow section; renamed the pre-existing aspirational one to "Reviews — Submission (Feature 24, not yet built)" to disambiguate; annotated the `reviews.routes.ts` file-tree line to note Feature 16's endpoint actually lives in `hotels.routes.ts`).
 
 ## Decisions made
 
-- Similar Hotels ranks by distance only, no rating tiebreak or blended score — explicit developer steer to keep it simple; revisit only if actually needed later.
-- "Same destination" scoped to exact `city`+`country` match, not a PostGIS radius (`ST_DWithin`) — simpler, and the city/country filter already bounds the result set before the GiST-indexed distance sort runs.
-- New `SimilarHotelCard` built instead of reusing search's `HotelCard` — that component requires an `onLocate` prop (no map to sync with here) and carries price/room-type fields with no dates/party-size context on the hotel details page.
-- Admin location override is geocode-then-adjust, not manual-entry-only — create mode still geocodes from the address (fast default), drag-to-fine-tune only appears once a hotel exists to show a pin for (edit mode). Kept purely additive — no changes to the `GeocodingProvider` interface.
+- `GET /hotels/:id/reviews` computes the rating breakdown/average **live** from real `reviews` rows, falling back to the hotel's stored `hotels.averageRating`/`reviewCount` (empty breakdown/list) when none exist — **never writes back to `hotels`**. Confirmed explicitly with the developer: the seed script/endpoint must not modify or delete any existing hotel records.
+- Pagination is a "Load more" button (accumulates pages client-side), not the shared numbered `Pagination` component — that component swaps the visible page rather than accumulating, which reads wrong for a reviews list. Confirmed with the developer before building.
+- Empty state (hotel with zero real reviews) uses the locked `EmptyState` pattern ("No reviews yet"), not the render-nothing precedent `SimilarHotelsSection` uses — reviews are primary page content, not a supplementary recommendation. Confirmed with the developer.
+- **Known, explicitly accepted tradeoff going in:** because the endpoint never writes to `hotels`, the hotel details page header (Feature 12, unchanged) and search-results cards (Feature 09, unchanged) still read `hotels.averageRating`/`reviewCount` directly — which is frozen at 0 for every hotel (including the 2 with real seeded reviews) since nothing has ever written a real value there. Developer said "im ok with that" when this was raised during `/architect`, before seeing it live.
 
 ## Problems solved
 
-- None that took real debugging. The only non-trivial part was confirming the admin Vite dev server needed a restart to pick up the newly-created `frontend-admin/.env` file (Vite only reads `.env` at startup) — restarted it as part of verification, not a bug in the code itself.
+- The seed data ordering problem: `reviews.booking_id` is a required, unique FK to `bookings`, but Booking Creation (Feature 19) doesn't exist yet. Solved by having `seed.ts` insert synthetic demo-reviewer `user` rows + synthetic `bookings` rows purely to satisfy the FK chain — additive-only, no existing rows touched, idempotent via `onConflictDoNothing` on the `user` inserts (the `bookings`/`reviews` inserts are naturally idempotent since they get swept up in the existing `TRUNCATE ... CASCADE` on `hotels` and recreated fresh each run).
+- Avoided the `react-hooks/set-state-in-effect` ESLint trap in `useHotelReviews.ts` by matching `useSimilarHotels.ts`'s exact `forId`-comparison pattern (no synchronous `setState` at the top of the effect) instead of resetting state before the fetch.
 
 ## Current state
 
-Both pieces of work are fully built, verified, and documented — but **uncommitted**. The developer was asked at the end of the last response whether to commit; no reply yet.
+Feature 16 is fully built, verified, and documented — **uncommitted**. Verified end-to-end: `tsc --noEmit`/`pnpm build` clean (backend), `tsc --noEmit`/`eslint`/`next build` clean (frontend), `pnpm seed` idempotent on repeat, direct `curl` confirmed both the real-review and stored-fallback response shapes, real Playwright pass confirmed the breakdown/pagination/"Load more"/empty-state render correctly with zero console errors at desktop and 390px mobile widths.
 
-Verified end-to-end for both:
-- Backend `tsc --noEmit` + `pnpm build`, frontend `tsc --noEmit`/`eslint`/`next build`, frontend-admin `tsc --noEmit`/`vite build` — all clean.
-- Similar Hotels: direct `curl` against real seeded data confirmed correct siblings/ordering/empty-case/404; real Playwright pass at desktop + mobile widths, zero real console errors.
-- Admin location override: real Playwright pass — logged into the admin panel with the seeded admin account, opened a real hotel (Grand Mercure Dubai City), confirmed real Mapbox tiles rendered, dragged the pin, saved, and confirmed via direct `curl` afterward that the exact dragged coordinates persisted (not the original geocoded ones); reload showed the map still centered on the new position.
+**A `/review` pass surfaced a real, if previously-agreed-to, UX problem** (not yet fixed, no decision made on which option to take): the accepted header/listing-card mismatch is more jarring in practice than anticipated — on Hotel Marais Charme's own details page, the header reads "0.0 Pleasant · 0 reviews" while the accurate Reviews section a few hundred pixels below reads "4.3 · 6 reviews" for the exact same hotel. The same stale `hotels.averageRating`/`reviewCount` also affects `/search` result cards and `SimilarHotelsSection` cards (all read `hotels.averageRating`/`reviewCount` directly, none touched by Feature 16). Confirmed the "Pleasant" label itself is not a bug — it's a normal derived qualitative tier (`getGuestRatingLabel()` in `frontend/features/search/lib/guest-rating.ts`, not a stored field) that will work correctly once the underlying number is real; it just looks broken today because every hotel is stuck at `0.0`.
 
-Dev servers were left running: backend :4000, frontend :3000, frontend-admin :5173 (restarted mid-session to pick up the new env var) — may or may not still be up depending on machine state between sessions.
+Three remediation options were presented to the developer, none implemented yet:
+1. Leave as-is until Feature 24 (real review submission) naturally starts keeping `hotels` in sync.
+2. Fix just the hotel details page header (`GET /hotels/:id`, Feature 12) to prefer live-computed numbers when real reviews exist for that hotel — smallest fix for the most visible inconsistency.
+3. Fix everywhere — also extend live-compute-with-fallback to `/search` (Feature 09) and `SimilarHotelsSection` — larger blast radius, touches two previously-shipped, previously-reviewed features.
+
+Dev servers were left running: backend :4000, frontend :3000, frontend-admin :5173 — may or may not still be up depending on machine state between sessions.
 
 ## Next session starts with
 
-Two options depending on developer preference:
-1. Commit the Feature 15 + admin-override changes (was asked, unanswered).
-2. Feature 16 — Reviews Display, per `progress-tracker.md`'s "Next up": `GET /hotels/:id/reviews` (aggregate rating breakdown + individual reviews list) rendered on hotel details, below `SimilarHotelsSection`. Review creation itself is Phase 6 (Feature 24) — Feature 16 is display-only, reviews are seeded/existing data.
+Ask the developer which remediation option (1/2/3 above) they want for the rating-consistency gap before doing anything else — this was left as an open decision, not yet answered. Once resolved (or explicitly deferred), the next options are:
+- Commit Feature 16 (and whichever remediation was chosen).
+- Feature 17 — Favorites, per `progress-tracker.md`'s "Next up": favorite toggle on hotel cards/details, guest favorites via session cookie, `/favorites` page, guest→account merge reusing the Feature 10 `hooks.after` merge point in `config/auth.ts`.
 
 ## Open questions
 
-- Whether to commit the current uncommitted changes — ask at the start of next session if not already resolved.
-- None else outstanding; both pieces of work were fully resolved within this session (no deferred decisions).
+- Which of the 3 rating-consistency remediation options (if any) the developer wants — unresolved, surfaced this session via `/review`, no decision made yet.
+- Whether to commit the current uncommitted Feature 16 changes — not yet asked this session (differs from last session, where committing was the explicit open question; this time the rating-consistency question takes priority since it may change what gets committed).
