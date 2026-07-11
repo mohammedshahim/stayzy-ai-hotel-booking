@@ -59,6 +59,32 @@ export type SimilarHotel = {
   mainImageUrl: string | null;
 };
 
+// Shape returned by GET /hotels/:id/reviews — mirrors backend's HotelReviewsResult.
+export type Review = {
+  id: string;
+  rating: number;
+  description: string;
+  createdAt: string;
+  reviewerName: string;
+  reviewerAvatarUrl: string | null;
+};
+
+export type RatingBreakdown = Record<1 | 2 | 3 | 4 | 5, number>;
+
+export type PaginatedReviews = {
+  data: Review[];
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
+export type HotelReviewsResult = {
+  averageRating: number;
+  reviewCount: number;
+  breakdown: RatingBreakdown;
+  reviews: PaginatedReviews;
+};
+
 export type RoomTypeFeature = {
   id: string;
   name: string;
