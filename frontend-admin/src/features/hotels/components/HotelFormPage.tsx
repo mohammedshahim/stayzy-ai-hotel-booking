@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AmenitiesPicker } from "@/features/hotels/components/AmenitiesPicker";
 import { HotelImagesManager } from "@/features/hotels/components/HotelImagesManager";
+import { HotelLocationPicker } from "@/features/hotels/components/HotelLocationPicker";
 import { RoomTypesSection } from "@/features/room-types/components/RoomTypesSection";
 import { useCreateHotelMutation, useGetHotelQuery, useUpdateHotelMutation } from "@/features/hotels/hotelsApi";
 import type { HotelFormInput } from "@/features/hotels/types";
@@ -59,6 +60,8 @@ export function HotelFormPage() {
       state: hotel.state ?? "",
       country: hotel.country,
       postalCode: hotel.postalCode ?? "",
+      latitude: hotel.latitude,
+      longitude: hotel.longitude,
       starRating: hotel.starRating,
       checkInTime: hotel.checkInTime,
       checkOutTime: hotel.checkOutTime,
@@ -172,6 +175,19 @@ export function HotelFormPage() {
                 <Label htmlFor="postalCode">Postal code (optional)</Label>
                 <Input id="postalCode" value={form.postalCode} onChange={inputHandler("postalCode")} className={INPUT_CLASS} />
               </div>
+
+              {isEditMode && form.latitude !== undefined && form.longitude !== undefined && (
+                <div className="flex flex-col gap-1.5 sm:col-span-2">
+                  <Label>Location (drag the pin to fine-tune)</Label>
+                  <HotelLocationPicker
+                    latitude={form.latitude}
+                    longitude={form.longitude}
+                    onChange={(latitude, longitude) =>
+                      setForm((current) => ({ ...current, latitude, longitude }))
+                    }
+                  />
+                </div>
+              )}
 
               <div className="flex flex-col gap-1.5">
                 <Label>Star rating</Label>
