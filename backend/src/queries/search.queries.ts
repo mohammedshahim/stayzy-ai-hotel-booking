@@ -1,7 +1,8 @@
-import { and, eq, gte, ilike, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, eq, gt, gte, ilike, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { db } from "../config/db";
 import { amenities, hotelAmenities, hotelImages, hotels } from "../models/hotel.schema";
 import { rateOverrides, roomTypeFeatures, roomTypes } from "../models/room-type.schema";
+import { bookings } from "../models/booking.schema";
 
 export interface HotelSearchFilters {
   destination: string;
@@ -127,6 +128,11 @@ export async function findCandidateRoomTypes(filters: RoomTypeSearchFilters): Pr
     );
 }
 
+// Accepted by queries that also need to run inside booking.service.ts's insert transaction
+// (a `tx` handle) rather than always against the top-level `db` pool.
+type TransactionHandle = Parameters<Parameters<typeof db.transaction>[0]>[0];
+export type QueryExecutor = typeof db | TransactionHandle;
+
 export interface RateOverrideRow {
   roomTypeId: string;
   date: string;
@@ -134,10 +140,14 @@ export interface RateOverrideRow {
   availableOverride: number | null;
 }
 
-export async function findRateOverridesForRoomTypes(roomTypeIds: string[], dates: string[]): Promise<RateOverrideRow[]> {
+export async function findRateOverridesForRoomTypes(
+  roomTypeIds: string[],
+  dates: string[],
+  executor: QueryExecutor = db,
+): Promise<RateOverrideRow[]> {
   if (roomTypeIds.length === 0 || dates.length === 0) return [];
 
-  return db
+  return executor
     .select({
       roomTypeId: rateOverrides.roomTypeId,
       date: rateOverrides.date,
@@ -146,4 +156,40 @@ export async function findRateOverridesForRoomTypes(roomTypeIds: string[], dates
     })
     .from(rateOverrides)
     .where(and(inArray(rateOverrides.roomTypeId, roomTypeIds), inArray(rateOverrides.date, dates)));
+}
+
+export interface OverlappingBookingRow {
+  roomTypeId: string;
+  checkIn: string;
+  checkOut: string;
+  roomsBooked: number;
+}
+
+// checkOut is exclusive (same convention as enumerateStayDates), so two ranges overlap
+// when existing.check_in < requested.checkOut AND existing.check_out > requested.checkIn.
+export async function findOverlappingBookings(
+  roomTypeIds: string[],
+  checkIn: string,
+  checkOut: string,
+  heldStatuses: string[],
+  executor: QueryExecutor = db,
+): Promise<OverlappingBookingRow[]> {
+  if (roomTypeIds.length === 0) return [];
+
+  return executor
+    .select({
+      roomTypeId: bookings.roomTypeId,
+      checkIn: bookings.checkIn,
+      checkOut: bookings.checkOut,
+      roomsBooked: bookings.roomsBooked,
+    })
+    .from(bookings)
+    .where(
+      and(
+        inArray(bookings.roomTypeId, roomTypeIds),
+        inArray(bookings.status, heldStatuses),
+        lt(bookings.checkIn, checkOut),
+        gt(bookings.checkOut, checkIn),
+      ),
+    );
 }

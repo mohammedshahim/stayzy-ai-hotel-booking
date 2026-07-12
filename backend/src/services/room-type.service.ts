@@ -17,8 +17,8 @@ import {
 } from "../queries/room-type-images.queries";
 import { deleteImageByUrl, uploadImage, type UploadableFile } from "./upload.service";
 import type { CreateRoomTypeInput, UpdateRoomTypeInput } from "../types/room-type.schemas";
-import { enumerateStayDates, resolveRoomTypeAvailability } from "./availability.service";
-import { findRateOverridesForRoomTypes } from "../queries/search.queries";
+import { enumerateStayDates, HELD_BOOKING_STATUSES, resolveRoomTypeAvailability } from "./availability.service";
+import { findOverlappingBookings, findRateOverridesForRoomTypes } from "../queries/search.queries";
 import { listMealPlansForPicker } from "./meal-plan.service";
 
 export interface RoomTypeWithDetails extends RoomType {
@@ -73,11 +73,12 @@ export async function listRoomTypesWithAvailability(
 
   const mealPlanNameById = new Map(mealPlans.map((mealPlan) => [mealPlan.id, mealPlan.name]));
   const stayDates = enumerateStayDates(params.checkIn, params.checkOut);
-  const overrides = await findRateOverridesForRoomTypes(
-    fittingRoomTypes.map((roomType) => roomType.id),
-    stayDates,
-  );
-  const availabilityByRoomType = resolveRoomTypeAvailability(fittingRoomTypes, stayDates, overrides);
+  const fittingRoomTypeIds = fittingRoomTypes.map((roomType) => roomType.id);
+  const [overrides, overlappingBookings] = await Promise.all([
+    findRateOverridesForRoomTypes(fittingRoomTypeIds, stayDates),
+    findOverlappingBookings(fittingRoomTypeIds, params.checkIn, params.checkOut, HELD_BOOKING_STATUSES),
+  ]);
+  const availabilityByRoomType = resolveRoomTypeAvailability(fittingRoomTypes, stayDates, overrides, overlappingBookings);
 
   return fittingRoomTypes
     .map((roomType) => {
