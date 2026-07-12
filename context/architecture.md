@@ -51,7 +51,7 @@ backend/
 │   ├── routes/
 │   │   ├── index.ts                     → mounts all routers
 │   │   ├── auth.routes.ts
-│   │   ├── hotels.routes.ts             → public hotel read endpoints
+│   │   ├── hotels.routes.ts             → public hotel read endpoints, plus GET /hotels/compare?ids= and GET /hotels/search-suggestions?q= (Feature 18 — both mounted before /:id)
 │   │   ├── search.routes.ts             → GET /search — destination + availability + filters + sort + pagination
 │   │   ├── amenities.routes.ts          → public GET — amenity id/name lookup for search filter options
 │   │   ├── room-features.routes.ts      → public GET — room feature id/name lookup for search filter options
@@ -129,8 +129,8 @@ frontend/
 │   │   ├── components/                           → FavoritesPageContent, FavoritesCard (Feature 17)
 │   │   └── hooks/                                → useFavoriteHotelIds (bulk id set + optimistic toggle, shared with HotelCard/hotel-details), useFavoritesList (full list + local removal, /favorites page only) — Feature 17
 │   ├── compare/
-│   │   ├── components/                           → CompareTray, CompareTable, ...
-│   │   └── hooks/                                → useCompareSelection (persisted client state)
+│   │   ├── components/                           → CompareProvider (Context, mounted in app/layout.tsx), CompareTray, CompareTraySpacer, CompareTable, CompareSearchBox, ComparePageContent, CompareNavIcon — Feature 18
+│   │   └── hooks/                                → useCompareSelection (Context consumer), useCompareHotels (shared fetch hook), useCompareSuggestions — Feature 18
 │   ├── booking/
 │   │   ├── components/                           → CheckoutSummary, StripePaymentForm, BookingCard, ...
 │   │   └── hooks/
@@ -487,6 +487,39 @@ DrizzleQueryError's .cause.code — not .code itself — is caught and swallowed
 ```
 
 `/favorites` itself uses a separate hook, `useFavoritesList()` — full card data plus local-list removal on unfavorite — rather than reusing `useFavoriteHotelIds()`, since the two pages need different shapes (an id set to cross-reference vs. full cards to render and remove from directly).
+
+### Compare Hotels (Feature 18)
+
+Client-only selection state — no backend `compare` table, no guest/account merge concept (nothing server-side to merge):
+
+```
+CompareProvider (React Context, mounted once in app/layout.tsx) holds
+ids: string[] only — no cached name/thumbnail/price — synced to
+localStorage on every change, hydrated from it in a useEffect on mount
+(not a lazy useState initializer, to avoid an SSR/client hydration
+mismatch — see the Feature 18 Architecture Decision)
+        ↓
+useCompareSelection() (Context consumer): ids / isSelected / isFull /
+add / remove / clear — read directly inside HotelCard, FavoritesCard,
+the hotel-details header, CompareNavIcon, and the compare page/tray,
+not threaded as props (unlike Favorites' fetch-backed hook, Context
+reads have no per-call fetch cost to worry about)
+        ↓
+Whenever ids changes, useCompareHotels(ids) — shared by CompareTray and
+the /compare table — fetches fresh from:
+GET /hotels/compare?ids=a,b,c
+        ↓
+hotels.queries.ts's findHotelsForCompare: published-only, re-sorted in
+hotel.service.ts's getHotelsForCompare to match the requested id order
+(SQL IN doesn't preserve it) — any id that's missing/unpublished/deleted
+is silently dropped from the response rather than erroring, so an
+already-selected hotel that gets unpublished mid-session just renders
+one fewer card next fetch, not an error state
+```
+
+The `/compare` page's own "add a hotel" search box hits a second new endpoint, `GET /hotels/search-suggestions?q=&excludeIds=` (`findHotelSearchSuggestions` — `ILIKE` across `name`/`city`/`country`, published-only, always returns hotel rows rather than the destination search's mixed place/hotel suggestion shape). Both new routes are mounted in `hotels.routes.ts` *before* `/:id`, since Express would otherwise match `/hotels/compare` and `/hotels/search-suggestions` as `:id` = `"compare"`/`"search-suggestions"`.
+
+Selection is capped at 4 hotels client-side (`CompareProvider`'s `MAX_COMPARE_HOTELS`); the backend's own `ids` cap (10, in `compare.schemas.ts`) is a separate, more generous sanity limit on the query itself, not the product-facing rule.
 
 ### Admin Hotel Management
 
