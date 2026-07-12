@@ -14,6 +14,7 @@ import { useRoomTypes } from "@/features/hotel-details/hooks/useRoomTypes";
 import { RoomTypeCard } from "@/features/hotel-details/components/RoomTypeCard";
 import { authClient } from "@/lib/auth-client";
 import { useCreateBooking } from "@/features/booking/hooks/useCreateBooking";
+import { defaultDateRange, todayIso, tomorrowIso } from "@/lib/date";
 import type { ResolvedRoomSelectionSearch, RoomSelectionSearch } from "@/features/hotel-details/types";
 
 type Props = {
@@ -21,27 +22,21 @@ type Props = {
   initialSearch: RoomSelectionSearch;
 };
 
-function toDateRange(search: RoomSelectionSearch): DateRange | undefined {
-  if (!search.checkIn && !search.checkOut) return undefined;
+// A still-empty date range defaults to today -> tomorrow (mirroring the backend's own
+// fallback) rather than leaving the picker on an ambiguous "Add dates" placeholder — the
+// user should always see (and Reserve against) concrete dates, never a silent default.
+function toDateRange(search: RoomSelectionSearch): DateRange {
+  if (!search.checkIn && !search.checkOut) return defaultDateRange();
   return {
     from: search.checkIn ? new Date(`${search.checkIn}T00:00:00`) : undefined,
     to: search.checkOut ? new Date(`${search.checkOut}T00:00:00`) : undefined,
   };
 }
 
-// Mirrors hotels.controller.ts's todayIso()/tomorrowIso() fallback, so a booking request
-// built from a still-null date range books the exact dates the room list was priced for.
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-function tomorrowIso(): string {
-  return new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-}
-
 export function RoomSelectionSection({ hotelId, initialSearch }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [dateRange, setDateRange] = useState<DateRange | undefined>(toDateRange(initialSearch));
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(() => toDateRange(initialSearch));
   const [guests, setGuests] = useState<GuestCounts>({
     adults: initialSearch.adults,
     kids: initialSearch.kids,

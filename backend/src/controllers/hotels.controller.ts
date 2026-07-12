@@ -6,14 +6,7 @@ import { roomTypeAvailabilityQuerySchema } from "../types/room-type.schemas";
 import { hotelReviewsQuerySchema } from "../types/review.schemas";
 import { compareHotelsQuerySchema, hotelSearchSuggestionsQuerySchema } from "../types/compare.schemas";
 import { requireParam } from "../utils/requireParam";
-
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function tomorrowIso(): string {
-  return new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-}
+import { todayIso, tomorrowIso } from "../utils/date";
 
 export async function getHotel(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {

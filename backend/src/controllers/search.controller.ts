@@ -3,14 +3,7 @@ import { searchQuerySchema } from "../types/search.schemas";
 import { searchHotels } from "../services/search.service";
 import { recordSearchIfChanged } from "../services/recent-search.service";
 import { resolveOwner } from "../utils/resolveOwner";
-
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function tomorrowIso(): string {
-  return new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-}
+import { todayIso, tomorrowIso } from "../utils/date";
 
 export async function search(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {

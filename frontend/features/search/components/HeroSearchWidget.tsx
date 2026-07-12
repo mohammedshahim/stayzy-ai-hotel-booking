@@ -10,13 +10,14 @@ import { Button } from "@/components/ui/button";
 import { DestinationInput } from "@/features/search/components/DestinationInput";
 import { DateRangePicker } from "@/features/search/components/DateRangePicker";
 import { GuestsRoomsPicker, type GuestCounts } from "@/features/search/components/GuestsRoomsPicker";
+import { defaultDateRange } from "@/lib/date";
 
 const DEFAULT_GUESTS: GuestCounts = { adults: 2, kids: 0, rooms: 1 };
 
 export function HeroSearchWidget() {
   const router = useRouter();
   const [destination, setDestination] = useState("");
-  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(defaultDateRange);
   const [guests, setGuests] = useState<GuestCounts>(DEFAULT_GUESTS);
 
   function handleSearch() {
