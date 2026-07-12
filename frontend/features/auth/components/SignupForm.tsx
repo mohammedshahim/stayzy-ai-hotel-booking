@@ -35,6 +35,7 @@ export function SignupForm() {
       return;
     }
     router.push("/verify-email");
+    router.refresh();
   }
 
   return (

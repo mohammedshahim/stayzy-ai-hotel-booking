@@ -30,6 +30,7 @@ export function LoginForm() {
       return;
     }
     router.push(searchParams.get("returnTo") ?? "/");
+    router.refresh();
   }
 
   return (
