@@ -1,18 +1,40 @@
+"use client";
+
 import { ImageOffIcon, ShieldCheckIcon, UsersIcon, UtensilsIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import type { RoomTypeAvailability } from "@/features/hotel-details/types";
+import { useReserveRoom } from "@/features/booking/hooks/useReserveRoom";
+import type { ResolvedRoomSelectionSearch, RoomTypeAvailability } from "@/features/hotel-details/types";
 
 type Props = {
   roomType: RoomTypeAvailability;
+  hotelId: string;
+  search: ResolvedRoomSelectionSearch;
 };
 
-export function RoomTypeCard({ roomType }: Props) {
+function buildLoginReturnUrl(hotelId: string, roomTypeId: string, search: ResolvedRoomSelectionSearch): string {
+  const params = new URLSearchParams({
+    checkIn: search.checkIn,
+    checkOut: search.checkOut,
+    adults: String(search.adults),
+    kids: String(search.kids),
+    rooms: String(search.rooms),
+    roomTypeId,
+    autoReserve: "1",
+  });
+  return `/hotels/${hotelId}?${params.toString()}`;
+}
+
+export function RoomTypeCard({ roomType, hotelId, search }: Props) {
+  const { reserve, isSubmitting, error, isSessionPending } = useReserveRoom();
   const mainImage = roomType.images.find((image) => image.isMain) ?? roomType.images[0] ?? null;
-  // Booking creation doesn't exist until Feature 19 — Reserve is always disabled; the label
-  // just distinguishes "not bookable because sold out" from "not bookable yet at all".
-  const buttonLabel = roomType.isSoldOut ? "Sold out" : "Coming soon";
+  const isDisabled = roomType.isSoldOut || isSubmitting || isSessionPending;
+  const buttonLabel = roomType.isSoldOut ? "Sold out" : isSubmitting ? "Reserving..." : "Reserve";
+
+  function handleReserve() {
+    void reserve(roomType.id, hotelId, search, buildLoginReturnUrl(hotelId, roomType.id, search));
+  }
 
   return (
     <div
@@ -75,12 +97,14 @@ export function RoomTypeCard({ roomType }: Props) {
           </div>
           <Button
             type="button"
-            disabled
+            disabled={isDisabled}
+            onClick={handleReserve}
             className="h-9 rounded-xl bg-accent-primary px-4 font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-70"
           >
             {buttonLabel}
           </Button>
         </div>
+        {error && <p className="text-right text-xs text-error">{error}</p>}
       </div>
     </div>
   );

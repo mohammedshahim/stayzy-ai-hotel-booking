@@ -47,6 +47,17 @@ export type RoomSelectionSearch = {
   rooms: number;
 };
 
+// Same shape with checkIn/checkOut defaulted (today/tomorrow, mirroring the backend's own
+// fallback in hotels.controller.ts) — what a booking request or reserve-intent URL needs,
+// since neither can be built from a still-null date range.
+export type ResolvedRoomSelectionSearch = {
+  checkIn: string;
+  checkOut: string;
+  adults: number;
+  kids: number;
+  rooms: number;
+};
+
 // Shape returned by GET /hotels/:id/similar — mirrors backend's SimilarHotel.
 export type SimilarHotel = {
   id: string;
