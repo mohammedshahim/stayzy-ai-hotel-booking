@@ -1,5 +1,7 @@
 import type { Hotel, HotelImage, HotelWithDetails, SimilarHotel } from "../models/hotel.schema";
 import {
+  findHotelSearchSuggestions,
+  findHotelsForCompare,
   findSimilarHotels,
   getHotelAmenities,
   getHotelById,
@@ -10,7 +12,7 @@ import {
   softDeleteHotel,
   updateHotel as updateHotelRow,
 } from "../queries/hotels.queries";
-import type { ListHotelsResult } from "../queries/hotels.queries";
+import type { CompareHotelRow, HotelSearchSuggestion, ListHotelsResult } from "../queries/hotels.queries";
 import {
   countHotelImages,
   deleteHotelImage as deleteHotelImageRow,
@@ -81,6 +83,20 @@ export async function getSimilarHotels(hotel: Hotel): Promise<SimilarHotel[]> {
     latitude: hotel.latitude,
     longitude: hotel.longitude,
   });
+}
+
+// `IN` doesn't preserve the requested order, and a hotel missing here (unpublished,
+// deleted, or a bad id) is silently dropped rather than erroring — the compare
+// tray/table just render one fewer card, which is the right behavior if a hotel
+// gets unpublished out from under an existing selection.
+export async function getHotelsForCompare(ids: string[]): Promise<CompareHotelRow[]> {
+  const rows = await findHotelsForCompare(ids);
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  return ids.map((id) => byId.get(id)).filter((row): row is CompareHotelRow => row !== undefined);
+}
+
+export async function searchHotelSuggestions(query: string, excludeIds: string[]): Promise<HotelSearchSuggestion[]> {
+  return findHotelSearchSuggestions(query, excludeIds);
 }
 
 function hasManualCoordinates(input: { latitude?: number; longitude?: number }): input is {

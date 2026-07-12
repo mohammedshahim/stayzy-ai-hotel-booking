@@ -1,9 +1,10 @@
 import type { NextFunction, Request, Response } from "express";
-import { getPublishedHotelDetails, getSimilarHotels } from "../services/hotel.service";
+import { getHotelsForCompare, getPublishedHotelDetails, getSimilarHotels, searchHotelSuggestions } from "../services/hotel.service";
 import { listRoomTypesWithAvailability } from "../services/room-type.service";
 import { getHotelReviews as getHotelReviewsResult } from "../services/review.service";
 import { roomTypeAvailabilityQuerySchema } from "../types/room-type.schemas";
 import { hotelReviewsQuerySchema } from "../types/review.schemas";
+import { compareHotelsQuerySchema, hotelSearchSuggestionsQuerySchema } from "../types/compare.schemas";
 import { requireParam } from "../utils/requireParam";
 
 function todayIso(): string {
@@ -99,6 +100,34 @@ export async function getHotelReviews(req: Request, res: Response, next: NextFun
 
     const result = await getHotelReviewsResult(hotel, parsed.data.page, parsed.data.pageSize);
     res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getHotelsCompare(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const parsed = compareHotelsQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: parsed.error.issues[0]?.message ?? "Invalid query" });
+      return;
+    }
+
+    res.json({ success: true, data: await getHotelsForCompare(parsed.data.ids) });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getHotelSearchSuggestions(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const parsed = hotelSearchSuggestionsQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: parsed.error.issues[0]?.message ?? "Invalid query" });
+      return;
+    }
+
+    res.json({ success: true, data: await searchHotelSuggestions(parsed.data.q, parsed.data.excludeIds) });
   } catch (error) {
     next(error);
   }

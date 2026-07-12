@@ -1,6 +1,7 @@
-import { and, asc, count, desc, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { db } from "../config/db";
 import { amenities, hotelAmenities, hotelImages, hotels } from "../models/hotel.schema";
+import { roomTypes } from "../models/room-type.schema";
 import type { Amenity, Hotel, HotelInput, HotelListItem, HotelStatus, SimilarHotel } from "../models/hotel.schema";
 
 const HOTEL_COLUMNS = {
@@ -190,4 +191,88 @@ export async function setHotelAmenities(hotelId: string, amenityIds: string[]): 
       await tx.insert(hotelAmenities).values(amenityIds.map((amenityId) => ({ hotelId, amenityId })));
     }
   });
+}
+
+export interface CompareHotelRow {
+  id: string;
+  name: string;
+  city: string;
+  country: string;
+  starRating: number;
+  averageRating: number;
+  reviewCount: number;
+  mainImageUrl: string | null;
+  fromPrice: number | null;
+  cancellationPolicy: string;
+  freeCancellation: boolean;
+  amenities: string[];
+}
+
+// Order is not guaranteed by `IN` — callers re-sort the result to match the
+// requested id order (see hotel.service.ts's getHotelsForCompare) so the compare
+// table's columns don't reshuffle themselves on every fetch.
+export async function findHotelsForCompare(ids: string[]): Promise<CompareHotelRow[]> {
+  if (ids.length === 0) return [];
+
+  return db
+    .select({
+      id: hotels.id,
+      name: hotels.name,
+      city: hotels.city,
+      country: hotels.country,
+      starRating: hotels.starRating,
+      averageRating: hotels.averageRating,
+      reviewCount: hotels.reviewCount,
+      // "hotels"."id" hardcoded in every subquery below — see listHotels' mainImageUrl
+      // for why a raw sql fragment needs the qualified, unquoted-alias form.
+      mainImageUrl: sql<
+        string | null
+      >`(SELECT url FROM ${hotelImages} WHERE ${hotelImages.hotelId} = "hotels"."id" AND ${hotelImages.isMain} = true LIMIT 1)`,
+      fromPrice: sql<
+        number | null
+      >`(SELECT MIN(${roomTypes.basePrice})::float8 FROM ${roomTypes} WHERE ${roomTypes.hotelId} = "hotels"."id" AND ${roomTypes.deletedAt} IS NULL)`,
+      cancellationPolicy: hotels.cancellationPolicy,
+      freeCancellation: hotels.freeCancellation,
+      amenities: sql<
+        string[]
+      >`(SELECT COALESCE(array_agg(a.name ORDER BY a.name), ARRAY[]::text[]) FROM ${hotelAmenities} ha JOIN ${amenities} a ON a.id = ha.amenity_id WHERE ha.hotel_id = "hotels"."id")`,
+    })
+    .from(hotels)
+    .where(and(inArray(hotels.id, ids), eq(hotels.status, "published"), isNull(hotels.deletedAt)));
+}
+
+export interface HotelSearchSuggestion {
+  id: string;
+  name: string;
+  city: string;
+  country: string;
+  mainImageUrl: string | null;
+}
+
+const HOTEL_SEARCH_SUGGESTIONS_LIMIT = 8;
+
+export async function findHotelSearchSuggestions(query: string, excludeIds: string[]): Promise<HotelSearchSuggestion[]> {
+  const pattern = `%${query}%`;
+  return db
+    .select({
+      id: hotels.id,
+      name: hotels.name,
+      city: hotels.city,
+      country: hotels.country,
+      // "hotels"."id" hardcoded — see findHotelsForCompare above for why.
+      mainImageUrl: sql<
+        string | null
+      >`(SELECT url FROM ${hotelImages} WHERE ${hotelImages.hotelId} = "hotels"."id" AND ${hotelImages.isMain} = true LIMIT 1)`,
+    })
+    .from(hotels)
+    .where(
+      and(
+        eq(hotels.status, "published"),
+        isNull(hotels.deletedAt),
+        or(ilike(hotels.name, pattern), ilike(hotels.city, pattern), ilike(hotels.country, pattern)),
+        excludeIds.length > 0 ? sql`${hotels.id} NOT IN ${excludeIds}` : undefined,
+      ),
+    )
+    .orderBy(asc(hotels.name))
+    .limit(HOTEL_SEARCH_SUGGESTIONS_LIMIT);
 }
