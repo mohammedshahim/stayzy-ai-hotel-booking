@@ -50,6 +50,19 @@ export interface BookingSummaryRow extends Booking {
   roomTypeName: string;
 }
 
+export async function findBookingByIdForOwner(id: string, userId: string): Promise<Booking | null> {
+  const [row] = await db
+    .select()
+    .from(bookings)
+    .where(and(eq(bookings.id, id), eq(bookings.userId, userId)))
+    .limit(1);
+  return row ?? null;
+}
+
+export async function updateBookingStripePaymentIntentId(id: string, stripePaymentIntentId: string): Promise<void> {
+  await db.update(bookings).set({ stripePaymentIntentId }).where(eq(bookings.id, id));
+}
+
 export async function findBookingSummaryByIdForOwner(id: string, userId: string): Promise<BookingSummaryRow | null> {
   const [row] = await db
     .select({
