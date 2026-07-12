@@ -58,7 +58,7 @@ backend/
 │   │   ├── meal-plans.routes.ts         → public GET — meal plan id/name lookup for search filter options
 │   │   ├── recent-searches.routes.ts    → public GET — owner's last 5 distinct-tuple searches, for the homepage
 │   │   ├── search-suggestions.routes.ts → public GET ?q= — destination-input autocomplete (recent + place matches)
-│   │   ├── bookings.routes.ts
+│   │   ├── bookings.routes.ts           → POST / (requireAuth, Feature 19), GET /:id (owner-scoped, backs /checkout) — /payments/intent below is still Feature 20
 │   │   ├── payments.routes.ts           → PaymentIntent creation
 │   │   ├── reviews.routes.ts            → review submission (Feature 24, not yet built) — GET /hotels/:id/reviews (Feature 16, read-only) lives in hotels.routes.ts instead, alongside /similar/room-types
 │   │   ├── favorites.routes.ts          → GET /favorites (full card data), GET /favorites/hotel-ids (bulk id set), POST /favorites, DELETE /favorites/:hotelId — all owner-scoped via resolveOwner (Feature 17)
@@ -71,8 +71,8 @@ backend/
 │   ├── services/                        → business logic, no Express types imported here
 │   │   ├── hotel.service.ts
 │   │   ├── search.service.ts
-│   │   ├── availability.service.ts      → inventory + rate override resolution
-│   │   ├── booking.service.ts
+│   │   ├── availability.service.ts      → inventory + rate override + (since Feature 19) overlapping-booking resolution — HELD_BOOKING_STATUSES, buildBookedCountsByRoomType
+│   │   ├── booking.service.ts           → createBookingForUser (Feature 19) — locked-row re-check + insert in one db.transaction
 │   │   ├── payment.service.ts
 │   │   ├── review.service.ts
 │   │   ├── recent-search.service.ts     → record/list/suggest + guest-cookie to account merge
@@ -132,8 +132,8 @@ frontend/
 │   │   ├── components/                           → CompareProvider (Context, mounted in app/layout.tsx), CompareTray, CompareTraySpacer, CompareTable, CompareSearchBox, ComparePageContent, CompareNavIcon — Feature 18
 │   │   └── hooks/                                → useCompareSelection (Context consumer), useCompareHotels (shared fetch hook), useCompareSuggestions — Feature 18
 │   ├── booking/
-│   │   ├── components/                           → CheckoutSummary, StripePaymentForm, BookingCard, ...
-│   │   └── hooks/
+│   │   ├── components/                           → CheckoutPageContent, BookingSummaryCard, CheckoutSkeleton (Feature 19) — StripePaymentForm still doesn't exist, Feature 21's job
+│   │   └── hooks/                                → useCreateBooking, useBookingSummary, useReserveRoom (shared by RoomTypeCard's click + RoomSelectionSection's autoReserve effect) — Feature 19
 │   ├── reviews/
 │   │   ├── components/
 │   │   └── hooks/
@@ -322,9 +322,9 @@ from features/search/components/ verbatim
         ↓
 useRoomTypes(hotelId, search) re-fetches on every change (AbortController +
 forQuery-comparison pattern, same shape as useSearchResults), rendering
-RoomTypeCard per room type — Reserve is a real, always-disabled button
-("Coming soon" / "Sold out") since booking creation doesn't exist until
-Feature 19
+RoomTypeCard per room type — Reserve was a real, always-disabled button
+("Coming soon" / "Sold out") until Feature 19 wired it to POST /bookings
+(see that feature's data-flow section below)
 ```
 
 ### Map Integration (Feature 14)
@@ -347,7 +347,7 @@ out to Google Maps, built from the hotel's own lat/lng — no click handler,
 no popup
 ```
 
-The booking summary panel `ui-rules.md` also specifies for this right rail doesn't exist yet — it arrives with Feature 19+/21 (Checkout) and slots in below `LocationMapPanel` in the same rail `div`.
+The booking summary panel `ui-rules.md` originally specified for this right rail never materialized here — by Feature 19, room selection's own Reserve flow (main column, per room type) made a redundant rail summary unnecessary. The booking summary card instead lives on `/checkout/[bookingId]`'s own right rail (see Feature 19's data-flow section below), matching `ui-rules.md`'s separately-specified Checkout Layout.
 
 ### Similar Hotels (Feature 15)
 
@@ -520,6 +520,68 @@ one fewer card next fetch, not an error state
 The `/compare` page's own "add a hotel" search box hits a second new endpoint, `GET /hotels/search-suggestions?q=&excludeIds=` (`findHotelSearchSuggestions` — `ILIKE` across `name`/`city`/`country`, published-only, always returns hotel rows rather than the destination search's mixed place/hotel suggestion shape). Both new routes are mounted in `hotels.routes.ts` *before* `/:id`, since Express would otherwise match `/hotels/compare` and `/hotels/search-suggestions` as `:id` = `"compare"`/`"search-suggestions"`.
 
 Selection is capped at 4 hotels client-side (`CompareProvider`'s `MAX_COMPARE_HOTELS`); the backend's own `ids` cap (10, in `compare.schemas.ts`) is a separate, more generous sanity limit on the query itself, not the product-facing rule.
+
+### Booking Creation (Feature 19)
+
+This feature made room availability booking-aware everywhere, not just at insert time — every prior read path (`/search`'s `findQualifyingRoomTypes`, room selection's `resolveRoomTypeAvailability`) had only ever subtracted rate-override closures, never real bookings, because `bookings` didn't exist until this feature:
+
+```
+search.queries.ts's findOverlappingBookings(roomTypeIds, checkIn, checkOut,
+heldStatuses) — overlap-date SQL (existing.check_in < requested.checkOut
+AND existing.check_out > requested.checkIn), heldStatuses =
+HELD_BOOKING_STATUSES (pending_payment/confirmed/completed — cancelled/
+failed release their hold)
+        ↓
+availability.service.ts's buildBookedCountsByRoomType expands each
+overlapping booking across its own night list and sums roomsBooked per
+(roomTypeId, date) — same shape as the existing rate-override map
+        ↓
+Subtracted from effective inventory in BOTH findQualifyingRoomTypes
+(search, Feature 09) and resolveRoomTypeAvailability (room selection,
+Feature 13) — one overlap-date implementation, three call sites (the third
+being this feature's own insert-time re-check below)
+```
+
+The actual creation flow:
+
+```
+RoomTypeCard's Reserve button → useReserveRoom.ts's reserve() (shared with
+RoomSelectionSection's autoReserve effect below, so the two entry points
+into booking creation can't drift):
+  - no session → router.push to /login?returnTo=/hotels/[id]?...&autoReserve=1
+    (reuses LoginForm's existing returnTo handling)
+  - session but emailVerified: false → router.push("/verify-email") directly,
+    no /login loop
+  - verified session → useCreateBooking.ts POSTs to /bookings
+        ↓
+POST /bookings (requireAuth + validateRequest(createBookingSchema)) →
+bookings.controller.ts's createBooking — 403 { error: "email_not_verified" }
+if req.user.emailVerified is false (distinct from 401 for no session)
+        ↓
+booking.service.ts's createBookingForUser wraps the whole re-check + insert
+in one db.transaction: booking.queries.ts's lockRoomTypeForBooking SELECTs
+the room_types row .for("update") first, so a second concurrent Reserve on
+the same room type blocks until this transaction commits rather than
+racing off stale availability
+        ↓
+Inside the lock: capacity check (maxAdults/maxKids), hotelId/roomTypeId
+match check, then the same findRateOverridesForRoomTypes +
+findOverlappingBookings + resolveRoomTypeAvailability call used by search/
+room-selection — both queries take an optional executor param (defaulting
+to db) so they can run against this transaction's tx handle without
+duplicating their SQL. remainingInventory < rooms throws a 400 (tagged via
+a small badRequest() helper so errorHandler.ts doesn't log a routine
+sold-out case as a 500)
+        ↓
+totalPrice computed server-side (avgNightlyPrice × nights × rooms) — never
+trusted from the client — booking inserted as pending_payment
+        ↓
+Frontend routes to /checkout/[bookingId] on success
+```
+
+The logged-out round trip completes automatically rather than needing a second manual click: `RoomSelectionSection`'s `autoReserve` effect fires once, only when a real, verified session is positively confirmed (`authClient.useSession()`) — if the session can't be confirmed yet, it silently no-ops rather than risking a redirect loop back through `/login`, and the user just clicks Reserve again.
+
+`/checkout/[bookingId]` (`app/checkout/[bookingId]/page.tsx`) is the first real page-level auth guard in the app — a thin `async` Server Component calling `getServerSession()` and `redirect()`-ing to `/login` if logged out — rendering `CheckoutPageContent`, which fetches `GET /bookings/:id` (owner-scoped via `booking.queries.ts`'s `findBookingSummaryByIdForOwner`) client-side and renders `ui-rules.md`'s Checkout Layout: a real `BookingSummaryCard` in the right rail, and a disabled "Pay Now" / "Stripe checkout is coming soon" placeholder in the main column — Feature 21 replaces only that placeholder with real Stripe Elements.
 
 ### Admin Hotel Management
 
