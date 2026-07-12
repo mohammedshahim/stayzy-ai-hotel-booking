@@ -3,6 +3,7 @@ import { HeartIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { AccountMenu } from "@/components/layout/AccountMenu";
+import { CompareNavIcon } from "@/features/compare/components/CompareNavIcon";
 import { getServerSession } from "@/lib/get-server-session";
 
 export async function Navbar() {
@@ -22,6 +23,7 @@ export async function Navbar() {
           >
             <HeartIcon className="h-5 w-5" strokeWidth={1.5} />
           </Link>
+          <CompareNavIcon />
           {user ? (
             <AccountMenu user={user} />
           ) : (

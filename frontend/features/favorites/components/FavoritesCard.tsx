@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { format } from "date-fns";
-import { HeartIcon } from "lucide-react";
+import { HeartIcon, ScaleIcon } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import { StarRating } from "@/components/common/StarRating";
 import { GuestRatingBadge } from "@/components/common/GuestRatingBadge";
 import { getGuestRatingLabel } from "@/features/search/lib/guest-rating";
+import { useCompareSelection } from "@/features/compare/hooks/useCompareSelection";
 import type { FavoriteHotel } from "@/features/favorites/types";
 
 type Props = {
@@ -16,6 +18,7 @@ type Props = {
 
 export function FavoritesCard({ hotel, onRemove }: Props) {
   const guestRatingLabel = getGuestRatingLabel(hotel.averageRating);
+  const { isSelected: isCompared, isFull, add, remove } = useCompareSelection();
 
   return (
     <div className="flex flex-col overflow-hidden rounded-2xl border border-border-default bg-elevated shadow-card ring-1 ring-inset ring-accent-border transition-colors">
@@ -26,14 +29,26 @@ export function FavoritesCard({ hotel, onRemove }: Props) {
           alt={hotel.name}
           className="h-full w-full rounded-t-2xl object-cover"
         />
-        <button
-          type="button"
-          onClick={onRemove}
-          aria-pressed
-          className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-xl bg-elevated/90 text-text-muted backdrop-blur-sm transition-colors hover:text-text-secondary"
-        >
-          <HeartIcon className="h-4 w-4 fill-current text-accent-primary" />
-        </button>
+        <div className="absolute right-3 top-3 flex gap-2">
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-pressed
+            className="flex h-8 w-8 items-center justify-center rounded-xl bg-elevated/90 text-text-muted backdrop-blur-sm transition-colors hover:text-text-secondary"
+          >
+            <HeartIcon className="h-4 w-4 fill-current text-accent-primary" />
+          </button>
+          <button
+            type="button"
+            onClick={() => (isCompared(hotel.id) ? remove(hotel.id) : add(hotel.id))}
+            aria-pressed={isCompared(hotel.id)}
+            disabled={!isCompared(hotel.id) && isFull}
+            title={!isCompared(hotel.id) && isFull ? "Remove a hotel to add another to compare" : undefined}
+            className="flex h-8 w-8 items-center justify-center rounded-xl bg-elevated/90 text-text-muted backdrop-blur-sm transition-colors hover:text-text-secondary disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <ScaleIcon className={cn("h-4 w-4", isCompared(hotel.id) && "text-accent-primary")} />
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-1 flex-col gap-2 p-4">

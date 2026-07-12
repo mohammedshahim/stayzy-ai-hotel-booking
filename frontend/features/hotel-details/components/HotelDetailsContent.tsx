@@ -1,6 +1,6 @@
 "use client";
 
-import { HeartIcon, MapPinOffIcon, MapPinIcon } from "lucide-react";
+import { HeartIcon, MapPinOffIcon, MapPinIcon, ScaleIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -8,6 +8,7 @@ import { StarRating } from "@/components/common/StarRating";
 import { GuestRatingBadge } from "@/components/common/GuestRatingBadge";
 import { getGuestRatingLabel } from "@/features/search/lib/guest-rating";
 import { useFavoriteHotelIds } from "@/features/favorites/hooks/useFavoriteHotelIds";
+import { useCompareSelection } from "@/features/compare/hooks/useCompareSelection";
 import { useHotelDetails } from "@/features/hotel-details/hooks/useHotelDetails";
 import { HotelGallery } from "@/features/hotel-details/components/HotelGallery";
 import { AmenitiesList } from "@/features/hotel-details/components/AmenitiesList";
@@ -27,6 +28,7 @@ type Props = {
 export function HotelDetailsContent({ id, initialSearch }: Props) {
   const { hotel, isLoading } = useHotelDetails(id);
   const { favoritedIds, toggleFavorite } = useFavoriteHotelIds();
+  const { isSelected: isCompared, isFull, add, remove } = useCompareSelection();
 
   if (isLoading) {
     return <HotelDetailsSkeleton />;
@@ -55,14 +57,26 @@ export function HotelDetailsContent({ id, initialSearch }: Props) {
         <StarRating rating={hotel.starRating} />
         <div className="flex items-start justify-between gap-3">
           <h1 className="text-2xl font-semibold text-text-primary sm:text-3xl">{hotel.name}</h1>
-          <button
-            type="button"
-            onClick={() => toggleFavorite(hotel.id)}
-            aria-pressed={favoritedIds.has(hotel.id)}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border-default bg-elevated text-text-muted transition-colors hover:text-text-secondary"
-          >
-            <HeartIcon className={cn("h-4 w-4", favoritedIds.has(hotel.id) && "fill-current text-accent-primary")} />
-          </button>
+          <div className="flex shrink-0 gap-2">
+            <button
+              type="button"
+              onClick={() => toggleFavorite(hotel.id)}
+              aria-pressed={favoritedIds.has(hotel.id)}
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-border-default bg-elevated text-text-muted transition-colors hover:text-text-secondary"
+            >
+              <HeartIcon className={cn("h-4 w-4", favoritedIds.has(hotel.id) && "fill-current text-accent-primary")} />
+            </button>
+            <button
+              type="button"
+              onClick={() => (isCompared(hotel.id) ? remove(hotel.id) : add(hotel.id))}
+              aria-pressed={isCompared(hotel.id)}
+              disabled={!isCompared(hotel.id) && isFull}
+              title={!isCompared(hotel.id) && isFull ? "Remove a hotel to add another to compare" : undefined}
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-border-default bg-elevated text-text-muted transition-colors hover:text-text-secondary disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <ScaleIcon className={cn("h-4 w-4", isCompared(hotel.id) && "text-accent-primary")} />
+            </button>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <span className="inline-flex items-center gap-1.5 text-sm text-text-muted">

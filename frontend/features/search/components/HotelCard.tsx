@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { HeartIcon, MapPinIcon, ScaleIcon } from "lucide-react";
@@ -10,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { StarRating } from "@/components/common/StarRating";
 import { GuestRatingBadge } from "@/components/common/GuestRatingBadge";
 import { getGuestRatingLabel } from "@/features/search/lib/guest-rating";
+import { useCompareSelection } from "@/features/compare/hooks/useCompareSelection";
 import type { SearchResultHotel } from "@/features/search/types";
 
 type Props = {
@@ -28,7 +28,7 @@ const VISIBLE_AMENITY_COUNT = 3;
 const CARRIED_PARAM_KEYS = ["checkIn", "checkOut", "adults", "kids", "rooms"] as const;
 
 export function HotelCard({ hotel, variant, isSelected, onLocate, isFavorited, onToggleFavorite }: Props) {
-  const [isCompared, setIsCompared] = useState(false);
+  const { isSelected: isCompared, isFull, add, remove } = useCompareSelection();
   const searchParams = useSearchParams();
 
   const guestRatingLabel = getGuestRatingLabel(hotel.guestRating);
@@ -76,11 +76,13 @@ export function HotelCard({ hotel, variant, isSelected, onLocate, isFavorited, o
           </button>
           <button
             type="button"
-            onClick={() => setIsCompared((value) => !value)}
-            aria-pressed={isCompared}
-            className="flex h-8 w-8 items-center justify-center rounded-xl bg-elevated/90 text-text-muted backdrop-blur-sm transition-colors hover:text-text-secondary"
+            onClick={() => (isCompared(hotel.id) ? remove(hotel.id) : add(hotel.id))}
+            aria-pressed={isCompared(hotel.id)}
+            disabled={!isCompared(hotel.id) && isFull}
+            title={!isCompared(hotel.id) && isFull ? "Remove a hotel to add another to compare" : undefined}
+            className="flex h-8 w-8 items-center justify-center rounded-xl bg-elevated/90 text-text-muted backdrop-blur-sm transition-colors hover:text-text-secondary disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <ScaleIcon className={cn("h-4 w-4", isCompared && "text-accent-primary")} />
+            <ScaleIcon className={cn("h-4 w-4", isCompared(hotel.id) && "text-accent-primary")} />
           </button>
         </div>
       </div>
