@@ -2,6 +2,7 @@ import { differenceInCalendarDays, format, parseISO } from "date-fns";
 import { ImageOffIcon, UsersIcon } from "lucide-react";
 
 import type { BookingSummary } from "@/features/booking/types";
+import { BookingStatusBadge } from "@/features/booking/components/BookingStatusBadge";
 
 type Props = {
   booking: BookingSummary;
@@ -13,8 +14,9 @@ export function BookingSummaryCard({ booking }: Props) {
 
   return (
     <div className="overflow-hidden rounded-2xl border border-border-default bg-surface">
-      <div className="border-b border-border-default px-5 py-4">
+      <div className="flex items-center justify-between border-b border-border-default px-5 py-4">
         <h2 className="text-lg font-semibold text-text-primary">Booking Summary</h2>
+        <BookingStatusBadge status={booking.status} />
       </div>
       <div className="flex flex-col gap-4 p-5">
         <div className="flex gap-3">

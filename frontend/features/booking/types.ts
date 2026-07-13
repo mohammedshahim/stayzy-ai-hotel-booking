@@ -29,11 +29,12 @@ export type Booking = {
   updatedAt: string;
 };
 
-// Shape returned by GET /bookings/:id — mirrors backend's BookingSummaryRow.
+// Shape returned by GET /bookings and GET /bookings/:id — mirrors backend's BookingSummary (booking.service.ts).
 export type BookingSummary = Booking & {
   hotelName: string;
   hotelCity: string;
   hotelCountry: string;
   hotelMainImageUrl: string | null;
   roomTypeName: string;
+  isCancellable: boolean;
 };
