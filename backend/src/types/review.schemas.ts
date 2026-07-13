@@ -6,3 +6,10 @@ export const hotelReviewsQuerySchema = z.object({
 });
 
 export type HotelReviewsQuery = z.infer<typeof hotelReviewsQuerySchema>;
+
+export const writeReviewSchema = z.object({
+  rating: z.coerce.number().int().min(1).max(5),
+  description: z.string().trim().min(1),
+});
+
+export type WriteReviewInput = z.infer<typeof writeReviewSchema>;

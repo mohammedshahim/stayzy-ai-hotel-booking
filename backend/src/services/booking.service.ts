@@ -1,6 +1,7 @@
 import { db } from "../config/db";
 import {
   cancelConfirmedBookingForOwner,
+  completePastConfirmedBookings,
   expireStalePendingBookings,
   findBookingSummaryByIdForOwner,
   findBookingsForOwner,
@@ -60,15 +61,24 @@ export async function createBookingForUser(userId: string, input: CreateBookingI
   });
 }
 
-// Public-facing shape: raw free-cancellation booleans are collapsed into one isCancellable flag so the client never has to duplicate the inherit-then-status eligibility logic.
-export type BookingSummary = Omit<BookingSummaryRow, "roomTypeFreeCancellation" | "hotelFreeCancellation"> & {
+// Public-facing shape: raw free-cancellation booleans are collapsed into one isCancellable flag, and the reviewId/reviewRating columns
+// into one review object, so the client never has to duplicate this eligibility/existence logic itself.
+export type BookingSummary = Omit<
+  BookingSummaryRow,
+  "roomTypeFreeCancellation" | "hotelFreeCancellation" | "reviewId" | "reviewRating"
+> & {
   isCancellable: boolean;
+  review: { id: string; rating: number } | null;
 };
 
 function toBookingSummary(row: BookingSummaryRow): BookingSummary {
-  const { roomTypeFreeCancellation, hotelFreeCancellation, ...rest } = row;
+  const { roomTypeFreeCancellation, hotelFreeCancellation, reviewId, reviewRating, ...rest } = row;
   const freeCancellation = roomTypeFreeCancellation ?? hotelFreeCancellation;
-  return { ...rest, isCancellable: rest.status === "confirmed" && freeCancellation };
+  return {
+    ...rest,
+    isCancellable: rest.status === "confirmed" && freeCancellation,
+    review: reviewId && reviewRating !== null ? { id: reviewId, rating: reviewRating } : null,
+  };
 }
 
 export async function getBookingSummaryForOwner(id: string, userId: string): Promise<BookingSummary | null> {
@@ -102,4 +112,8 @@ export async function cancelBookingForUser(id: string, userId: string): Promise<
 
 export async function expireStaleBookings(): Promise<Booking[]> {
   return expireStalePendingBookings(env.BOOKING_EXPIRY_MINUTES);
+}
+
+export async function completePastBookings(): Promise<Booking[]> {
+  return completePastConfirmedBookings();
 }

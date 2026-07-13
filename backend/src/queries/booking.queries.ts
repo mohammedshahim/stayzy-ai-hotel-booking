@@ -1,6 +1,6 @@
 import { and, desc, eq, lt } from "drizzle-orm";
 import { db } from "../config/db";
-import { bookings } from "../models/booking.schema";
+import { bookings, reviews } from "../models/booking.schema";
 import type { Booking, BookingInput } from "../models/booking.schema";
 import { hotelImages, hotels } from "../models/hotel.schema";
 import { roomTypes } from "../models/room-type.schema";
@@ -48,6 +48,8 @@ export interface BookingSummaryRow extends Booking {
   roomTypeName: string;
   roomTypeFreeCancellation: boolean | null;
   hotelFreeCancellation: boolean;
+  reviewId: string | null;
+  reviewRating: number | null;
 }
 
 // Shared column selection so findBookingSummaryByIdForOwner/findBookingsForOwner never drift apart.
@@ -74,6 +76,8 @@ const bookingSummaryColumns = {
   roomTypeName: roomTypes.name,
   roomTypeFreeCancellation: roomTypes.freeCancellation,
   hotelFreeCancellation: hotels.freeCancellation,
+  reviewId: reviews.id,
+  reviewRating: reviews.rating,
 };
 
 export async function findBookingByIdForOwner(id: string, userId: string): Promise<Booking | null> {
@@ -135,6 +139,16 @@ export async function expireStalePendingBookings(cutoffMinutes: number): Promise
     .returning();
 }
 
+// Only bookings whose check-out date has fully passed become completed — the checkout day itself doesn't count as past yet.
+export async function completePastConfirmedBookings(): Promise<Booking[]> {
+  const today = new Date().toISOString().slice(0, 10);
+  return db
+    .update(bookings)
+    .set({ status: "completed" })
+    .where(and(eq(bookings.status, "confirmed"), lt(bookings.checkOut, today)))
+    .returning();
+}
+
 export async function findBookingSummaryByIdForOwner(id: string, userId: string): Promise<BookingSummaryRow | null> {
   const [row] = await db
     .select(bookingSummaryColumns)
@@ -142,6 +156,7 @@ export async function findBookingSummaryByIdForOwner(id: string, userId: string)
     .innerJoin(hotels, eq(hotels.id, bookings.hotelId))
     .innerJoin(roomTypes, eq(roomTypes.id, bookings.roomTypeId))
     .leftJoin(hotelImages, and(eq(hotelImages.hotelId, hotels.id), eq(hotelImages.isMain, true)))
+    .leftJoin(reviews, eq(reviews.bookingId, bookings.id))
     .where(and(eq(bookings.id, id), eq(bookings.userId, userId)))
     .limit(1);
   return row ?? null;
@@ -154,6 +169,7 @@ export async function findBookingsForOwner(userId: string): Promise<BookingSumma
     .innerJoin(hotels, eq(hotels.id, bookings.hotelId))
     .innerJoin(roomTypes, eq(roomTypes.id, bookings.roomTypeId))
     .leftJoin(hotelImages, and(eq(hotelImages.hotelId, hotels.id), eq(hotelImages.isMain, true)))
+    .leftJoin(reviews, eq(reviews.bookingId, bookings.id))
     .where(eq(bookings.userId, userId))
     .orderBy(desc(bookings.createdAt));
 }
