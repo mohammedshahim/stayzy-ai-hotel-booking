@@ -1,7 +1,9 @@
 import { db } from "../config/db";
 import {
+  cancelConfirmedBookingForOwner,
   expireStalePendingBookings,
   findBookingSummaryByIdForOwner,
+  findBookingsForOwner,
   insertBooking,
   lockRoomTypeForBooking,
 } from "../queries/booking.queries";
@@ -58,8 +60,44 @@ export async function createBookingForUser(userId: string, input: CreateBookingI
   });
 }
 
-export async function getBookingSummaryForOwner(id: string, userId: string): Promise<BookingSummaryRow | null> {
-  return findBookingSummaryByIdForOwner(id, userId);
+// Public-facing shape: raw free-cancellation booleans are collapsed into one isCancellable flag so the client never has to duplicate the inherit-then-status eligibility logic.
+export type BookingSummary = Omit<BookingSummaryRow, "roomTypeFreeCancellation" | "hotelFreeCancellation"> & {
+  isCancellable: boolean;
+};
+
+function toBookingSummary(row: BookingSummaryRow): BookingSummary {
+  const { roomTypeFreeCancellation, hotelFreeCancellation, ...rest } = row;
+  const freeCancellation = roomTypeFreeCancellation ?? hotelFreeCancellation;
+  return { ...rest, isCancellable: rest.status === "confirmed" && freeCancellation };
+}
+
+export async function getBookingSummaryForOwner(id: string, userId: string): Promise<BookingSummary | null> {
+  const row = await findBookingSummaryByIdForOwner(id, userId);
+  return row ? toBookingSummary(row) : null;
+}
+
+export async function listBookingsForOwner(userId: string): Promise<BookingSummary[]> {
+  const rows = await findBookingsForOwner(userId);
+  return rows.map(toBookingSummary);
+}
+
+export async function cancelBookingForUser(id: string, userId: string): Promise<Booking | null> {
+  const row = await findBookingSummaryByIdForOwner(id, userId);
+  if (!row) return null;
+
+  if (row.status !== "confirmed") {
+    throw badRequest("Only confirmed bookings can be cancelled");
+  }
+  const freeCancellation = row.roomTypeFreeCancellation ?? row.hotelFreeCancellation;
+  if (!freeCancellation) {
+    throw badRequest("This booking is non-refundable and can't be cancelled online");
+  }
+
+  const cancelled = await cancelConfirmedBookingForOwner(id, userId);
+  if (!cancelled) {
+    throw badRequest("Booking could not be cancelled");
+  }
+  return cancelled;
 }
 
 export async function expireStaleBookings(): Promise<Booking[]> {

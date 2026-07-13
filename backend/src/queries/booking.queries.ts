@@ -1,4 +1,4 @@
-import { and, eq, lt } from "drizzle-orm";
+import { and, desc, eq, lt } from "drizzle-orm";
 import { db } from "../config/db";
 import { bookings } from "../models/booking.schema";
 import type { Booking, BookingInput } from "../models/booking.schema";
@@ -46,7 +46,35 @@ export interface BookingSummaryRow extends Booking {
   hotelCountry: string;
   hotelMainImageUrl: string | null;
   roomTypeName: string;
+  roomTypeFreeCancellation: boolean | null;
+  hotelFreeCancellation: boolean;
 }
+
+// Shared column selection so findBookingSummaryByIdForOwner/findBookingsForOwner never drift apart.
+const bookingSummaryColumns = {
+  id: bookings.id,
+  userId: bookings.userId,
+  hotelId: bookings.hotelId,
+  roomTypeId: bookings.roomTypeId,
+  checkIn: bookings.checkIn,
+  checkOut: bookings.checkOut,
+  adults: bookings.adults,
+  kids: bookings.kids,
+  roomsBooked: bookings.roomsBooked,
+  totalPrice: bookings.totalPrice,
+  status: bookings.status,
+  stripePaymentIntentId: bookings.stripePaymentIntentId,
+  cancelledAt: bookings.cancelledAt,
+  createdAt: bookings.createdAt,
+  updatedAt: bookings.updatedAt,
+  hotelName: hotels.name,
+  hotelCity: hotels.city,
+  hotelCountry: hotels.country,
+  hotelMainImageUrl: hotelImages.url,
+  roomTypeName: roomTypes.name,
+  roomTypeFreeCancellation: roomTypes.freeCancellation,
+  hotelFreeCancellation: hotels.freeCancellation,
+};
 
 export async function findBookingByIdForOwner(id: string, userId: string): Promise<Booking | null> {
   const [row] = await db
@@ -109,33 +137,33 @@ export async function expireStalePendingBookings(cutoffMinutes: number): Promise
 
 export async function findBookingSummaryByIdForOwner(id: string, userId: string): Promise<BookingSummaryRow | null> {
   const [row] = await db
-    .select({
-      id: bookings.id,
-      userId: bookings.userId,
-      hotelId: bookings.hotelId,
-      roomTypeId: bookings.roomTypeId,
-      checkIn: bookings.checkIn,
-      checkOut: bookings.checkOut,
-      adults: bookings.adults,
-      kids: bookings.kids,
-      roomsBooked: bookings.roomsBooked,
-      totalPrice: bookings.totalPrice,
-      status: bookings.status,
-      stripePaymentIntentId: bookings.stripePaymentIntentId,
-      cancelledAt: bookings.cancelledAt,
-      createdAt: bookings.createdAt,
-      updatedAt: bookings.updatedAt,
-      hotelName: hotels.name,
-      hotelCity: hotels.city,
-      hotelCountry: hotels.country,
-      hotelMainImageUrl: hotelImages.url,
-      roomTypeName: roomTypes.name,
-    })
+    .select(bookingSummaryColumns)
     .from(bookings)
     .innerJoin(hotels, eq(hotels.id, bookings.hotelId))
     .innerJoin(roomTypes, eq(roomTypes.id, bookings.roomTypeId))
     .leftJoin(hotelImages, and(eq(hotelImages.hotelId, hotels.id), eq(hotelImages.isMain, true)))
     .where(and(eq(bookings.id, id), eq(bookings.userId, userId)))
     .limit(1);
+  return row ?? null;
+}
+
+export async function findBookingsForOwner(userId: string): Promise<BookingSummaryRow[]> {
+  return db
+    .select(bookingSummaryColumns)
+    .from(bookings)
+    .innerJoin(hotels, eq(hotels.id, bookings.hotelId))
+    .innerJoin(roomTypes, eq(roomTypes.id, bookings.roomTypeId))
+    .leftJoin(hotelImages, and(eq(hotelImages.hotelId, hotels.id), eq(hotelImages.isMain, true)))
+    .where(eq(bookings.userId, userId))
+    .orderBy(desc(bookings.createdAt));
+}
+
+// Conditioned on status='confirmed' so this can't clobber a booking already cancelled/completed elsewhere (same safe-by-construction pattern as transitionBookingIfPending).
+export async function cancelConfirmedBookingForOwner(id: string, userId: string): Promise<Booking | null> {
+  const [row] = await db
+    .update(bookings)
+    .set({ status: "cancelled", cancelledAt: new Date().toISOString() })
+    .where(and(eq(bookings.id, id), eq(bookings.userId, userId), eq(bookings.status, "confirmed")))
+    .returning();
   return row ?? null;
 }
