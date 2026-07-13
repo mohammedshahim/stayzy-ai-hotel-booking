@@ -57,8 +57,22 @@ export async function findBookingByIdForOwner(id: string, userId: string): Promi
   return row ?? null;
 }
 
-export async function updateBookingStripePaymentIntentId(id: string, stripePaymentIntentId: string): Promise<void> {
-  await db.update(bookings).set({ stripePaymentIntentId }).where(eq(bookings.id, id));
+// Locks the row for the transaction's lifetime so two near-simultaneous /payments/intent calls (e.g. a double-fired effect) serialize onto the same PaymentIntent instead of each minting its own.
+export async function lockBookingForOwner(tx: QueryExecutor, id: string, userId: string): Promise<Booking | null> {
+  const [row] = await tx
+    .select()
+    .from(bookings)
+    .where(and(eq(bookings.id, id), eq(bookings.userId, userId)))
+    .for("update");
+  return row ?? null;
+}
+
+export async function updateBookingStripePaymentIntentId(
+  id: string,
+  stripePaymentIntentId: string,
+  executor: QueryExecutor = db,
+): Promise<void> {
+  await executor.update(bookings).set({ stripePaymentIntentId }).where(eq(bookings.id, id));
 }
 
 export async function findBookingByStripePaymentIntentId(stripePaymentIntentId: string): Promise<Booking | null> {
