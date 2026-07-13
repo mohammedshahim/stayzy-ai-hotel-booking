@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { useBookingSummary } from "@/features/booking/hooks/useBookingSummary";
 import { BookingSummaryCard } from "@/features/booking/components/BookingSummaryCard";
 import { CancelBookingSection } from "@/features/booking/components/CancelBookingSection";
+import { ReviewEntryPoint } from "@/features/reviews/components/ReviewEntryPoint";
 import type { Booking } from "@/features/booking/types";
 
 type Props = {
@@ -43,6 +44,7 @@ export function BookingDetailPageContent({ bookingId }: Props) {
       <h1 className="text-2xl font-semibold text-text-primary">Booking Details</h1>
       <BookingSummaryCard booking={booking} />
       <CancelBookingSection booking={booking} onCancelled={setCancelledBooking} />
+      <ReviewEntryPoint booking={booking} />
     </div>
   );
 }

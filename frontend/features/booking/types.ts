@@ -37,4 +37,5 @@ export type BookingSummary = Booking & {
   hotelMainImageUrl: string | null;
   roomTypeName: string;
   isCancellable: boolean;
+  review: { id: string; rating: number } | null;
 };
