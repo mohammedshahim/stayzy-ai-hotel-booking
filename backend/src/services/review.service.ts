@@ -5,9 +5,7 @@ import { countReviewsByHotel, findReviewsByHotel, getRatingBreakdown } from "../
 export async function getHotelReviews(hotel: Hotel, page: number, pageSize: number): Promise<HotelReviewsResult> {
   const totalRealReviews = await countReviewsByHotel(hotel.id);
 
-  // No real reviews yet for this hotel (Booking/Review Creation land in later features) —
-  // fall back to the hotel's own stored averageRating/reviewCount rather than showing 0s
-  // that would contradict the header above this section.
+  // No real reviews yet — fall back to the hotel's stored averageRating/reviewCount rather than showing 0s that contradict the header above.
   if (totalRealReviews === 0) {
     return {
       averageRating: hotel.averageRating,

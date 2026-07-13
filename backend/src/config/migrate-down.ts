@@ -2,9 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { pool } from "./db";
 
-// Mirrors the schema/table drizzle-orm's own migrate() creates (see
-// drizzle-orm/pg-core/dialect.ts) so this reads/writes the exact same
-// tracking table drizzle-kit's "migrate" command uses.
+// Mirrors the schema/table drizzle-orm's own migrate() creates (drizzle-orm/pg-core/dialect.ts).
 const DRIZZLE_DIR = path.resolve(__dirname, "../../drizzle");
 const MIGRATIONS_SCHEMA = "drizzle";
 const MIGRATIONS_TABLE = "__drizzle_migrations";

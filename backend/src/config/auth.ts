@@ -16,8 +16,7 @@ export const auth = betterAuth({
   trustedOrigins: [env.APP_URL],
   emailAndPassword: {
     enabled: true,
-    // false, not true: verification is enforced only at booking creation (architecture.md),
-    // not as a login gate — true would block sign-up from creating a session at all.
+    // Verification is enforced at booking creation, not as a login gate (architecture.md).
     requireEmailVerification: false,
     sendResetPassword: async ({ user, url }) => {
       await sendPasswordResetEmail(user.email, url);
@@ -41,9 +40,7 @@ export const auth = betterAuth({
     },
   },
   hooks: {
-    // Guest→account merge (recent searches, favorites) runs here rather than from the
-    // frontend so it covers email/password sign-in/up and the Google OAuth callback
-    // identically — every path that creates a new session flows through this hook.
+    // Runs here rather than the frontend so every session-creating path (password + Google OAuth) merges guest data identically.
     after: createAuthMiddleware(async (ctx) => {
       const newSession = ctx.context.newSession;
       if (!newSession) return;

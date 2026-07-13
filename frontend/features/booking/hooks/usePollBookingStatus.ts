@@ -6,15 +6,13 @@ import { apiClient } from "@/lib/api-client";
 import type { BookingSummary } from "@/features/booking/types";
 
 const POLL_INTERVAL_MS = 2000;
-// ~20s total — long enough to cover Stripe webhook delivery under normal conditions
-// without leaving the user staring at a spinner indefinitely.
+// ~20s total — long enough to cover Stripe webhook delivery without an indefinite spinner.
 const MAX_ATTEMPTS = 10;
 
 type PollState = {
   booking: BookingSummary | null;
   timedOut: boolean;
-  // The id this state belongs to — mirrors useBookingSummary's forId pattern, so state
-  // is only ever set inside the async poll loop, never synchronously in the effect body.
+  // Mirrors useBookingSummary's forId pattern; only ever set inside the async poll loop.
   forId: string | null;
 };
 
@@ -24,8 +22,7 @@ export type PollBookingStatusResult = {
   timedOut: boolean;
 };
 
-// Polls until the booking leaves pending_payment (Feature 22's webhook is what actually
-// flips it) or MAX_ATTEMPTS is reached, whichever comes first.
+// Polls until the booking leaves pending_payment (flipped by Feature 22's webhook) or times out.
 export function usePollBookingStatus(bookingId: string): PollBookingStatusResult {
   const [state, setState] = useState<PollState>({ booking: null, timedOut: false, forId: null });
 
@@ -68,8 +65,7 @@ export function usePollBookingStatus(bookingId: string): PollBookingStatusResult
   }, [bookingId]);
 
   const isForCurrentId = state.forId === bookingId;
-  // Resolved once we have a definitive answer: no booking found, a terminal status, or
-  // we gave up retrying. Still pending_payment before that point means keep polling.
+  // Resolved once we have a definitive answer: not found, a terminal status, or timed out.
   const isResolved = isForCurrentId && (state.booking === null || state.booking.status !== "pending_payment" || state.timedOut);
 
   return {

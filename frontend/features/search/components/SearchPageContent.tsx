@@ -36,8 +36,7 @@ export function SearchPageContent() {
   const catalogs = useSearchCatalogs();
   const { favoritedIds, toggleFavorite } = useFavoriteHotelIds();
 
-  // Lifted above MapView so "View on map" from Grid/List can both switch the view and
-  // tell MapView which hotel to open centered on — MapView no longer owns this itself.
+  // Lifted above MapView so "View on map" from Grid/List can switch the view and set the centered hotel.
   const [selectedHotelId, setSelectedHotelId] = useState<string | null>(null);
 
   function handleLocate(hotelId: string) {

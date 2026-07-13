@@ -61,9 +61,7 @@ interface HotelSeed {
   }[];
 }
 
-// Reviews requires a booking, but Booking Creation (Feature 19) doesn't exist yet — these
-// demo reviewer accounts and their bookings exist purely to satisfy the FK chain for
-// Feature 16's seed reviews below. Additive only: never truncated, never modified.
+// These demo reviewer accounts exist purely to satisfy the FK chain for seed reviews below. Additive only: never truncated, never modified.
 const DEMO_REVIEWERS = [
   { id: "seed-reviewer-amara-chen", name: "Amara Chen", email: "amara.chen@stayzy-seed.example" },
   { id: "seed-reviewer-diego-alvarez", name: "Diego Alvarez", email: "diego.alvarez@stayzy-seed.example" },
@@ -81,9 +79,7 @@ interface ReviewSeed {
   reviewCreatedAt: string;
 }
 
-// Only 2 of the 5 hotels get seeded reviews on purpose — the rest exercise the
-// "no reviews yet" empty state. hotel-marais-charme also gets 6 (more than the
-// pageSize of 5) so "load more" pagination has something real to fetch.
+// Only 2 of 5 hotels get seeded reviews on purpose, to exercise the "no reviews yet" empty state; hotel-marais-charme gets 6 to test "load more" pagination.
 const REVIEWS: ReviewSeed[] = [
   {
     hotelSlug: "hotel-marais-charme",

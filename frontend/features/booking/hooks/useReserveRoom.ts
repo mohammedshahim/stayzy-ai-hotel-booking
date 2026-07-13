@@ -13,9 +13,7 @@ export type ReserveRoomResult = {
   isSessionPending: boolean;
 };
 
-// Shared by RoomTypeCard's manual Reserve click and RoomSelectionSection's autoReserve
-// effect, so the logged-out/unverified/success branches never drift between the two entry
-// points into the same booking-creation flow.
+// Shared by RoomTypeCard's manual click and RoomSelectionSection's autoReserve effect so the two entry points never drift.
 export function useReserveRoom(): ReserveRoomResult {
   const router = useRouter();
   const { data: session, isPending: isSessionPending } = authClient.useSession();

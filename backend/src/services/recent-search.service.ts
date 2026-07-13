@@ -40,9 +40,7 @@ function tupleKey(row: {
   return `${row.destinationQuery.toLowerCase()}|${row.checkIn}|${row.checkOut}|${row.adults}|${row.kids}|${row.rooms}`;
 }
 
-// Best-effort: a failure to record a search must never fail the search response it rides
-// along with (see /architect session for Feature 10) — logged and swallowed here rather
-// than propagated to the controller.
+// Best-effort: a failure to record a search must never fail the search response it rides along with, so errors are logged and swallowed rather than propagated.
 export async function recordSearchIfChanged(owner: Owner, input: RecentSearchInput): Promise<void> {
   if (!input.destinationQuery.trim()) return;
 

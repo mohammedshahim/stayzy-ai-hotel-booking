@@ -11,9 +11,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-// Keyed by amenities.icon (seeded as short slugs, not lucide names) — see
-// backend/src/config/seed.ts's AMENITIES list. Falls back to a generic checkmark
-// for any admin-entered icon slug not in this map.
+// Keyed by amenities.icon slugs (backend/src/config/seed.ts); unknown slugs fall back to a checkmark.
 const AMENITY_ICONS: Record<string, LucideIcon> = {
   wifi: WifiIcon,
   pool: WavesIcon,

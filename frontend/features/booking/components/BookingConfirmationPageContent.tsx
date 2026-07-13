@@ -15,9 +15,7 @@ type Props = {
 
 export function BookingConfirmationPageContent({ bookingId }: Props) {
   const searchParams = useSearchParams();
-  // Stripe appends this after a full redirect confirmation — "failed" only happens for
-  // payment methods that redirect away and report failure on return (e.g. bank redirects).
-  // A card decline never gets here — it stays on the checkout page as an inline error.
+  // Only set for redirect-based payment methods failing on return; card declines never reach here.
   const redirectFailed = searchParams.get("redirect_status") === "failed";
 
   const { booking, isPolling } = usePollBookingStatus(bookingId);
@@ -69,8 +67,7 @@ export function BookingConfirmationPageContent({ bookingId }: Props) {
     return <FailureState />;
   }
 
-  // Still pending_payment after MAX_ATTEMPTS — the webhook (Feature 22) hasn't landed
-  // yet, but this isn't an error, just slower than usual.
+  // Still pending_payment after MAX_ATTEMPTS — webhook is just slower than usual, not an error.
   return <ProcessingState message="This is taking longer than usual — your booking will confirm shortly." />;
 }
 

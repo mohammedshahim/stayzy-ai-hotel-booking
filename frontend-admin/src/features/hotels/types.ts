@@ -59,9 +59,7 @@ export interface HotelFormInput {
   state?: string;
   country: string;
   postalCode?: string;
-  // Only set in edit mode, seeded from the loaded hotel's geocoded position and
-  // adjustable via HotelLocationPicker — omitted entirely on create, so the backend
-  // falls back to its normal address-geocode behavior for new hotels.
+  // Only set in edit mode; omitted on create so the backend falls back to address-geocoding.
   latitude?: number;
   longitude?: number;
   starRating: number;

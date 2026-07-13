@@ -9,9 +9,7 @@ export interface TrendingDestination {
 
 const TRENDING_LIMIT = 8;
 
-// Ranked by published-hotel count per city (rating as tiebreaker) until real booking
-// volume exists (Phase 5) — see build-plan.md's Feature 11 note. Swapping in the real
-// ranking later only touches findTopCitiesByHotelCount; this function's shape stays put.
+// Ranked by published-hotel count per city until real booking volume exists (Phase 5, build-plan.md's Feature 11 note).
 export async function getTrendingDestinations(): Promise<TrendingDestination[]> {
   const cities = await findTopCitiesByHotelCount(TRENDING_LIMIT);
 

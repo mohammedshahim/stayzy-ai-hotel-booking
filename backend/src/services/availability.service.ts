@@ -1,8 +1,7 @@
 import { findCandidateRoomTypes, findOverlappingBookings, findRateOverridesForRoomTypes } from "../queries/search.queries";
 import type { CandidateHotel, OverlappingBookingRow, RateOverrideRow } from "../queries/search.queries";
 
-// Statuses that still occupy inventory. cancelled/failed bookings release their hold —
-// cancelled immediately, failed because the payment never went through in the first place.
+// Statuses that still occupy inventory — cancelled/failed bookings release their hold.
 export const HELD_BOOKING_STATUSES = ["pending_payment", "confirmed", "completed"];
 
 export interface QualifyingRoomType {
@@ -27,8 +26,7 @@ export interface FindQualifyingRoomTypesParams {
   freeCancellationOnly: boolean;
 }
 
-// checkOut is the checkout date (exclusive) — a stay from 2026-07-10 to 2026-07-12 covers
-// 2 nights: 2026-07-10 and 2026-07-11.
+// checkOut is exclusive — a stay from 2026-07-10 to 2026-07-12 covers 2 nights: 2026-07-10 and 2026-07-11.
 export function enumerateStayDates(checkIn: string, checkOut: string): string[] {
   const dates: string[] = [];
   const cursor = new Date(`${checkIn}T00:00:00Z`);
@@ -40,9 +38,7 @@ export function enumerateStayDates(checkIn: string, checkOut: string): string[] 
   return dates;
 }
 
-// Expands each overlapping booking across its own night list and sums roomsBooked per
-// (roomTypeId, date), restricted to the dates actually being checked — a booking can span
-// nights outside the requested range, those are irrelevant here.
+// Restricted to the dates actually being checked — a booking can span nights outside the requested range, those are irrelevant here.
 function buildBookedCountsByRoomType(
   overlappingBookings: OverlappingBookingRow[],
   stayDates: string[],
@@ -64,8 +60,6 @@ function buildBookedCountsByRoomType(
   return bookedByRoomType;
 }
 
-// No booking-overlap subtraction here — the `bookings` table doesn't exist until Phase 5,
-// so availability for now reduces to inventory minus rate-override closures only.
 export async function findQualifyingRoomTypes(params: FindQualifyingRoomTypesParams): Promise<QualifyingRoomType[]> {
   const hotelIds = Array.from(params.hotelsById.keys());
   const roomTypeCandidates = await findCandidateRoomTypes({
@@ -78,9 +72,7 @@ export async function findQualifyingRoomTypes(params: FindQualifyingRoomTypesPar
   if (roomTypeCandidates.length === 0) return [];
 
   const stayDates = enumerateStayDates(params.checkIn, params.checkOut);
-  // A zero-or-negative-night range (checkOut <= checkIn) can't be booked — without this guard
-  // the loop below never runs, `isAvailable` never flips false, and `totalPrice / stayDates.length`
-  // divides by zero into NaN while still reporting the room type as "available".
+  // Without this guard, a zero-night range would skip the loop below and divide by zero into NaN while still reporting "available".
   if (stayDates.length === 0) return [];
   const roomTypeIds = roomTypeCandidates.map((roomType) => roomType.id);
   const [overrides, overlappingBookings] = await Promise.all([
@@ -155,11 +147,7 @@ interface RoomTypeForAvailability {
   totalInventory: number;
 }
 
-// Same per-night rate-override math as findQualifyingRoomTypes, generalized to report the
-// actual remaining stock (min effective inventory across the stay) instead of a pass/fail
-// boolean gated on a specific `rooms` count — used by the hotel details page, where a
-// sold-out room type should still render (with 0 remaining), not silently disappear. Also
-// reused by booking.service.ts's insert-time re-check against a single room type.
+// Reports actual remaining stock instead of a pass/fail boolean, so a sold-out room type still renders (0 remaining) rather than disappearing; also reused by booking.service.ts's insert-time re-check.
 export function resolveRoomTypeAvailability(
   roomTypes: RoomTypeForAvailability[],
   stayDates: string[],

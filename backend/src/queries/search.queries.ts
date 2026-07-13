@@ -42,11 +42,7 @@ export async function findCandidateHotels(filters: HotelSearchFilters): Promise<
       averageRating: hotels.averageRating,
       reviewCount: hotels.reviewCount,
       freeCancellation: hotels.freeCancellation,
-      // "hotels"."id" is hardcoded rather than interpolating hotels.id — a raw sql
-      // template renders an interpolated column as its bare unqualified name, and
-      // neither hotel_images nor hotel_amenities has its own "id" collision here,
-      // but every correlated subquery in this codebase qualifies explicitly anyway
-      // (see library-docs.md's PostGIS/Drizzle gotcha section).
+      // "hotels"."id" hardcoded rather than interpolated — raw sql renders an interpolated column as its bare unqualified name (library-docs.md's PostGIS/Drizzle gotcha).
       mainImageUrl: sql<
         string | null
       >`(SELECT url FROM ${hotelImages} WHERE ${hotelImages.hotelId} = "hotels"."id" AND ${hotelImages.isMain} = true LIMIT 1)`,
@@ -63,9 +59,7 @@ export async function findCandidateHotels(filters: HotelSearchFilters): Promise<
           ? or(
               ilike(hotels.city, destinationPattern),
               ilike(hotels.country, destinationPattern),
-              // Search-suggestions (recent-search.service.ts) format "place" matches as
-              // "City, Country" — city/country alone never substring-match that combined
-              // form, so it's matched explicitly here too (see /review, Feature 10 bug).
+              // Matched explicitly since city/country alone never substring-match the "City, Country" form used by search suggestions (see /review, Feature 10 bug).
               ilike(sql`${hotels.city} || ', ' || ${hotels.country}`, destinationPattern),
             )
           : undefined,
@@ -128,8 +122,7 @@ export async function findCandidateRoomTypes(filters: RoomTypeSearchFilters): Pr
     );
 }
 
-// Accepted by queries that also need to run inside booking.service.ts's insert transaction
-// (a `tx` handle) rather than always against the top-level `db` pool.
+// Lets queries run inside booking.service.ts's insert transaction (`tx`) instead of only against the top-level `db` pool.
 type TransactionHandle = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export type QueryExecutor = typeof db | TransactionHandle;
 
@@ -165,8 +158,7 @@ export interface OverlappingBookingRow {
   roomsBooked: number;
 }
 
-// checkOut is exclusive (same convention as enumerateStayDates), so two ranges overlap
-// when existing.check_in < requested.checkOut AND existing.check_out > requested.checkIn.
+// checkOut is exclusive (same convention as enumerateStayDates): ranges overlap when existing.check_in < requested.checkOut AND existing.check_out > requested.checkIn.
 export async function findOverlappingBookings(
   roomTypeIds: string[],
   checkIn: string,

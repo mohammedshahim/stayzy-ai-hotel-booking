@@ -1,7 +1,6 @@
 import { z } from "zod";
 
-// Mirrors search.schemas.ts's csvList — kept local since it's a one-off shape here,
-// not worth sharing across files for a single query param.
+// Mirrors search.schemas.ts's csvList but kept local — not worth sharing for a single query param.
 const MAX_COMPARE_IDS = 10;
 
 export const compareHotelsQuerySchema = z.object({

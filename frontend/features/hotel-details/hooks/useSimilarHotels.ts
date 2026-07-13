@@ -7,8 +7,7 @@ import type { SimilarHotel } from "@/features/hotel-details/types";
 
 type FetchedData = {
   hotels: SimilarHotel[];
-  // The id this data was fetched for — null until the first fetch resolves, so
-  // isLoading below reads true on mount instead of matching an accidental empty string.
+  // forId is null until the first fetch resolves, so isLoading reads true on mount.
   forId: string | null;
 };
 

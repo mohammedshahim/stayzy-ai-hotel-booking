@@ -100,9 +100,7 @@ export async function listHotels({ page, pageSize }: ListHotelsParams): Promise<
       starRating: hotels.starRating,
       status: sql<HotelStatus>`${hotels.status}`,
       createdAt: hotels.createdAt,
-      // "hotels"."id" is hardcoded (not hotels.id interpolated) — a raw sql template
-      // renders an interpolated column as its bare, unqualified name, and hotel_images
-      // has its own "id" column that would otherwise silently shadow the outer table's.
+      // "hotels"."id" hardcoded — raw sql renders an interpolated column unqualified, which hotel_images' own "id" column would otherwise shadow.
       mainImageUrl: sql<
         string | null
       >`(SELECT url FROM ${hotelImages} WHERE ${hotelImages.hotelId} = "hotels"."id" AND ${hotelImages.isMain} = true LIMIT 1)`,
@@ -208,9 +206,7 @@ export interface CompareHotelRow {
   amenities: string[];
 }
 
-// Order is not guaranteed by `IN` — callers re-sort the result to match the
-// requested id order (see hotel.service.ts's getHotelsForCompare) so the compare
-// table's columns don't reshuffle themselves on every fetch.
+// Order is not guaranteed by `IN` — callers re-sort to match the requested id order (see hotel.service.ts's getHotelsForCompare).
 export async function findHotelsForCompare(ids: string[]): Promise<CompareHotelRow[]> {
   if (ids.length === 0) return [];
 
@@ -223,8 +219,7 @@ export async function findHotelsForCompare(ids: string[]): Promise<CompareHotelR
       starRating: hotels.starRating,
       averageRating: hotels.averageRating,
       reviewCount: hotels.reviewCount,
-      // "hotels"."id" hardcoded in every subquery below — see listHotels' mainImageUrl
-      // for why a raw sql fragment needs the qualified, unquoted-alias form.
+      // "hotels"."id" hardcoded below — see listHotels' mainImageUrl for why raw sql needs the qualified alias form.
       mainImageUrl: sql<
         string | null
       >`(SELECT url FROM ${hotelImages} WHERE ${hotelImages.hotelId} = "hotels"."id" AND ${hotelImages.isMain} = true LIMIT 1)`,

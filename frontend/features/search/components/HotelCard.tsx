@@ -23,8 +23,7 @@ type Props = {
 
 const VISIBLE_AMENITY_COUNT = 3;
 
-// Carried over so the hotel details page's room selector starts pre-filled with the same
-// dates/guests the user already searched with, instead of resetting to today/tomorrow.
+// Carried over so the details page's room selector starts pre-filled instead of resetting to today/tomorrow.
 const CARRIED_PARAM_KEYS = ["checkIn", "checkOut", "adults", "kids", "rooms"] as const;
 
 export function HotelCard({ hotel, variant, isSelected, onLocate, isFavorited, onToggleFavorite }: Props) {

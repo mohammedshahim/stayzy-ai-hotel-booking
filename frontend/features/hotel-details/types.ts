@@ -11,8 +11,7 @@ export type HotelImage = {
   sortOrder: number;
 };
 
-// Shape returned by GET /hotels/:id — mirrors backend's HotelWithDetails
-// (hotels.queries.ts's HOTEL_COLUMNS + amenities + images).
+// Shape returned by GET /hotels/:id — mirrors backend's HotelWithDetails (hotels.queries.ts).
 export type HotelDetails = {
   id: string;
   name: string;
@@ -37,8 +36,7 @@ export type HotelDetails = {
   images: HotelImage[];
 };
 
-// Local page state driving the room type list — seeded from the search page's URL params
-// (see HotelCard's link) but not itself synced back to this page's URL.
+// Local page state driving the room type list; seeded from the URL (see HotelCard's link) but not synced back.
 export type RoomSelectionSearch = {
   checkIn: string | null;
   checkOut: string | null;
@@ -47,9 +45,7 @@ export type RoomSelectionSearch = {
   rooms: number;
 };
 
-// Same shape with checkIn/checkOut defaulted (today/tomorrow, mirroring the backend's own
-// fallback in hotels.controller.ts) — what a booking request or reserve-intent URL needs,
-// since neither can be built from a still-null date range.
+// Same shape with checkIn/checkOut defaulted (mirroring hotels.controller.ts), since a booking request can't use null dates.
 export type ResolvedRoomSelectionSearch = {
   checkIn: string;
   checkOut: string;
@@ -108,8 +104,7 @@ export type RoomTypeImage = {
   sortOrder: number;
 };
 
-// Shape returned by GET /hotels/:id/room-types — mirrors backend's
-// RoomTypeAvailabilityDetails (room-type.service.ts).
+// Shape returned by GET /hotels/:id/room-types — mirrors backend's RoomTypeAvailabilityDetails.
 export type RoomTypeAvailability = {
   id: string;
   name: string;

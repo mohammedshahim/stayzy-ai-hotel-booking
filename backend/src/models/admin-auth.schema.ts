@@ -1,10 +1,6 @@
 import { boolean, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
-// better-auth-managed tables for the admin instance (config/auth-admin.ts), which
-// remaps modelName to "admin_user"/"admin_session"/"admin_account"/"admin_verification".
-// Export names below are deliberately snake_case (not camelCase) because drizzleAdapter
-// resolves models by looking up `db.query[modelName]` — the schema object's key must
-// match that modelName string exactly, not just refer to the same table by any name.
+// Export names are deliberately snake_case — drizzleAdapter resolves models via `db.query[modelName]`, so the key must match the remapped modelName exactly (config/auth-admin.ts).
 export const admin_user = pgTable("admin_user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),

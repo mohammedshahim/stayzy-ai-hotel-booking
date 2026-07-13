@@ -6,9 +6,7 @@ import { enumerateStayDates, HELD_BOOKING_STATUSES, resolveRoomTypeAvailability 
 import type { Booking } from "../models/booking.schema";
 import type { CreateBookingInput } from "../types/booking.schemas";
 
-// Business-rule failures below are the caller's fault (bad room type, party too big, sold
-// out) — tagged 400 so errorHandler.ts's `err.status ?? 500` doesn't log them as server
-// errors on every routine "this room just sold out" case.
+// Tagged 400 so errorHandler.ts's `err.status ?? 500` doesn't log routine caller-fault failures (sold out, bad room type) as server errors.
 function badRequest(message: string): Error {
   return Object.assign(new Error(message), { status: 400 });
 }

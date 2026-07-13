@@ -58,10 +58,7 @@ export interface RoomTypeAvailabilityParams {
   rooms: number;
 }
 
-// Room types that don't fit the party (maxAdults/maxKids) are dropped entirely, matching
-// /search's existing capacity-filter behavior. Room types that fit but lack inventory for
-// the selected dates are kept (isSoldOut: true) — this is a single-hotel page, so a room
-// type silently disappearing would read as a bug rather than a filter.
+// Room types that fit but lack inventory are kept (isSoldOut: true) rather than dropped — on a single-hotel page, a room type silently disappearing would read as a bug.
 export async function listRoomTypesWithAvailability(
   params: RoomTypeAvailabilityParams,
 ): Promise<RoomTypeAvailabilityDetails[]> {

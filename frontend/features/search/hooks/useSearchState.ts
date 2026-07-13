@@ -35,8 +35,7 @@ const SORT_OPTIONS: SortOption[] = [
 
 const VIEW_MODES: ViewMode[] = ["list", "grid", "map"];
 
-// Changing any of these resets pagination back to page 1 — only "page" and "view"
-// leave the current page untouched, since neither changes which hotels match.
+// Changing any of these resets pagination to page 1; only "page" and "view" leave it untouched.
 const FILTER_KEYS: (keyof SearchState)[] = [
   "destination",
   "checkIn",

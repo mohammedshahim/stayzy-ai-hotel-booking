@@ -65,7 +65,6 @@ export type BookingInput = typeof bookings.$inferInsert;
 export type Review = typeof reviews.$inferSelect;
 export type ReviewInput = typeof reviews.$inferInsert;
 
-// Shape returned by GET /hotels/:id/reviews (review.service.ts's getHotelReviews).
 export interface ReviewListItem {
   id: string;
   rating: number;
@@ -75,7 +74,6 @@ export interface ReviewListItem {
   reviewerAvatarUrl: string | null;
 }
 
-// Count of reviews at each star value, 1-5.
 export type RatingBreakdown = Record<1 | 2 | 3 | 4 | 5, number>;
 
 export interface PaginatedReviews {

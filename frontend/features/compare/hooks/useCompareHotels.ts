@@ -10,14 +10,10 @@ export type CompareHotelsResult = {
   isLoading: boolean;
 };
 
-// Shared by CompareTray (renders a thumbnail/name subset) and the /compare table
-// (renders everything) — both always fetch fresh rather than trusting any cached
-// display data, since only bare ids are persisted client-side (see CompareProvider).
+// Shared by CompareTray and the /compare table; both fetch fresh since only bare ids persist client-side.
 export function useCompareHotels(ids: string[]): CompareHotelsResult {
   const [hotels, setHotels] = useState<CompareHotel[]>([]);
-  // isLoading is derived from comparing idsKey against the key the last fetch resolved
-  // for, rather than an imperative setIsLoading(true) at the top of the effect — keeps
-  // every setState call inside a promise callback, not the effect body itself.
+  // isLoading is derived by comparing idsKey to the last-resolved key, keeping setState calls inside promise callbacks.
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const idsKey = ids.join(",");
 

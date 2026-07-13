@@ -3,9 +3,7 @@ import { env } from "./env";
 
 let client: Stripe | null = null;
 
-// Constructed lazily (not at import time), same reasoning as config/s3.ts — the Stripe SDK
-// throws synchronously if the key is missing, which would crash the whole server on startup
-// in any environment where Stripe isn't configured yet, even though only payment creation needs it.
+// Constructed lazily, same reasoning as config/s3.ts — the Stripe SDK throws synchronously if the key is missing.
 export function getStripeClient(): Stripe {
   if (!client) {
     if (!env.STRIPE_SECRET_KEY) {

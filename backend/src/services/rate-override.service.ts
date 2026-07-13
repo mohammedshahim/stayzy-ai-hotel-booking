@@ -30,9 +30,7 @@ function nextDate(date: string): string {
   return next.toISOString().slice(0, 10);
 }
 
-// Rate overrides are stored one row per date, but an admin thinks in ranges
-// ("summer pricing", "maintenance week") — group consecutive dates that share
-// the same price/availability back into a range for display.
+// Rate overrides are stored one row per date, but an admin thinks in ranges — group consecutive same-value dates back into a range for display.
 function groupIntoRanges(
   rows: { date: string; price: number | null; availableOverride: number | null }[],
 ): RateOverrideRange[] {

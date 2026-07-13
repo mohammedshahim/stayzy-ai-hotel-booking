@@ -69,9 +69,7 @@ function distanceKm(a: { latitude: number; longitude: number }, b: { latitude: n
   return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 }
 
-// "distance" sort has no landmark/destination reference point to measure from (see
-// build-plan.md Feature 09's /architect session) — it sorts against the centroid of the
-// matched result set itself, computed here rather than via an external geocoding call.
+// "distance" sort has no reference point to measure from, so it sorts against the centroid of the matched result set itself (build-plan.md Feature 09).
 function sortResults(results: SearchResultHotel[], sort: SortOption): SearchResultHotel[] {
   const sorted = [...results];
 

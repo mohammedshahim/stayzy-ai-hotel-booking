@@ -1,8 +1,6 @@
 import type { DateRange } from "react-day-picker";
 
-// Mirrors backend/src/utils/date.ts's todayIso()/tomorrowIso() exactly, so a date range
-// left untouched by the user resolves to the same default the backend would have applied
-// anyway — the picker now shows that default instead of leaving it invisible.
+// Mirrors backend/src/utils/date.ts's todayIso()/tomorrowIso() so an untouched range matches the backend's default.
 export function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }

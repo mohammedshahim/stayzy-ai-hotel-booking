@@ -41,8 +41,7 @@ export async function insertRecentSearch(owner: Owner, input: RecentSearchInput)
   });
 }
 
-// Recent rows for one owner, newest first — capped generously above the display limit so the
-// caller can dedupe repeated (destination, dates, guests) combos in JS and still fill the page.
+// `take` is capped generously above the display limit so the caller can dedupe repeated combos in JS and still fill the page.
 export async function findRecentRowsForOwner(owner: Owner, take: number): Promise<RecentSearch[]> {
   return db
     .select()
@@ -52,8 +51,7 @@ export async function findRecentRowsForOwner(owner: Owner, take: number): Promis
     .limit(take);
 }
 
-// Rows are not deduped by destination in SQL — the caller collapses repeated destination
-// strings in JS, same as findRecentRowsForOwner, so `take` is a generous over-fetch.
+// Not deduped by destination in SQL — the caller collapses repeated strings in JS, same as findRecentRowsForOwner.
 export async function findDestinationMatchesForOwner(owner: Owner, query: string, take: number): Promise<RecentSearch[]> {
   return db
     .select()

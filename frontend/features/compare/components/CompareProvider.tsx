@@ -27,19 +27,13 @@ function readStoredIds(): string[] {
   }
 }
 
-// Mounted once in app/layout.tsx alongside Navbar, so every page shares the same
-// selection. localStorage holds bare ids only — no cached name/thumbnail — so the
-// tray and /compare page always fetch fresh data for whatever's selected (see
-// useCompareHotels) instead of risking a stale display after a hotel is edited.
+// localStorage holds bare ids only, so consumers always fetch fresh data instead of risking a stale display.
 export function CompareProvider({ children }: { children: ReactNode }) {
   const [ids, setIds] = useState<string[]>([]);
   const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
-    // Deliberately deferred to an effect rather than a lazy useState initializer —
-    // reading localStorage during the initial render would desync the server-rendered
-    // (empty) markup from the client's first render, triggering a hydration mismatch.
-    // Rendering empty on both, then hydrating post-mount, is the correct SSR-safe fix.
+    // Deferred to an effect (not a lazy useState initializer) to avoid a hydration mismatch with SSR's empty markup.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setIds(readStoredIds());
     setIsHydrated(true);

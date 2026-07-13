@@ -21,9 +21,7 @@ const MAPBOX_ACCESS_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
 
 export function MapView({ hotels, selectedHotelId, onSelectHotel, favoritedIds, onToggleFavorite }: Props) {
   const mapRef = useRef<MapRef>(null);
-  // selectedHotelId is owned by SearchPageContent (so "View on map" from Grid/List can set it
-  // before switching views) — fall back to the first result if it's unset or points at a hotel
-  // that's no longer in the current (possibly re-filtered) result set.
+  // Falls back to the first result if selectedHotelId is unset or no longer in the (possibly re-filtered) results.
   const effectiveSelectedId = hotels.some((hotel) => hotel.id === selectedHotelId)
     ? selectedHotelId
     : (hotels[0]?.id ?? null);

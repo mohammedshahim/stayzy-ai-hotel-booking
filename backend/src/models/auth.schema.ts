@@ -1,10 +1,6 @@
 import { boolean, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
-// better-auth-managed tables for the user-facing instance (config/auth.ts). Column
-// names stay camelCase (quoted) to match better-auth's own default naming — these
-// keys are also what drizzleAdapter's db.query lookups resolve against, so they must
-// match the model names better-auth is configured with exactly (see auth.ts: no
-// modelName remapping on this instance, so "user"/"session"/"account"/"verification").
+// Column names stay camelCase to match better-auth's default naming, which drizzleAdapter's db.query lookups resolve against exactly (no modelName remapping here, see auth.ts).
 export const user = pgTable("user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),

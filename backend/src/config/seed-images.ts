@@ -1,10 +1,6 @@
 import { uploadImage } from "../services/upload.service";
 
-/**
- * One-off utility: downloads real photos and pushes them through the app's actual
- * S3 upload pipeline, producing real *.s3.amazonaws.com URLs to hardcode into seed.ts.
- * Run manually with `pnpm seed:images` — not invoked as part of the normal seed flow.
- */
+// One-off utility, run manually with `pnpm seed:images` to produce URLs to hardcode into seed.ts — not part of the normal seed flow.
 
 interface ImageTarget {
   folder: string;

@@ -18,9 +18,7 @@ type Chip = {
   onRemove: () => void;
 };
 
-// Amenities/room features/meal plans are stored as ids in SearchState — this resolves them
-// back to display names for the chip label, from the same catalogs SearchPageContent fetches
-// once and shares with FilterSidebar (see useSearchCatalogs.ts).
+// Resolves the ids stored in SearchState back to display names using the shared catalogs (see useSearchCatalogs.ts).
 function toNameMap(options: CatalogOption[]): Map<string, string> {
   return new Map(options.map((option) => [option.id, option.name]));
 }

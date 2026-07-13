@@ -37,16 +37,11 @@ export async function findFavoritesForOwner(owner: Owner): Promise<FavoriteHotel
       starRating: hotels.starRating,
       averageRating: hotels.averageRating,
       reviewCount: hotels.reviewCount,
-      // "hotels"."id" hardcoded in both subqueries below — see hotels.queries.ts' listHotels
-      // for why: a raw sql fragment renders an interpolated column as its bare, unqualified
-      // name, and both hotel_images/room_types have their own "id"/"hotel_id" columns that
-      // would otherwise silently shadow the outer hotels.id reference.
+      // "hotels"."id" hardcoded in both subqueries — see hotels.queries.ts' listHotels for why (raw sql renders an interpolated column unqualified, which would shadow the outer reference).
       mainImageUrl: sql<
         string | null
       >`(SELECT url FROM ${hotelImages} WHERE ${hotelImages.hotelId} = "hotels"."id" AND ${hotelImages.isMain} = true LIMIT 1)`,
-      // ::float8 cast — numeric aggregates come back from the pg driver as strings
-      // unless cast to a float/int type (unlike the mode:"number" declared columns
-      // elsewhere, which drizzle already knows to convert).
+      // ::float8 cast — numeric aggregates come back from the pg driver as strings unless cast to a float/int type.
       fromPrice: sql<
         number | null
       >`(SELECT MIN(${roomTypes.basePrice})::float8 FROM ${roomTypes} WHERE ${roomTypes.hotelId} = "hotels"."id" AND ${roomTypes.deletedAt} IS NULL)`,
@@ -75,10 +70,7 @@ export async function deleteFavorite(owner: Owner, hotelId: string): Promise<boo
 
 export async function mergeGuestFavorites(sessionToken: string, userId: string): Promise<void> {
   await db.transaction(async (tx) => {
-    // Drop guest-scoped rows that would collide with a hotel already favorited on the
-    // account (favorites_user_hotel_idx unique on (user_id, hotel_id)) — the account's
-    // existing favorite wins, the duplicate guest row is discarded rather than left to
-    // throw a unique-violation on the update below.
+    // Drop guest rows that would collide with an existing account favorite (unique on user_id, hotel_id) to avoid a unique-violation on the update below.
     await tx.delete(favorites).where(
       and(
         eq(favorites.sessionToken, sessionToken),

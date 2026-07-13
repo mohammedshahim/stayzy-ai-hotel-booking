@@ -9,8 +9,7 @@ import {
 } from "../controllers/hotels.controller";
 
 const router = Router();
-// Both static paths below must come before "/:id" — Express would otherwise match
-// "/hotels/compare" and "/hotels/search-suggestions" as ":id" = "compare"/"search-suggestions".
+// Both static paths must come before "/:id" or Express matches them as ":id" instead.
 router.get("/compare", getHotelsCompare);
 router.get("/search-suggestions", getHotelSearchSuggestions);
 router.get("/:id", getHotel);

@@ -16,9 +16,7 @@ export interface LockedRoomType {
   deletedAt: string | null;
 }
 
-// Locks the room type row for the lifetime of the enclosing transaction (`tx`), so a second
-// concurrent booking attempt on the same room type blocks until the first one commits and
-// re-reads correct, post-insert availability rather than racing off stale data.
+// Locks the row for the transaction's lifetime so a concurrent booking on the same room type blocks instead of racing off stale availability.
 export async function lockRoomTypeForBooking(tx: QueryExecutor, roomTypeId: string): Promise<LockedRoomType | null> {
   const [row] = await tx
     .select({

@@ -10,9 +10,7 @@ export type FavoriteHotelIdsResult = {
   toggleFavorite: (hotelId: string) => void;
 };
 
-// Called once per page (SearchPageContent, HotelDetailsContent) and threaded down as
-// props to every card that needs it — same lifting pattern as useSearchCatalogs, so a
-// page with many hotel cards doesn't fire one fetch per card.
+// Called once per page and threaded down as props (same lifting pattern as useSearchCatalogs) to avoid one fetch per card.
 export function useFavoriteHotelIds(): FavoriteHotelIdsResult {
   const [favoritedIds, setFavoritedIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);

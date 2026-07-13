@@ -1,10 +1,7 @@
 import { sql } from "drizzle-orm";
 import { boolean, check, customType, index, integer, numeric, pgTable, primaryKey, text, time, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
-// ST_MakePoint takes (longitude, latitude) — reversed from how coordinates are
-// normally said out loud (see library-docs.md's PostGIS rule). Read-side lat/lng
-// are exposed separately via ST_Y/ST_X in hotels.queries.ts, not through this type,
-// since a single geography column can't fan out into two selected fields on its own.
+// ST_MakePoint takes (longitude, latitude) — reversed from how coordinates are normally said out loud (see library-docs.md's PostGIS rule).
 export const geographyPoint = customType<{ data: { latitude: number; longitude: number } }>({
   dataType() {
     return "geography(Point,4326)";
@@ -85,10 +82,7 @@ export const hotelAmenities = pgTable(
   (table) => [primaryKey({ columns: [table.hotelId, table.amenityId] })],
 );
 
-// Application-level row shapes below are hand-written, not $inferSelect, because they
-// are already a view over the raw table (flattened latitude/longitude instead of the
-// geography column, check-in/out formatted as "HH:MM" instead of raw "HH:MM:SS") — see
-// HOTEL_COLUMNS in hotels.queries.ts, which builds exactly this shape from the tables above.
+// Row shapes below are hand-written, not $inferSelect, since they're a flattened view over the raw table (see HOTEL_COLUMNS in hotels.queries.ts).
 export type HotelStatus = "draft" | "published";
 
 export interface Hotel {

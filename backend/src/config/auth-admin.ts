@@ -13,8 +13,7 @@ export const authAdmin = betterAuth({
   basePath: "/api/admin/auth",
   baseURL: `${env.API_URL}/api/admin/auth`,
   trustedOrigins: [env.ADMIN_APP_URL],
-  // Both instances share the same host (backend/), so the default "better-auth"
-  // cookie prefix would collide with the user instance's cookie of the same name.
+  // Default "better-auth" cookie prefix would collide with the user instance's, since both share the same host.
   advanced: {
     cookiePrefix: "admin",
   },
@@ -22,8 +21,7 @@ export const authAdmin = betterAuth({
     enabled: true,
     requireEmailVerification: false,
   },
-  // No socialProviders, no sign-up route is ever mounted — the only admin_user
-  // rows come from seed-admin.ts.
+  // No socialProviders, no sign-up route mounted — admin_user rows only come from seed-admin.ts.
   user: {
     modelName: "admin_user",
     additionalFields: {

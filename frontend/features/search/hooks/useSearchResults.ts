@@ -7,7 +7,6 @@ import { serializeSearchState } from "@/features/search/hooks/useSearchState";
 import type { SearchApiResponse, SearchResultHotel, SearchState } from "@/features/search/types";
 
 export const RESULTS_PER_PAGE = 9;
-// Map view shows every matched pin/card at once — pagination only applies to List/Grid.
 // Capped at 100 to match GET /search's pageSize ceiling (backend/src/types/search.schemas.ts).
 const MAP_VIEW_PAGE_SIZE = 100;
 
@@ -26,8 +25,7 @@ type FetchedData = {
   totalPages: number;
   currentPage: number;
   isEmpty: boolean;
-  // The query this data was fetched for — `null` until the first fetch resolves, so
-  // isLoading below reads true on mount instead of matching an accidental empty string.
+  // The query this data was fetched for — `null` until the first fetch resolves, so isLoading below reads true on mount instead of matching an accidental empty string.
   forQuery: string | null;
 };
 
@@ -42,9 +40,7 @@ const INITIAL_DATA: FetchedData = {
 
 export function useSearchResults(state: SearchState): SearchResults {
   const [data, setData] = useState<FetchedData>(INITIAL_DATA);
-  // Map view has no pagination UI and is meant to show every matched pin/card — force page 1
-  // for it regardless of whatever page the user was on in Grid/List, so switching views never
-  // asks the backend for a slice ("page 2 of 100") that skips past all of Map view's results.
+  // Map view has no pagination and shows every result, so force page 1 regardless of Grid/List's page.
   const effectiveState = state.view === "map" ? { ...state, page: 1 } : state;
   const query = serializeSearchState(effectiveState);
 

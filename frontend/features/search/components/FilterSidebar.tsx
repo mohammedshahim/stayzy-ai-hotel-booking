@@ -60,11 +60,7 @@ function PriceRangeSlider({
   initialRange: number[];
   onCommit: (range: number[]) => void;
 }) {
-  // Local state gives the thumb instant visual feedback while dragging. The expensive part —
-  // committing to URL state, which re-filters the whole result set — only runs once on release
-  // (onValueCommitted), instead of on every drag tick. The parent remounts this component (via
-  // `key`) whenever the committed range changes for a reason other than this slider's own drag
-  // (e.g. a chip removal or "Clear filters"), so no effect is needed to keep the two in sync.
+  // Local state for instant drag feedback; committing to URL state (which re-filters results) only happens on release.
   const [priceRange, setPriceRange] = useState(initialRange);
 
   return (

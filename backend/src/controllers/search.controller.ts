@@ -14,9 +14,7 @@ export async function search(req: Request, res: Response, next: NextFunction): P
     }
     const query = parsed.data;
 
-    // The schema's own refine only validates ordering when both checkIn and checkOut are
-    // supplied together — a request giving only one (e.g. `?checkOut=2020-01-01`) skips it,
-    // and the defaults below could then resolve to an inverted range. Re-check post-default.
+    // Re-check post-default: the schema's refine only validates ordering when both dates are supplied together.
     const checkIn = query.checkIn ?? todayIso();
     const checkOut = query.checkOut ?? tomorrowIso();
     if (checkOut <= checkIn) {

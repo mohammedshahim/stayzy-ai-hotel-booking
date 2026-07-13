@@ -22,9 +22,7 @@ type Props = {
   initialSearch: RoomSelectionSearch;
 };
 
-// A still-empty date range defaults to today -> tomorrow (mirroring the backend's own
-// fallback) rather than leaving the picker on an ambiguous "Add dates" placeholder — the
-// user should always see (and Reserve against) concrete dates, never a silent default.
+// A still-empty range defaults to today -> tomorrow (mirroring the backend) instead of an ambiguous placeholder.
 function toDateRange(search: RoomSelectionSearch): DateRange {
   if (!search.checkIn && !search.checkOut) return defaultDateRange();
   return {
@@ -63,11 +61,7 @@ export function RoomSelectionSection({ hotelId, initialSearch }: Props) {
 
   const { roomTypes, isLoading } = useRoomTypes(hotelId, search);
 
-  // Completes the "logged out -> login -> back into the flow" round trip: a Reserve click
-  // while logged out redirects here with autoReserve=1 + the original room selection
-  // (see RoomTypeCard's buildLoginReturnUrl). Only fires once we can positively confirm a
-  // real, verified session — otherwise it silently no-ops rather than risking a redirect
-  // loop back through /login, and the user just clicks Reserve again manually.
+  // Completes the logged-out -> login -> autoReserve=1 round trip (see RoomTypeCard's buildLoginReturnUrl).
   const { data: session, isPending: isSessionPending } = authClient.useSession();
   const { createBooking, error: autoReserveError } = useCreateBooking();
   const autoReserveAttempted = useRef(false);

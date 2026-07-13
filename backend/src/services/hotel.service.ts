@@ -85,10 +85,7 @@ export async function getSimilarHotels(hotel: Hotel): Promise<SimilarHotel[]> {
   });
 }
 
-// `IN` doesn't preserve the requested order, and a hotel missing here (unpublished,
-// deleted, or a bad id) is silently dropped rather than erroring — the compare
-// tray/table just render one fewer card, which is the right behavior if a hotel
-// gets unpublished out from under an existing selection.
+// A hotel missing here (unpublished, deleted, or a bad id) is silently dropped rather than erroring — the compare table just renders one fewer card.
 export async function getHotelsForCompare(ids: string[]): Promise<CompareHotelRow[]> {
   const rows = await findHotelsForCompare(ids);
   const byId = new Map(rows.map((row) => [row.id, row]));

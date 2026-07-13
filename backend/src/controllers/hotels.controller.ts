@@ -32,8 +32,7 @@ export async function getHotelRoomTypes(req: Request, res: Response, next: NextF
     }
     const query = parsed.data;
 
-    // Same post-default ordering re-check as /search's controller — the schema's refine only
-    // validates ordering when both dates are supplied together.
+    // Same post-default ordering re-check as /search's controller.
     const checkIn = query.checkIn ?? todayIso();
     const checkOut = query.checkOut ?? tomorrowIso();
     if (checkOut <= checkIn) {

@@ -32,8 +32,7 @@ function toFormInput(roomType?: RoomType): RoomTypeFormInput {
   };
 }
 
-// "inherit" isn't representable in a boolean form field, so the tri-state
-// free-cancellation control is modeled as its own string union at the UI layer.
+// "inherit" isn't representable in a boolean form field, so it's modeled as its own string union.
 type FreeCancellationOption = "inherit" | "yes" | "no";
 
 function toOption(value: boolean | null): FreeCancellationOption {

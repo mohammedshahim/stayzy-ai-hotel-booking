@@ -6,10 +6,7 @@ import { Select as SelectPrimitive } from "@base-ui/react/select"
 import { cn } from "@/lib/utils"
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
 
-// Select.Value only resolves an item's label from base-ui's `items` map — without it,
-// the trigger shows the raw `value` until the popup has been opened once. Deriving that
-// map from the SelectItem children here means every call site gets a correct label for
-// free, instead of relying on each one to remember to pass `items` by hand.
+// Derives the items map from SelectItem children so the trigger shows a label before the popup has ever opened.
 function collectItemsFromChildren(children: React.ReactNode): Record<string, React.ReactNode> {
   const items: Record<string, React.ReactNode> = {}
   React.Children.forEach(children, (child) => {

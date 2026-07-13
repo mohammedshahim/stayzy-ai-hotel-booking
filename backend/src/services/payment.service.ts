@@ -1,8 +1,7 @@
 import { getStripeClient } from "../config/stripe";
 import { findBookingByIdForOwner, updateBookingStripePaymentIntentId } from "../queries/booking.queries";
 
-// Business-rule failures below are the caller's fault (booking already paid/cancelled) —
-// tagged 400 so errorHandler.ts's `err.status ?? 500` doesn't log them as server errors.
+// Tagged 400 so errorHandler.ts's `err.status ?? 500` doesn't log caller-fault failures as server errors.
 function badRequest(message: string): Error {
   return Object.assign(new Error(message), { status: 400 });
 }

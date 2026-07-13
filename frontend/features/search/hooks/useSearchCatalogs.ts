@@ -13,9 +13,7 @@ export type SearchCatalogs = {
 
 const EMPTY_CATALOGS: SearchCatalogs = { amenities: [], roomFeatures: [], mealPlans: [] };
 
-// Amenities/room features/meal plans are real lookup tables (uuid id + name) — SearchState
-// stores the ids, this hook supplies the labels. Fetched once here and passed down as props
-// so FilterSidebar and ActiveFilterChips don't each independently re-fetch the same 3 endpoints.
+// Fetched once and passed down as props so FilterSidebar and ActiveFilterChips don't each re-fetch the same 3 endpoints.
 export function useSearchCatalogs(): SearchCatalogs {
   const [catalogs, setCatalogs] = useState<SearchCatalogs>(EMPTY_CATALOGS);
 

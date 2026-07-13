@@ -10,8 +10,7 @@ export default async function BookingConfirmationPage({ params }: { params: Prom
     redirect(`/login?returnTo=${encodeURIComponent(`/booking-confirmation/${bookingId}`)}`);
   }
 
-  // BookingConfirmationPageContent reads useSearchParams (for Stripe's redirect_status),
-  // which requires a Suspense boundary to avoid deopting prerendering of this route.
+  // useSearchParams inside requires a Suspense boundary, or this route's prerendering deopts.
   return (
     <Suspense fallback={null}>
       <BookingConfirmationPageContent bookingId={bookingId} />

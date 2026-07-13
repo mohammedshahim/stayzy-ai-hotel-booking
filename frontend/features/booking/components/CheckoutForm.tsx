@@ -55,8 +55,7 @@ function PaymentForm({ bookingId }: { bookingId: string }) {
       },
     });
 
-    // Only reached for immediate failures (e.g. a declined card) — success and
-    // any redirect-required outcome navigate away before this line runs.
+    // Only reached for immediate failures — success/redirect outcomes navigate away first.
     if (confirmError) {
       setError(confirmError.message ?? "Payment failed. Please try again.");
       setIsSubmitting(false);

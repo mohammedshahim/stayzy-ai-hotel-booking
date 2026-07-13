@@ -22,14 +22,11 @@ export async function findTopCitiesByHotelCount(limit: number): Promise<CityHote
     .limit(limit);
 }
 
-// Main image of the highest-rated published hotel in a city — one small query per city
-// (city counts are capped low by findTopCitiesByHotelCount's limit) rather than a single
-// correlated subquery, which is simpler to read and avoids grouped-column aliasing pitfalls.
+// One small query per city (counts capped low by findTopCitiesByHotelCount's limit) rather than a correlated subquery, to avoid grouped-column aliasing pitfalls.
 export async function findTopHotelImageForCity(city: string, country: string): Promise<string | null> {
   const [row] = await db
     .select({
-      // "hotels"."id" is hardcoded (not hotels.id interpolated) — see the identical
-      // pattern/reasoning in hotels.queries.ts's listHotels mainImageUrl subquery.
+      // "hotels"."id" hardcoded — see hotels.queries.ts's listHotels mainImageUrl subquery.
       mainImageUrl: sql<
         string | null
       >`(SELECT url FROM ${hotelImages} WHERE ${hotelImages.hotelId} = "hotels"."id" AND ${hotelImages.isMain} = true LIMIT 1)`,

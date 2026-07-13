@@ -13,9 +13,7 @@ type Props = {
   hotels: CompareHotel[];
 };
 
-// min-w-[16rem] on every hotel column, per ui-rules.md's Compare Table spec — columns
-// never wrap or shrink to fit, the first two show inline and the rest reveal via the
-// wrapper's horizontal scroll instead.
+// Per ui-rules.md's Compare Table spec: columns never wrap/shrink, extras reveal via horizontal scroll.
 const ROW_LABEL_CLASS = "sticky left-0 z-10 whitespace-nowrap bg-surface px-4 py-3 text-sm font-medium text-text-secondary";
 const CELL_CLASS = "min-w-[16rem] px-4 py-3 text-sm text-text-secondary align-top";
 
@@ -128,8 +126,7 @@ export function CompareTable({ hotels }: Props) {
         </table>
       </div>
 
-      {/* Reserved for the later AI phase — project-overview.md's "AI summary section",
-          hidden/static until that phase ships. */}
+      {/* Reserved for the later AI phase (project-overview.md); hidden/static until that phase ships. */}
       <div className="hidden rounded-2xl border border-border-default bg-elevated p-5">
         <p className="text-sm text-text-muted">AI summary coming soon.</p>
       </div>

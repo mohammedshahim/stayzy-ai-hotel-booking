@@ -12,8 +12,7 @@ export type RoomTypesResult = {
 
 type FetchedData = {
   roomTypes: RoomTypeAvailability[];
-  // The query this data was fetched for — `null` until the first fetch resolves, so
-  // isLoading below reads true on mount instead of matching an accidental empty string.
+  // forQuery is null until the first fetch resolves, so isLoading reads true on mount.
   forQuery: string | null;
 };
 
