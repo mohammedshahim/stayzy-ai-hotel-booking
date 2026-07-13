@@ -1,6 +1,12 @@
 import { db } from "../config/db";
-import { findBookingSummaryByIdForOwner, insertBooking, lockRoomTypeForBooking } from "../queries/booking.queries";
+import {
+  expireStalePendingBookings,
+  findBookingSummaryByIdForOwner,
+  insertBooking,
+  lockRoomTypeForBooking,
+} from "../queries/booking.queries";
 import type { BookingSummaryRow } from "../queries/booking.queries";
+import { env } from "../config/env";
 import { findOverlappingBookings, findRateOverridesForRoomTypes } from "../queries/search.queries";
 import { enumerateStayDates, HELD_BOOKING_STATUSES, resolveRoomTypeAvailability } from "./availability.service";
 import type { Booking } from "../models/booking.schema";
@@ -54,4 +60,8 @@ export async function createBookingForUser(userId: string, input: CreateBookingI
 
 export async function getBookingSummaryForOwner(id: string, userId: string): Promise<BookingSummaryRow | null> {
   return findBookingSummaryByIdForOwner(id, userId);
+}
+
+export async function expireStaleBookings(): Promise<Booking[]> {
+  return expireStalePendingBookings(env.BOOKING_EXPIRY_MINUTES);
 }

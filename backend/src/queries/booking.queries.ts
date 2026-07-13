@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, lt } from "drizzle-orm";
 import { db } from "../config/db";
 import { bookings } from "../models/booking.schema";
 import type { Booking, BookingInput } from "../models/booking.schema";
@@ -59,6 +59,38 @@ export async function findBookingByIdForOwner(id: string, userId: string): Promi
 
 export async function updateBookingStripePaymentIntentId(id: string, stripePaymentIntentId: string): Promise<void> {
   await db.update(bookings).set({ stripePaymentIntentId }).where(eq(bookings.id, id));
+}
+
+export async function findBookingByStripePaymentIntentId(stripePaymentIntentId: string): Promise<Booking | null> {
+  const [row] = await db.select().from(bookings).where(eq(bookings.stripePaymentIntentId, stripePaymentIntentId)).limit(1);
+  return row ?? null;
+}
+
+// Conditioned on the current status so a late/duplicate webhook delivery can't clobber a booking a later event (or the expiry sweep) already moved past pending_payment.
+async function transitionBookingIfPending(id: string, status: "confirmed" | "failed"): Promise<Booking | null> {
+  const [row] = await db
+    .update(bookings)
+    .set({ status })
+    .where(and(eq(bookings.id, id), eq(bookings.status, "pending_payment")))
+    .returning();
+  return row ?? null;
+}
+
+export function confirmBookingIfPending(id: string): Promise<Booking | null> {
+  return transitionBookingIfPending(id, "confirmed");
+}
+
+export function failBookingIfPending(id: string): Promise<Booking | null> {
+  return transitionBookingIfPending(id, "failed");
+}
+
+export async function expireStalePendingBookings(cutoffMinutes: number): Promise<Booking[]> {
+  const cutoff = new Date(Date.now() - cutoffMinutes * 60_000).toISOString();
+  return db
+    .update(bookings)
+    .set({ status: "cancelled", cancelledAt: new Date().toISOString() })
+    .where(and(eq(bookings.status, "pending_payment"), lt(bookings.createdAt, cutoff)))
+    .returning();
 }
 
 export async function findBookingSummaryByIdForOwner(id: string, userId: string): Promise<BookingSummaryRow | null> {

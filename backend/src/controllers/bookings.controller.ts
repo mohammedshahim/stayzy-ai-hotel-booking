@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
-import { createBookingForUser, getBookingSummaryForOwner } from "../services/booking.service";
+import { createBookingForUser, expireStaleBookings, getBookingSummaryForOwner } from "../services/booking.service";
 import { requireParam } from "../utils/requireParam";
 
 export async function createBooking(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -36,6 +36,15 @@ export async function getBooking(req: Request, res: Response, next: NextFunction
       return;
     }
     res.json({ success: true, data: booking });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function expireStale(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const expired = await expireStaleBookings();
+    res.json({ success: true, data: { count: expired.length, bookingIds: expired.map((b) => b.id) } });
   } catch (error) {
     next(error);
   }
