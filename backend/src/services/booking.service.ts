@@ -4,16 +4,23 @@ import {
   completePastConfirmedBookings,
   expireStalePendingBookings,
   findBookingSummaryByIdForOwner,
+  findBookingsForAdmin,
   findBookingsForOwner,
   insertBooking,
   lockRoomTypeForBooking,
 } from "../queries/booking.queries";
-import type { BookingSummaryRow } from "../queries/booking.queries";
+import type {
+  AdminBookingSummaryRow,
+  BookingSummaryRow,
+  ListBookingsForAdminResult,
+} from "../queries/booking.queries";
 import { env } from "../config/env";
 import { findOverlappingBookings, findRateOverridesForRoomTypes } from "../queries/search.queries";
 import { enumerateStayDates, HELD_BOOKING_STATUSES, resolveRoomTypeAvailability } from "./availability.service";
 import type { Booking } from "../models/booking.schema";
 import type { CreateBookingInput } from "../types/booking.schemas";
+
+const BOOKING_STATUSES = new Set(["pending_payment", "confirmed", "cancelled", "completed", "failed"]);
 
 // Tagged 400 so errorHandler.ts's `err.status ?? 500` doesn't log routine caller-fault failures (sold out, bad room type) as server errors.
 function badRequest(message: string): Error {
@@ -117,3 +124,19 @@ export async function expireStaleBookings(): Promise<Booking[]> {
 export async function completePastBookings(): Promise<Booking[]> {
   return completePastConfirmedBookings();
 }
+
+export interface ListBookingsForAdminInput {
+  status?: string;
+  hotelId?: string;
+  checkInFrom?: string;
+  checkInTo?: string;
+  page: number;
+  pageSize: number;
+}
+
+export async function listBookingsForAdmin(input: ListBookingsForAdminInput): Promise<ListBookingsForAdminResult> {
+  const status = input.status && BOOKING_STATUSES.has(input.status) ? input.status : undefined;
+  return findBookingsForAdmin({ ...input, status });
+}
+
+export type { AdminBookingSummaryRow };

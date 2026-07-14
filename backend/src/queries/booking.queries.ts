@@ -1,9 +1,10 @@
-import { and, desc, eq, lt } from "drizzle-orm";
+import { and, count, desc, eq, gte, lt, lte } from "drizzle-orm";
 import { db } from "../config/db";
 import { bookings, reviews } from "../models/booking.schema";
 import type { Booking, BookingInput } from "../models/booking.schema";
 import { hotelImages, hotels } from "../models/hotel.schema";
 import { roomTypes } from "../models/room-type.schema";
+import { user } from "../models/auth.schema";
 import type { QueryExecutor } from "./search.queries";
 
 export interface LockedRoomType {
@@ -182,4 +183,91 @@ export async function cancelConfirmedBookingForOwner(id: string, userId: string)
     .where(and(eq(bookings.id, id), eq(bookings.userId, userId), eq(bookings.status, "confirmed")))
     .returning();
   return row ?? null;
+}
+
+export interface AdminBookingSummaryRow {
+  id: string;
+  hotelId: string;
+  roomTypeId: string;
+  checkIn: string;
+  checkOut: string;
+  adults: number;
+  kids: number;
+  roomsBooked: number;
+  totalPrice: number;
+  status: string;
+  createdAt: string;
+  hotelName: string;
+  hotelCity: string;
+  hotelCountry: string;
+  hotelMainImageUrl: string | null;
+  roomTypeName: string;
+  guestName: string;
+  guestEmail: string;
+}
+
+export interface ListBookingsForAdminParams {
+  status?: string;
+  hotelId?: string;
+  checkInFrom?: string;
+  checkInTo?: string;
+  page: number;
+  pageSize: number;
+}
+
+export interface ListBookingsForAdminResult {
+  items: AdminBookingSummaryRow[];
+  total: number;
+}
+
+export async function findBookingsForAdmin({
+  status,
+  hotelId,
+  checkInFrom,
+  checkInTo,
+  page,
+  pageSize,
+}: ListBookingsForAdminParams): Promise<ListBookingsForAdminResult> {
+  const offset = (page - 1) * pageSize;
+  const conditions = [
+    status ? eq(bookings.status, status) : undefined,
+    hotelId ? eq(bookings.hotelId, hotelId) : undefined,
+    checkInFrom ? gte(bookings.checkIn, checkInFrom) : undefined,
+    checkInTo ? lte(bookings.checkIn, checkInTo) : undefined,
+  ].filter((condition) => condition !== undefined);
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const items = await db
+    .select({
+      id: bookings.id,
+      hotelId: bookings.hotelId,
+      roomTypeId: bookings.roomTypeId,
+      checkIn: bookings.checkIn,
+      checkOut: bookings.checkOut,
+      adults: bookings.adults,
+      kids: bookings.kids,
+      roomsBooked: bookings.roomsBooked,
+      totalPrice: bookings.totalPrice,
+      status: bookings.status,
+      createdAt: bookings.createdAt,
+      hotelName: hotels.name,
+      hotelCity: hotels.city,
+      hotelCountry: hotels.country,
+      hotelMainImageUrl: hotelImages.url,
+      roomTypeName: roomTypes.name,
+      guestName: user.name,
+      guestEmail: user.email,
+    })
+    .from(bookings)
+    .innerJoin(hotels, eq(hotels.id, bookings.hotelId))
+    .innerJoin(roomTypes, eq(roomTypes.id, bookings.roomTypeId))
+    .innerJoin(user, eq(user.id, bookings.userId))
+    .leftJoin(hotelImages, and(eq(hotelImages.hotelId, hotels.id), eq(hotelImages.isMain, true)))
+    .where(where)
+    .orderBy(desc(bookings.createdAt))
+    .limit(pageSize)
+    .offset(offset);
+
+  const [totalRow] = await db.select({ count: count() }).from(bookings).where(where);
+  return { items, total: totalRow?.count ?? 0 };
 }

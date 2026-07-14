@@ -16,6 +16,7 @@ import adminAmenitiesRoutes from "./admin/amenities.routes";
 import adminRoomTypesRoutes from "./admin/room-types.routes";
 import adminRoomFeaturesRoutes from "./admin/room-features.routes";
 import adminMealPlansRoutes from "./admin/meal-plans.routes";
+import adminBookingsRoutes from "./admin/bookings.routes";
 
 const router = Router();
 router.use("/health", healthRoutes);
@@ -35,5 +36,6 @@ router.use("/admin/amenities", adminAmenitiesRoutes);
 router.use("/admin/room-types", adminRoomTypesRoutes);
 router.use("/admin/room-features", adminRoomFeaturesRoutes);
 router.use("/admin/meal-plans", adminMealPlansRoutes);
+router.use("/admin/bookings", adminBookingsRoutes);
 
 export default router;
