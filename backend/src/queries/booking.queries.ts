@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, inArray, lt, lte } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, lt, lte } from "drizzle-orm";
 import { db } from "../config/db";
 import { bookings, reviews } from "../models/booking.schema";
 import type { Booking, BookingInput } from "../models/booking.schema";
@@ -334,6 +334,53 @@ export async function lockConfirmedBookingForAdmin(tx: QueryExecutor, id: string
     .where(and(eq(bookings.id, id), eq(bookings.status, "confirmed")))
     .for("update");
   return row ?? null;
+}
+
+export async function findRecentBookingsForAdmin(limit: number): Promise<AdminBookingSummaryRow[]> {
+  return db
+    .select(adminBookingColumns)
+    .from(bookings)
+    .innerJoin(hotels, eq(hotels.id, bookings.hotelId))
+    .innerJoin(roomTypes, eq(roomTypes.id, bookings.roomTypeId))
+    .innerJoin(user, eq(user.id, bookings.userId))
+    .leftJoin(hotelImages, and(eq(hotelImages.hotelId, hotels.id), eq(hotelImages.isMain, true)))
+    .orderBy(desc(bookings.createdAt))
+    .limit(limit);
+}
+
+// "Upcoming" is always relative to today — confirmed only, since a pending-payment booking isn't a real commitment yet.
+export async function findUpcomingCheckInsForAdmin(
+  fromDate: string,
+  toDateExclusive: string,
+  limit: number,
+): Promise<AdminBookingSummaryRow[]> {
+  return db
+    .select(adminBookingColumns)
+    .from(bookings)
+    .innerJoin(hotels, eq(hotels.id, bookings.hotelId))
+    .innerJoin(roomTypes, eq(roomTypes.id, bookings.roomTypeId))
+    .innerJoin(user, eq(user.id, bookings.userId))
+    .leftJoin(hotelImages, and(eq(hotelImages.hotelId, hotels.id), eq(hotelImages.isMain, true)))
+    .where(and(eq(bookings.status, "confirmed"), gte(bookings.checkIn, fromDate), lt(bookings.checkIn, toDateExclusive)))
+    .orderBy(asc(bookings.checkIn))
+    .limit(limit);
+}
+
+export async function findUpcomingCheckOutsForAdmin(
+  fromDate: string,
+  toDateExclusive: string,
+  limit: number,
+): Promise<AdminBookingSummaryRow[]> {
+  return db
+    .select(adminBookingColumns)
+    .from(bookings)
+    .innerJoin(hotels, eq(hotels.id, bookings.hotelId))
+    .innerJoin(roomTypes, eq(roomTypes.id, bookings.roomTypeId))
+    .innerJoin(user, eq(user.id, bookings.userId))
+    .leftJoin(hotelImages, and(eq(hotelImages.hotelId, hotels.id), eq(hotelImages.isMain, true)))
+    .where(and(eq(bookings.status, "confirmed"), gte(bookings.checkOut, fromDate), lt(bookings.checkOut, toDateExclusive)))
+    .orderBy(asc(bookings.checkOut))
+    .limit(limit);
 }
 
 export async function reallocateBookingForAdmin(
