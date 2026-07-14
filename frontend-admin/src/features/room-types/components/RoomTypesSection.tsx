@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus } from "lucide-react";
+import { BedDouble, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -64,9 +64,15 @@ export function RoomTypesSection({ hotelId }: Props) {
       )}
 
       {roomTypes?.length === 0 && !isAddingNew && (
-        <p className="rounded-2xl border border-dashed border-border-default p-6 text-center text-sm text-text-muted">
-          No room types yet. Add one to start taking bookings for this hotel.
-        </p>
+        <div className="rounded-2xl border border-border-default bg-surface">
+          <div className="flex flex-col items-center justify-center gap-3 py-16">
+            <BedDouble className="size-10 text-text-faint" />
+            <p className="text-base font-medium text-text-muted">No room types yet</p>
+            <p className="max-w-xs text-center text-sm text-text-faint">
+              Add one to start taking bookings for this hotel.
+            </p>
+          </div>
+        </div>
       )}
 
       {roomTypes && roomTypes.length > 0 && (
