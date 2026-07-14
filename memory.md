@@ -1,39 +1,44 @@
-# Memory — Feature 27 (Admin Dashboard)
+# Memory — Feature 28 (Skeleton Loading)
 
 Last updated: 2026-07-14
 
 ## What was built
 
-**Feature 27 — Admin Dashboard (`/dashboard`, i.e. the `frontend-admin` root route `/` — date-range-filterable KPIs, top hotels, recent bookings, upcoming check-ins/check-outs):**
-- Backend: single aggregate endpoint `GET /admin/dashboard?checkInFrom=&checkInTo=` (`routes/admin/dashboard.routes.ts` behind `requireAdmin`, `controllers/admin/dashboard.controller.ts`) backed by new `services/dashboard.service.ts`'s `getAdminDashboard`. New `queries/dashboard.queries.ts`: `findDashboardBookingStats` (single SQL aggregate with `FILTER (WHERE ...)` for total/cancelled/revenue, plus a `LEAST/GREATEST`-clipped room-nights sum for occupancy's numerator), `findPublishedRoomInventoryTotal`, `findTopHotelsByBookingCount`. Three new functions colocated in `booking.queries.ts` reusing the existing `adminBookingColumns` projection: `findRecentBookingsForAdmin`, `findUpcomingCheckInsForAdmin`, `findUpcomingCheckOutsForAdmin`. `utils/date.ts` gained `addDaysIso`/`firstOfMonthIso`.
-- Frontend: new `frontend-admin/src/features/dashboard/` (`types.ts`, `dashboardApi.ts` RTK Query slice, `components/DashboardPage.tsx`), wired into the store, router (`/`, replacing the placeholder), and Sidebar (flipped `enabled: true`, added `end={item.href === "/"}` to its `NavLink` so it doesn't stay highlighted on every route).
-- `context/progress-tracker.md` and `context/ui-registry.md` both updated (Feature 27 marked complete, Phase 7 — Admin Operations fully done; current feature advanced to 28 — Skeleton Loading, first feature of Phase 8; new "Admin Dashboard" registry entry).
+**Feature 28 — Skeleton Loading** (search results, hotel details, favorites, compare, bookings, both admin list views — hotel details and checkout were already done in Features 12/21 and needed no changes):
+
+7 new bespoke skeleton components, each following the locked `bg-subtle animate-pulse rounded-*` recipe (radius always matching the real element's own radius), wired into the first-load `isLoading` branch of their page:
+- `frontend/features/search/components/{HotelCardSkeleton,SearchResultsSkeleton}.tsx` → wired into `SearchPageContent.tsx` (grid/list card skeletons sized to `RESULTS_PER_PAGE`=9, plus a single pulsing rectangle for Map view's first load)
+- `frontend/features/favorites/components/FavoritesSkeleton.tsx` → `FavoritesPageContent.tsx`
+- `frontend/features/compare/components/CompareSkeleton.tsx` → `ComparePageContent.tsx` (column count driven by the real `ids.length` from `useCompareSelection()`, not a guess)
+- `frontend/features/booking/components/BookingsListSkeleton.tsx` → `BookingsPageContent.tsx`
+- `frontend-admin/src/features/hotels/components/HotelsTableSkeleton.tsx` → `HotelsListPage.tsx`
+- `frontend-admin/src/features/bookings/components/BookingsTableSkeleton.tsx` → `BookingsListPage.tsx`
+- `frontend-admin/src/features/dashboard/components/DashboardSkeleton.tsx` → `DashboardPage.tsx` (closes the gap flagged in Feature 27's notes)
+
+`context/progress-tracker.md` and `context/ui-registry.md` both updated (Feature 28 marked complete, current feature advanced to 29 — Empty States; per-component notes appended to the 7 existing relevant entries; the master "Loading Skeleton" Approved Pattern entry enriched with the radius-matching corollary and updated to reflect 9 total components now sharing it).
 
 ## Decisions made
 
-- **Date-range filterable**, not a fixed all-time snapshot. Filter is on **stay dates** (`checkIn`/`checkOut` overlap via the same `LEAST/GREATEST`-clipped logic `availability.service.ts` already uses), not booking creation date — "revenue in this period" means stays happening in that period. Default range on load: 1st of current month → today.
-- **"Recent bookings" and "Upcoming check-ins/check-outs" are deliberately independent of the date-range filter** — always latest-10-by-`createdAt` / always-next-7-days-from-today. Only the 4 stat cards + Top Hotels respect the filter. Verified in-browser: widening the range changes only those, not the two feeds.
-- **Occupancy rate formula**: numerator = booked room-nights from held-status bookings (`pending_payment`/`confirmed`/`completed`) clipped to the selected range; denominator = `sum(totalInventory)` across non-deleted room types on **published** hotels only (drafts excluded) × nights in range. Deliberately mirrors `availability.service.ts`'s existing per-night logic rather than a separate approximation.
-- **Top hotels ranks by booking count**, not revenue (developer's explicit override of the initial revenue-ranked proposal during `/architect`) — revenue shown alongside each row as secondary context. Both scoped to `confirmed`+`completed` bookings only.
-- **Date-range filter UI reuses `BookingsListPage`'s plain `type="date"` `Input` pair convention**, not the `frontend/` Calendar-popover pattern — `frontend-admin` already had its own date-range filter convention, matched that instead of importing from the other frontend.
-- **Stat cards use the pre-locked "Stat Card" pattern** from `ui-registry.md`'s Approved Patterns section (`bg-elevated`, `shadow-card`, number-then-label) — first real usage of that pattern anywhere in the app; caught and fixed mid-build after an initial version used ad-hoc classes instead.
+- **First-load only** — no hook/query changes anywhere. Every view's existing loading-state logic (search's `isLoading && !isEmpty` dim-to-`opacity-60` on refetch, admin's full swap on param change) is untouched; only the "no data yet" visual changed from text/blank to a shaped skeleton.
+- **Bespoke per-page components, no shared `<Skeleton>` primitive** — continues the exact precedent `HotelDetailsSkeleton`/`CheckoutSkeleton` set in Features 12/21, rather than introducing a new abstraction.
+- **Skeleton radius always matches the real element's radius** (`rounded-2xl` for images/panels, `rounded-lg` for small thumbnails, `rounded-full` for pill/avatar shapes, `rounded-xl` for text bars) — this corollary to the locked "Loading Skeleton" pattern is now explicit in `ui-registry.md` rather than just implicit precedent.
+- Fixed placeholder counts used where the real count is unknown pre-fetch (6 for favorites/bookings-list/admin-tables, `RESULTS_PER_PAGE`=9 for search) — except Compare, which uses the real `ids.length` since that's known synchronously.
 
 ## Problems solved
 
-- Initially styled the stat cards with invented classes (`bg-surface`, no shadow, `font-semibold`); caught during the post-build `ui-registry.md` update pass that a locked "Stat Card" pattern already existed and didn't match. Fixed to the exact locked classes before finishing.
-- No local Playwright install in either frontend/backend package — resolved by invoking the npx-cached playwright package directly via its `index.mjs`/`cli.js` paths (`~/.npm/_npx/<hash>/node_modules/playwright/`) rather than adding it as a project dependency.
+- Heavy CDP network throttling in Playwright verification starved Next.js dev-mode's (Turbopack, unbundled) JS chunks entirely, making a page appear to render pre-hydration static HTML with no skeleton — looked like a bug but was a test-harness artifact, not a real defect. Fixed by throttling only the specific API route (`page.route` with an artificial delay) instead of the whole network connection, keeping JS chunk loading fast. Worth remembering for any future throttled-network verification in this repo's dev mode.
 
 ## Current state
 
-Feature 27 fully built and verified — not yet committed to git (working tree has the new/modified files, nothing staged). `tsc --noEmit` clean for both `backend` and `frontend-admin`. `oxlint` clean for `frontend-admin` (3 pre-existing shadcn-file warnings only, none new). Production build clean. Verified against the real dev DB (no throwaway test data needed — used existing data as-is): every KPI hand-computed via direct `psql` queries and matched the API exactly for the default month-to-date range. Headless Playwright pass: zero console errors, date-range widening correctly refetches only the filtered widgets, row-click navigation to `/bookings/:id` confirmed working.
+Feature 28 fully built and verified — not yet committed to git (working tree has the new/modified files, nothing staged). `tsc --noEmit` clean for both `frontend` and `frontend-admin`. Lint clean (`eslint` for `frontend`, `oxlint` for `frontend-admin` — only the same 3 pre-existing shadcn-file warnings, none new). Production build clean for both. Verified live in-browser via Playwright with throttled network: every view (search grid/list/map, favorites, compare, user bookings, admin hotels table, admin bookings table, admin dashboard) shows its shaped skeleton on first load with no blank flash, and correctly resolves to real data afterward. Zero console errors across every page checked. A throwaway test account created for verification was deleted afterward (confirmed no orphaned session/account rows left behind), and the ad-hoc frontend dev server started for testing was stopped.
 
 ## Next session starts with
 
-**Feature 28 — Skeleton Loading** (first feature of Phase 8 — Polish; Phase 7 — Admin Operations is now fully complete). Read `build-plan.md`'s section for it: skeleton states added to search results, hotel details, favorites, compare, bookings, and both admin list views. Note: the Dashboard built this session currently only shows a plain "Loading dashboard..." text line while fetching — worth including in this pass alongside the admin list views, even though the build-plan's Feature 27 description didn't call it out by name.
+**Feature 29 — Empty States** (last feature before Phase 8's final item, Feature 30 Responsive Pass). Read `build-plan.md`'s section for it: empty states wherever a list can legitimately be empty. Note several already exist from earlier features (search's "No hotels match these filters", favorites' "No favorites yet", compare's "No hotels to compare yet", bookings' "No bookings yet", admin Hotels' "No hotels yet", admin Bookings' "No bookings found") — this is likely mostly an audit/consistency pass rather than net-new work. Check specifically whether reviews has an empty state yet (not confirmed either way this session).
 
 ## Open questions
 
-- **Leftover test data in the dev DB**: a "Temp User 1" account with several bookings against Hotel Marais Charme (dated ~2026-07-13) is still present, even though Feature 26's session notes claimed test data was cleaned up. Flagged to the developer during this session — they haven't yet said whether to delete it or leave it. Surface this again next session if still unresolved.
+- **Leftover "Temp User 1" test data in the dev DB** (bookings against Hotel Marais Charme, dated ~2026-07-13) — surfaced again this session (visible in a dashboard screenshot taken during verification), still not deleted, still awaiting the developer's decision. Flagged repeatedly across Features 26/27/28 now.
 - The Feature 16 rating-consistency question (hotel-details header vs. live-computed review numbers) — carried over across many sessions, likely mostly moot since Feature 24 keeps `hotels.average_rating`/`review_count` genuinely in sync on every real review write, but can still diverge for any pre-existing hotel whose stored rating was never backed by a real review row. Not yet re-verified.
-- Whether to retrofit the fetch-error-state pattern (added to `BookingsListPage` in Feature 25) onto `HotelsListPage` and other existing admin lists — not blocking, flagged in `ui-registry.md`.
+- Whether to retrofit the fetch-error-state pattern (added to admin `BookingsListPage` in Feature 25) onto `HotelsListPage` and other existing admin lists — not blocking, flagged in `ui-registry.md`.
 - Whether to retrofit `frontend/`'s `Input` primitive with the `text-foreground` fix applied to `frontend-admin`'s copy in Feature 25 — currently dormant (no native date input exists in `frontend/` yet), apply the moment one appears.
