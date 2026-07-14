@@ -4,6 +4,7 @@ import { AlertTriangle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { BookingStatusBadge } from "@/features/bookings/components/BookingStatusBadge";
+import { DashboardSkeleton } from "@/features/dashboard/components/DashboardSkeleton";
 import { useGetDashboardQuery } from "@/features/dashboard/dashboardApi";
 import type { AdminBookingListItem } from "@/features/bookings/types";
 import type { TopHotel } from "@/features/dashboard/types";
@@ -126,7 +127,7 @@ export function DashboardPage() {
         </div>
       )}
 
-      {isLoading && <p className="text-sm text-text-muted">Loading dashboard...</p>}
+      {isLoading && <DashboardSkeleton />}
 
       {!isLoading && !isError && data && (
         <>

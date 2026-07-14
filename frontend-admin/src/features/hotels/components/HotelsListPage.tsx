@@ -8,6 +8,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { StarRatingDisplay } from "@/components/common/StarRatingDisplay";
 import { useDeleteHotelMutation, useGetHotelsQuery } from "@/features/hotels/hotelsApi";
+import { HotelsTableSkeleton } from "@/features/hotels/components/HotelsTableSkeleton";
 import type { HotelListItem } from "@/features/hotels/types";
 
 const PAGE_SIZE = 20;
@@ -65,13 +66,7 @@ export function HotelsListPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isLoading && (
-              <TableRow className="border-b border-border-default last:border-0 hover:bg-elevated">
-                <TableCell colSpan={5} className="px-4 py-10 text-center text-sm text-text-muted">
-                  Loading hotels...
-                </TableCell>
-              </TableRow>
-            )}
+            {isLoading && <HotelsTableSkeleton />}
             {!isLoading && data?.items.length === 0 && (
               <TableRow className="border-b border-border-default last:border-0 hover:bg-elevated">
                 <TableCell colSpan={5} className="p-0">

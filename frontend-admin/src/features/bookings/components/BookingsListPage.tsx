@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { BookingStatusBadge } from "@/features/bookings/components/BookingStatusBadge";
+import { BookingsTableSkeleton } from "@/features/bookings/components/BookingsTableSkeleton";
 import { useGetBookingsQuery } from "@/features/bookings/bookingsApi";
 import { useGetHotelsQuery } from "@/features/hotels/hotelsApi";
 import type { BookingStatus } from "@/features/bookings/types";
@@ -170,13 +171,7 @@ export function BookingsListPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isLoading && (
-              <TableRow className="border-b border-border-default last:border-0 hover:bg-elevated">
-                <TableCell colSpan={6} className="px-4 py-10 text-center text-sm text-text-muted">
-                  Loading bookings...
-                </TableCell>
-              </TableRow>
-            )}
+            {isLoading && <BookingsTableSkeleton />}
             {!isLoading && isError && (
               <TableRow className="border-b border-border-default last:border-0 hover:bg-elevated">
                 <TableCell colSpan={6} className="p-0">
