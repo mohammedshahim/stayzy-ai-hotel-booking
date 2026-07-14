@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/common/EmptyState";
 import { useFavoritesList } from "@/features/favorites/hooks/useFavoritesList";
 import { FavoritesCard } from "@/features/favorites/components/FavoritesCard";
+import { FavoritesSkeleton } from "@/features/favorites/components/FavoritesSkeleton";
 
 export function FavoritesPageContent() {
   const { favorites, isLoading, removeFavorite } = useFavoritesList();
@@ -16,7 +17,7 @@ export function FavoritesPageContent() {
       <h1 className="text-2xl font-semibold text-text-primary sm:text-3xl">Favorites</h1>
 
       {isLoading ? (
-        <p className="py-16 text-center text-sm text-text-muted">Loading favorites…</p>
+        <FavoritesSkeleton />
       ) : favorites.length === 0 ? (
         <EmptyState
           icon={HeartIcon}

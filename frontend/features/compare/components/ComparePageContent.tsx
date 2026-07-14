@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { useCompareSelection } from "@/features/compare/hooks/useCompareSelection";
 import { useCompareHotels } from "@/features/compare/hooks/useCompareHotels";
 import { CompareSearchBox } from "@/features/compare/components/CompareSearchBox";
+import { CompareSkeleton } from "@/features/compare/components/CompareSkeleton";
 import { CompareTable } from "@/features/compare/components/CompareTable";
 
 export function ComparePageContent() {
@@ -23,7 +24,7 @@ export function ComparePageContent() {
       </div>
 
       {isLoading ? (
-        <p className="py-16 text-center text-sm text-text-muted">Loading comparison…</p>
+        <CompareSkeleton columnCount={ids.length} />
       ) : hotels.length === 0 ? (
         <EmptyState
           icon={ScaleIcon}

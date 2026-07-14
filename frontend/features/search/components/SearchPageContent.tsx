@@ -11,6 +11,7 @@ import { ActiveFilterChips } from "@/features/search/components/ActiveFilterChip
 import { FilterSidebar } from "@/features/search/components/FilterSidebar";
 import { HotelCard } from "@/features/search/components/HotelCard";
 import { MapView } from "@/features/search/components/MapView";
+import { SearchResultsSkeleton } from "@/features/search/components/SearchResultsSkeleton";
 import { SortDropdown } from "@/features/search/components/SortDropdown";
 import { ViewToggle } from "@/features/search/components/ViewToggle";
 import { useFavoriteHotelIds } from "@/features/favorites/hooks/useFavoriteHotelIds";
@@ -63,7 +64,7 @@ export function SearchPageContent() {
         </div>
 
         {isLoading && isEmpty ? (
-          <p className="py-16 text-center text-sm text-text-muted">Searching hotels…</p>
+          <SearchResultsSkeleton view={state.view} />
         ) : isEmpty ? (
           <EmptyState
             icon={SearchXIcon}

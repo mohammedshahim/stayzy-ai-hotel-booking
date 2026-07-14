@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/common/EmptyState";
 import { useBookingsList } from "@/features/booking/hooks/useBookingsList";
 import { BookingListCard } from "@/features/booking/components/BookingListCard";
+import { BookingsListSkeleton } from "@/features/booking/components/BookingsListSkeleton";
 
 export function BookingsPageContent() {
   const { bookings, isLoading } = useBookingsList();
@@ -16,7 +17,7 @@ export function BookingsPageContent() {
       <h1 className="text-2xl font-semibold text-text-primary sm:text-3xl">My Bookings</h1>
 
       {isLoading ? (
-        <p className="py-16 text-center text-sm text-text-muted">Loading bookings…</p>
+        <BookingsListSkeleton />
       ) : bookings.length === 0 ? (
         <EmptyState
           icon={CalendarXIcon}
