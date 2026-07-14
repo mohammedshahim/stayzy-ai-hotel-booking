@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { EmptyState } from "@/components/common/EmptyState";
 import { StarRatingDisplay } from "@/components/common/StarRatingDisplay";
 import { useDeleteHotelMutation, useGetHotelsQuery } from "@/features/hotels/hotelsApi";
 import { HotelsTableSkeleton } from "@/features/hotels/components/HotelsTableSkeleton";
@@ -70,13 +71,7 @@ export function HotelsListPage() {
             {!isLoading && data?.items.length === 0 && (
               <TableRow className="border-b border-border-default last:border-0 hover:bg-elevated">
                 <TableCell colSpan={5} className="p-0">
-                  <div className="flex flex-col items-center justify-center gap-3 py-16">
-                    <Building2 className="size-10 text-text-faint" />
-                    <p className="text-base font-medium text-text-muted">No hotels yet</p>
-                    <p className="max-w-xs text-center text-sm text-text-faint">
-                      Add your first hotel to get started.
-                    </p>
-                  </div>
+                  <EmptyState icon={Building2} heading="No hotels yet" body="Add your first hotel to get started." />
                 </TableCell>
               </TableRow>
             )}

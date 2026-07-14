@@ -2,6 +2,7 @@ import { useState } from "react";
 import { BedDouble, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/common/EmptyState";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { RateOverrideManager } from "@/features/room-types/components/RateOverrideManager";
@@ -65,13 +66,7 @@ export function RoomTypesSection({ hotelId }: Props) {
 
       {roomTypes?.length === 0 && !isAddingNew && (
         <div className="rounded-2xl border border-border-default bg-surface">
-          <div className="flex flex-col items-center justify-center gap-3 py-16">
-            <BedDouble className="size-10 text-text-faint" />
-            <p className="text-base font-medium text-text-muted">No room types yet</p>
-            <p className="max-w-xs text-center text-sm text-text-faint">
-              Add one to start taking bookings for this hotel.
-            </p>
-          </div>
+          <EmptyState icon={BedDouble} heading="No room types yet" body="Add one to start taking bookings for this hotel." />
         </div>
       )}
 

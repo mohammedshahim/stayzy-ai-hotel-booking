@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AlertTriangle, CalendarRange } from "lucide-react";
+import { EmptyState } from "@/components/common/EmptyState";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
@@ -175,26 +176,19 @@ export function BookingsListPage() {
             {!isLoading && isError && (
               <TableRow className="border-b border-border-default last:border-0 hover:bg-elevated">
                 <TableCell colSpan={6} className="p-0">
-                  <div className="flex flex-col items-center justify-center gap-3 py-16">
-                    <AlertTriangle className="size-10 text-error" />
-                    <p className="text-base font-medium text-text-muted">Couldn't load bookings</p>
-                    <p className="max-w-xs text-center text-sm text-text-faint">
-                      Something went wrong fetching this data. Try refreshing the page.
-                    </p>
-                  </div>
+                  <EmptyState
+                    icon={AlertTriangle}
+                    iconClassName="text-error"
+                    heading="Couldn't load bookings"
+                    body="Something went wrong fetching this data. Try refreshing the page."
+                  />
                 </TableCell>
               </TableRow>
             )}
             {!isLoading && !isError && data?.items.length === 0 && (
               <TableRow className="border-b border-border-default last:border-0 hover:bg-elevated">
                 <TableCell colSpan={6} className="p-0">
-                  <div className="flex flex-col items-center justify-center gap-3 py-16">
-                    <CalendarRange className="size-10 text-text-faint" />
-                    <p className="text-base font-medium text-text-muted">No bookings found</p>
-                    <p className="max-w-xs text-center text-sm text-text-faint">
-                      Try adjusting or clearing the filters above.
-                    </p>
-                  </div>
+                  <EmptyState icon={CalendarRange} heading="No bookings found" body="Try adjusting or clearing the filters above." />
                 </TableCell>
               </TableRow>
             )}
