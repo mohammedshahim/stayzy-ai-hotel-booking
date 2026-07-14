@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 const NAV_ITEMS = [
   { label: "Dashboard", icon: LayoutDashboard, href: "/", enabled: false },
   { label: "Hotels", icon: Building2, href: "/hotels", enabled: true },
-  { label: "Bookings", icon: CalendarRange, href: "/bookings", enabled: false },
+  { label: "Bookings", icon: CalendarRange, href: "/bookings", enabled: true },
 ] as const;
 
 export function Sidebar() {
