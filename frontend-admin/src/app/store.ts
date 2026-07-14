@@ -6,6 +6,7 @@ import { roomTypesApi } from "@/features/room-types/roomTypesApi";
 import { roomFeaturesApi } from "@/features/room-features/roomFeaturesApi";
 import { mealPlansApi } from "@/features/meal-plans/mealPlansApi";
 import { bookingsApi } from "@/features/bookings/bookingsApi";
+import { dashboardApi } from "@/features/dashboard/dashboardApi";
 
 export const store = configureStore({
   reducer: {
@@ -16,6 +17,7 @@ export const store = configureStore({
     [roomFeaturesApi.reducerPath]: roomFeaturesApi.reducer,
     [mealPlansApi.reducerPath]: mealPlansApi.reducer,
     [bookingsApi.reducerPath]: bookingsApi.reducer,
+    [dashboardApi.reducerPath]: dashboardApi.reducer,
   },
   middleware: (getDefault) =>
     getDefault().concat(
@@ -26,6 +28,7 @@ export const store = configureStore({
       roomFeaturesApi.middleware,
       mealPlansApi.middleware,
       bookingsApi.middleware,
+      dashboardApi.middleware,
     ),
 });
 

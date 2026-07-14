@@ -3,7 +3,7 @@ import { NavLink } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
-  { label: "Dashboard", icon: LayoutDashboard, href: "/", enabled: false },
+  { label: "Dashboard", icon: LayoutDashboard, href: "/", enabled: true },
   { label: "Hotels", icon: Building2, href: "/hotels", enabled: true },
   { label: "Bookings", icon: CalendarRange, href: "/bookings", enabled: true },
 ] as const;
@@ -37,6 +37,7 @@ export function Sidebar() {
             <NavLink
               key={item.label}
               to={item.href}
+              end={item.href === "/"}
               className={({ isActive }) =>
                 cn(
                   "flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
