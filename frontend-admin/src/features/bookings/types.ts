@@ -34,3 +34,9 @@ export interface ListBookingsParams {
   page: number;
   pageSize: number;
 }
+
+export type AdminBookingDetail = AdminBookingListItem;
+
+export interface ReallocateBookingInput {
+  roomTypeId: string;
+}

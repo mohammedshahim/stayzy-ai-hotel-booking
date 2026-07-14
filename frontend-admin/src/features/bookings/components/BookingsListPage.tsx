@@ -1,10 +1,12 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { AlertTriangle, CalendarRange } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { BookingStatusBadge } from "@/features/bookings/components/BookingStatusBadge";
 import { useGetBookingsQuery } from "@/features/bookings/bookingsApi";
 import { useGetHotelsQuery } from "@/features/hotels/hotelsApi";
 import type { BookingStatus } from "@/features/bookings/types";
@@ -20,27 +22,12 @@ const STATUS_OPTIONS: { value: BookingStatus; label: string }[] = [
   { value: "failed", label: "Failed" },
 ];
 
-const STATUS_BADGE_CLASS: Record<BookingStatus, string> = {
-  pending_payment: "border-warning/20 bg-warning-dim text-warning",
-  confirmed: "border-success/20 bg-success-dim text-success",
-  completed: "border-info/20 bg-info-dim text-info",
-  cancelled: "border-neutral/20 bg-neutral-dim text-neutral",
-  failed: "border-error/20 bg-error-dim text-error",
-};
-
-const STATUS_LABEL: Record<BookingStatus, string> = {
-  pending_payment: "Pending payment",
-  confirmed: "Confirmed",
-  completed: "Completed",
-  cancelled: "Cancelled",
-  failed: "Failed",
-};
-
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 export function BookingsListPage() {
+  const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState<BookingStatus | "all">("all");
   const [hotelId, setHotelId] = useState("all");
@@ -219,7 +206,8 @@ export function BookingsListPage() {
             {data?.items.map((booking) => (
               <TableRow
                 key={booking.id}
-                className="border-b border-border-default transition-colors last:border-0 hover:bg-elevated"
+                onClick={() => navigate(`/bookings/${booking.id}`)}
+                className="cursor-pointer border-b border-border-default transition-colors last:border-0 hover:bg-elevated"
               >
                 <TableCell className="px-4 py-3 text-sm text-text-secondary">
                   <div className="flex flex-col">
@@ -248,11 +236,7 @@ export function BookingsListPage() {
                 </TableCell>
                 <TableCell className="px-4 py-3 text-sm text-text-secondary">${booking.totalPrice}</TableCell>
                 <TableCell className="px-4 py-3 text-sm text-text-secondary">
-                  <span
-                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${STATUS_BADGE_CLASS[booking.status]}`}
-                  >
-                    {STATUS_LABEL[booking.status]}
-                  </span>
+                  <BookingStatusBadge status={booking.status} />
                 </TableCell>
               </TableRow>
             ))}

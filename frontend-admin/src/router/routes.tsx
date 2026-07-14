@@ -4,6 +4,7 @@ import { ProtectedRoute } from "@/features/auth/components/ProtectedRoute";
 import { HotelsListPage } from "@/features/hotels/components/HotelsListPage";
 import { HotelFormPage } from "@/features/hotels/components/HotelFormPage";
 import { BookingsListPage } from "@/features/bookings/components/BookingsListPage";
+import { BookingDetailPage } from "@/features/bookings/components/BookingDetailPage";
 
 function Placeholder({ label }: { label: string }) {
   return <p className="text-sm text-text-muted">{label}</p>;
@@ -19,6 +20,7 @@ export const router = createBrowserRouter([
       { path: "/hotels/new", element: <HotelFormPage /> },
       { path: "/hotels/:id", element: <HotelFormPage /> },
       { path: "/bookings", element: <BookingsListPage /> },
+      { path: "/bookings/:id", element: <BookingDetailPage /> },
     ],
   },
 ]);

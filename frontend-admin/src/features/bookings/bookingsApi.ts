@@ -1,6 +1,6 @@
 import { createApi } from "@reduxjs/toolkit/query/react";
 import { baseQuery } from "@/lib/apiBaseQuery";
-import type { ListBookingsParams, ListBookingsResponse } from "./types";
+import type { AdminBookingDetail, ListBookingsParams, ListBookingsResponse, ReallocateBookingInput } from "./types";
 
 interface ApiEnvelope<T> {
   success: boolean;
@@ -32,7 +32,42 @@ export const bookingsApi = createApi({
             ]
           : [{ type: "Booking" as const, id: "LIST" }],
     }),
+    getBooking: builder.query<AdminBookingDetail, string>({
+      query: (id) => `/admin/bookings/${id}`,
+      transformResponse: (response: ApiEnvelope<AdminBookingDetail>) => response.data,
+      providesTags: (_result, _error, id) => [{ type: "Booking", id }],
+    }),
+    confirmBooking: builder.mutation<AdminBookingDetail, string>({
+      query: (id) => ({ url: `/admin/bookings/${id}/confirm`, method: "POST" }),
+      transformResponse: (response: ApiEnvelope<AdminBookingDetail>) => response.data,
+      invalidatesTags: (_result, _error, id) => [
+        { type: "Booking", id },
+        { type: "Booking", id: "LIST" },
+      ],
+    }),
+    cancelBooking: builder.mutation<AdminBookingDetail, string>({
+      query: (id) => ({ url: `/admin/bookings/${id}/cancel`, method: "POST" }),
+      transformResponse: (response: ApiEnvelope<AdminBookingDetail>) => response.data,
+      invalidatesTags: (_result, _error, id) => [
+        { type: "Booking", id },
+        { type: "Booking", id: "LIST" },
+      ],
+    }),
+    reallocateBooking: builder.mutation<AdminBookingDetail, { id: string; body: ReallocateBookingInput }>({
+      query: ({ id, body }) => ({ url: `/admin/bookings/${id}/reallocate`, method: "POST", body }),
+      transformResponse: (response: ApiEnvelope<AdminBookingDetail>) => response.data,
+      invalidatesTags: (_result, _error, { id }) => [
+        { type: "Booking", id },
+        { type: "Booking", id: "LIST" },
+      ],
+    }),
   }),
 });
 
-export const { useGetBookingsQuery } = bookingsApi;
+export const {
+  useGetBookingsQuery,
+  useGetBookingQuery,
+  useConfirmBookingMutation,
+  useCancelBookingMutation,
+  useReallocateBookingMutation,
+} = bookingsApi;
