@@ -457,6 +457,23 @@ Row navigation: `BookingsListPage`'s rows are no longer inert — `onClick={() =
 
 ---
 
+### Admin Dashboard (DashboardPage)
+
+File: `frontend-admin/src/features/dashboard/components/DashboardPage.tsx`
+App: frontend-admin
+Last updated: 2026-07-14 (Feature 27)
+
+Layout: `/` (the app's root route, replacing the Feature-27 placeholder) — `<h1>` header, a date-range filter bar, a 4-up stat card grid, then two `lg:grid-cols-2` rows of section cards (Top Hotels + Recent Bookings, then Upcoming Check-ins + Upcoming Check-outs).
+Date range filter: **byte-for-byte reuse of `BookingsListPage`'s filter-bar shell** (`flex flex-wrap items-end gap-4 rounded-2xl border border-border-default bg-surface p-4`, each field a `flex flex-col gap-1.5` `Label` + native `type="date"` `Input` `w-40`) — two fields, "From"/"To", cross-constrained via `min`/`max` the same way `BookingsListPage`'s `checkInFrom`/`checkInTo` are. Deliberately **not** the `Calendar` `mode="range"` popover pattern `frontend/`'s search hero uses — `frontend-admin` already had its own plain-`Input` convention for date ranges, so this matches that instead of importing a different frontend's pattern. Defaults to the 1st of the current month → today (lazy `useState` initializers, no URL state, matching `BookingsListPage`'s local-state-only convention).
+Stat cards (Total Bookings, Revenue, Occupancy Rate, Cancellation Rate): first real usage of the pre-locked **Stat Card** pattern (`ui-registry.md`'s "Approved Patterns" section) — `rounded-2xl border border-border-default bg-elevated p-5 shadow-card`, number `text-2xl font-bold text-text-primary` first, label `mt-1 text-xs tracking-wide text-text-muted uppercase` below it. Matched the locked classes exactly rather than reusing the "detail field" label-above-value shape `BookingDetailPage`'s summary card uses — those are a different, pre-existing pattern for a different kind of card.
+Section cards (Top Hotels / Recent Bookings / Upcoming Check-ins / Upcoming Check-outs): same card shell as everywhere else in `frontend-admin` (`rounded-2xl border border-border-default bg-surface p-6`), `<h2 className="text-lg font-semibold text-text-primary">` title, list body. A local `EmptyRow` (`py-6 text-center text-sm text-text-faint`) renders lightweight one-line copy when a list is empty — deliberately not the full locked Empty State (icon + heading + body) since these are compact widgets inside an already-labeled card, not a whole-page/table empty state.
+`BookingFeedRow` (Recent Bookings + both Upcoming lists): a clickable `<button>` row (`hover:bg-elevated`, guest name + hotel + a caller-supplied date field + `BookingStatusBadge`) navigating to `/bookings/:id` on click — same destination as `BookingsListPage`'s row click, reused `BookingStatusBadge` unchanged. Takes a `dateField: "checkIn" | "checkOut"` prop so the same row renders either date depending on which list it's in.
+`TopHotelRow`: rank badge (`size-6 rounded-full bg-subtle` numbered circle) + hotel name on the left, revenue (bold) + booking count (muted, pluralized) stacked on the right.
+Data-fetch scope (see `progress-tracker.md`'s Feature 27 entry for the full decision rationale): the date-range filter only re-fetches the 4 stat cards + Top Hotels — Recent Bookings and both Upcoming lists are always independent of it (latest 10 by `createdAt` / always next-7-days-from-today), so picking a past range doesn't empty out what are meant to be always-current operational widgets. Verified in the browser: widening the range changed only the KPI numbers and Top Hotels, the other two lists stayed identical.
+Sidebar: `Sidebar.tsx`'s Dashboard `NAV_ITEMS` entry flipped `enabled: true` ("Soon" badge removed) — first entry other than Hotels/Bookings to go live. Its `NavLink` also gained `end={item.href === "/"}`, since without it a bare `href: "/"` link matches every route as a prefix and would stay visually "active" no matter which page is open — the other two nav items don't need `end` since their hrefs (`/hotels`, `/bookings`) aren't prefixes of each other's routes.
+
+---
+
 ## Approved Patterns Locked In Advance
 
 These patterns are pre-approved from `ui-rules.md` and must be used exactly as written until a real component build reveals a reason to adjust them (and this file is updated to reflect that reason). Do not deviate silently.
