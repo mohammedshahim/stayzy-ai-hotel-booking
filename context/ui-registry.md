@@ -436,8 +436,24 @@ Filter bar (new pattern — first filter UI in `frontend-admin`; `frontend/`'s `
 Status badge: reuses the exact locked **Booking Status Badge** family classes unchanged (Confirmed/Pending Payment/Completed/Cancelled/Failed) — first reuse of that family in `frontend-admin` (previously only built in `frontend`, see "My Bookings" entry above). No new badge variant needed.
 Pagination: byte-for-byte `HotelsListPage`'s Previous/Next pattern (`PAGE_SIZE = 20`), not the numbered `Pagination` component.
 Error state (added post-`/review`): a second empty-slot branch alongside the "no results" Empty State — same layout/classes, `AlertTriangle` icon in `text-error` instead of `text-text-faint`, heading "Couldn't load bookings". First real fetch-error treatment in either app's list pages — `HotelsListPage` and every other admin table still silently show "no results" on a fetch failure; retrofit this same branch there if that's ever revisited.
-Notes: Rows are inert (no link to a detail page) — deliberate, `/bookings/:id` doesn't exist until Feature 26. Hotel filter dropdown reuses `useGetHotelsQuery({ page: 1, pageSize: 100 })` rather than a new "list all hotels" endpoint — fine at current seed-data scale, revisit if the hotel count ever approaches 100.
+Notes: Rows were inert at the time this was built (no link to a detail page) — deliberate, `/bookings/:id` didn't exist until Feature 26. As of Feature 26, rows navigate to `/bookings/:id` (see "Admin Booking Detail" entry below) and the inline `STATUS_BADGE_CLASS`/`STATUS_LABEL` maps were replaced by a real shared `BookingStatusBadge` component. Hotel filter dropdown reuses `useGetHotelsQuery({ page: 1, pageSize: 100 })` rather than a new "list all hotels" endpoint — fine at current seed-data scale, revisit if the hotel count ever approaches 100.
 Bug found and fixed while building this (see the Input pattern entry below): the shared `Input` primitive had no explicit text-color class, and Chromium's native `<input type="date">` doesn't reliably inherit `color` the way typed text does — the selected date rendered in the page's own background color, effectively invisible. Fixed at the primitive (`components/ui/input.tsx`), not the call site, the same "fix it where every consumer benefits" precedent `select.tsx`'s items-map fix set — this retroactively also fixes `RateOverrideManager`'s two pre-existing date inputs, which had the identical latent bug.
+
+---
+
+### Admin Booking Detail (BookingDetailPage / BookingStatusBadge / ReallocateBookingSection)
+
+File: `frontend-admin/src/features/bookings/components/BookingDetailPage.tsx` (+ `BookingStatusBadge.tsx`, `ReallocateBookingSection.tsx`)
+App: frontend-admin
+Last updated: 2026-07-14 (Feature 26)
+
+Layout: `/bookings/:id` — a "← Back to bookings" link, `<h1>` + status badge header row, then a read-only two-column summary card (`rounded-2xl border border-border-default bg-surface p-6`, same shell as every other admin card) covering guest, hotel (thumbnail + name/city,country, same shape as the list page's hotel cell), room type, dates, guests/rooms, total price, booked-on date. A second card below holds action controls, rendered only when `status` is `pending_payment` or `confirmed` — a terminal-status booking (`completed`/`cancelled`/`failed`) shows the summary only, no Actions card at all.
+`BookingStatusBadge`: extracted as a real component (5-variant `STATUS_CONFIG` map, identical classes to the locked Booking Status Badge family) — replaces `BookingsListPage`'s previously-inlined `STATUS_BADGE_CLASS`/`STATUS_LABEL` maps from Feature 25. Both list and detail pages now import this one component.
+Action confirmation pattern: **`Dialog`** (shadcn, same component `HotelsListPage` uses for "Delete hotel"), not the inline "Are you sure?" block `frontend/`'s `CancelBookingSection` uses — `frontend-admin` already had its own destructive-confirm convention via `Dialog`, so Confirm/Cancel/Reallocate all use one controlled `Dialog` whose title/body/button swap based on which action is pending. This is the app's now-canonical confirm-action pattern for `frontend-admin`; reuse it over the inline-block pattern for any future destructive/stateful admin action.
+Status → available actions: `pending_payment` shows Confirm (success-tinted button, `border-success/25 bg-success-dim text-success`) + Cancel (error-tinted); `confirmed` shows Cancel + a `ReallocateBookingSection`. Buttons are conditionally rendered per status rather than disabled, so an invalid action is never clickable in the first place.
+`ReallocateBookingSection`: fetches room types for the booking's hotel via the existing `useGetRoomTypesQuery(hotelId)` (Feature 08's hook, first reuse of it outside `RoomTypesSection`), filters out the booking's current room type and any room type too small for the party size (`maxAdults`/`maxKids`), a `Select` + "Reallocate" button opens a second `Dialog` naming both room types before committing — the actual price isn't shown until after the mutation succeeds and the summary card re-renders (no separate preview/quote call, matches the "keep it simple" call made during `/architect`).
+Error surfacing: unlike most `frontend-admin` mutations (which just show a generic "Could not X" toast — see `HotelFormPage`/`HotelsListPage`), Confirm/Cancel/Reallocate surface the real backend message (e.g. "Not enough rooms available in the target room type for these dates") via a small inline `extractErrorMessage` helper reading `error.data.error` — duplicated once in `BookingDetailPage.tsx` and once in `ReallocateBookingSection.tsx` rather than extracted to a shared util (only 2 call sites, matches this codebase's "don't abstract until it's reused enough to hurt" precedent).
+Row navigation: `BookingsListPage`'s rows are no longer inert — `onClick={() => navigate(`/bookings/${booking.id}`)}` on `TableRow`, `cursor-pointer` added to the row class.
 
 ---
 
@@ -468,6 +484,14 @@ hover:bg-subtle text-text-muted hover:text-text-secondary h-8 w-8 rounded-xl tra
 ```
 bg-error-dim hover:bg-error/20 border border-error/25 text-error h-9 px-4 rounded-xl transition-colors
 ```
+
+### Success / Confirm Button
+
+```
+bg-success-dim hover:bg-success/20 border border-success/25 text-success h-9 px-4 rounded-xl font-medium transition-colors
+```
+
+First use: Admin Booking Detail's "Confirm booking" action (Feature 26) — same shape as Destructive Button with `success` swapped for `error`, for actions that move a booking forward (confirm) rather than terminate it (cancel). Reuse for any future positive/affirming admin action button.
 
 ### Card
 
