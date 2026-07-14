@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, lt, lte } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, lt, lte } from "drizzle-orm";
 import { db } from "../config/db";
 import { bookings, reviews } from "../models/booking.schema";
 import type { Booking, BookingInput } from "../models/booking.schema";
@@ -270,4 +270,82 @@ export async function findBookingsForAdmin({
 
   const [totalRow] = await db.select({ count: count() }).from(bookings).where(where);
   return { items, total: totalRow?.count ?? 0 };
+}
+
+const adminBookingColumns = {
+  id: bookings.id,
+  hotelId: bookings.hotelId,
+  roomTypeId: bookings.roomTypeId,
+  checkIn: bookings.checkIn,
+  checkOut: bookings.checkOut,
+  adults: bookings.adults,
+  kids: bookings.kids,
+  roomsBooked: bookings.roomsBooked,
+  totalPrice: bookings.totalPrice,
+  status: bookings.status,
+  createdAt: bookings.createdAt,
+  hotelName: hotels.name,
+  hotelCity: hotels.city,
+  hotelCountry: hotels.country,
+  hotelMainImageUrl: hotelImages.url,
+  roomTypeName: roomTypes.name,
+  guestName: user.name,
+  guestEmail: user.email,
+};
+
+export async function findBookingByIdForAdmin(id: string): Promise<AdminBookingSummaryRow | null> {
+  const [row] = await db
+    .select(adminBookingColumns)
+    .from(bookings)
+    .innerJoin(hotels, eq(hotels.id, bookings.hotelId))
+    .innerJoin(roomTypes, eq(roomTypes.id, bookings.roomTypeId))
+    .innerJoin(user, eq(user.id, bookings.userId))
+    .leftJoin(hotelImages, and(eq(hotelImages.hotelId, hotels.id), eq(hotelImages.isMain, true)))
+    .where(eq(bookings.id, id))
+    .limit(1);
+  return row ?? null;
+}
+
+// Conditioned on status='pending_payment' so this can't clobber a booking a webhook/sweep already moved past it.
+export async function confirmPendingBookingForAdmin(id: string): Promise<Booking | null> {
+  const [row] = await db
+    .update(bookings)
+    .set({ status: "confirmed" })
+    .where(and(eq(bookings.id, id), eq(bookings.status, "pending_payment")))
+    .returning();
+  return row ?? null;
+}
+
+// Admin cancellation is not gated by free-cancellation eligibility (unlike cancelConfirmedBookingForOwner) — an admin can cancel any non-terminal booking.
+export async function cancelBookingForAdmin(id: string): Promise<Booking | null> {
+  const [row] = await db
+    .update(bookings)
+    .set({ status: "cancelled", cancelledAt: new Date().toISOString() })
+    .where(and(eq(bookings.id, id), inArray(bookings.status, ["pending_payment", "confirmed"])))
+    .returning();
+  return row ?? null;
+}
+
+// Conditioned on status='confirmed' — reallocation only makes sense once a booking is actually confirmed. Locks the row so it can't be cancelled/reallocated again concurrently.
+export async function lockConfirmedBookingForAdmin(tx: QueryExecutor, id: string): Promise<Booking | null> {
+  const [row] = await tx
+    .select()
+    .from(bookings)
+    .where(and(eq(bookings.id, id), eq(bookings.status, "confirmed")))
+    .for("update");
+  return row ?? null;
+}
+
+export async function reallocateBookingForAdmin(
+  tx: QueryExecutor,
+  id: string,
+  roomTypeId: string,
+  totalPrice: number,
+): Promise<Booking | null> {
+  const [row] = await tx
+    .update(bookings)
+    .set({ roomTypeId, totalPrice })
+    .where(and(eq(bookings.id, id), eq(bookings.status, "confirmed")))
+    .returning();
+  return row ?? null;
 }

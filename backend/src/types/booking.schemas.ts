@@ -18,3 +18,9 @@ export const createBookingSchema = z
   });
 
 export type CreateBookingInput = z.infer<typeof createBookingSchema>;
+
+export const reallocateBookingSchema = z.object({
+  roomTypeId: z.string().uuid(),
+});
+
+export type ReallocateBookingInput = z.infer<typeof reallocateBookingSchema>;

@@ -1,13 +1,18 @@
 import { db } from "../config/db";
 import {
+  cancelBookingForAdmin as cancelBookingForAdminRow,
   cancelConfirmedBookingForOwner,
   completePastConfirmedBookings,
+  confirmPendingBookingForAdmin,
   expireStalePendingBookings,
+  findBookingByIdForAdmin,
   findBookingSummaryByIdForOwner,
   findBookingsForAdmin,
   findBookingsForOwner,
   insertBooking,
+  lockConfirmedBookingForAdmin,
   lockRoomTypeForBooking,
+  reallocateBookingForAdmin as reallocateBookingForAdminRow,
 } from "../queries/booking.queries";
 import type {
   AdminBookingSummaryRow,
@@ -18,7 +23,7 @@ import { env } from "../config/env";
 import { findOverlappingBookings, findRateOverridesForRoomTypes } from "../queries/search.queries";
 import { enumerateStayDates, HELD_BOOKING_STATUSES, resolveRoomTypeAvailability } from "./availability.service";
 import type { Booking } from "../models/booking.schema";
-import type { CreateBookingInput } from "../types/booking.schemas";
+import type { CreateBookingInput, ReallocateBookingInput } from "../types/booking.schemas";
 
 const BOOKING_STATUSES = new Set(["pending_payment", "confirmed", "cancelled", "completed", "failed"]);
 
@@ -137,6 +142,66 @@ export interface ListBookingsForAdminInput {
 export async function listBookingsForAdmin(input: ListBookingsForAdminInput): Promise<ListBookingsForAdminResult> {
   const status = input.status && BOOKING_STATUSES.has(input.status) ? input.status : undefined;
   return findBookingsForAdmin({ ...input, status });
+}
+
+export async function getBookingForAdmin(id: string): Promise<AdminBookingSummaryRow | null> {
+  return findBookingByIdForAdmin(id);
+}
+
+export async function confirmBookingForAdmin(id: string): Promise<Booking> {
+  const confirmed = await confirmPendingBookingForAdmin(id);
+  if (!confirmed) {
+    throw badRequest("Only pending-payment bookings can be confirmed");
+  }
+  return confirmed;
+}
+
+export async function cancelBookingForAdmin(id: string): Promise<Booking> {
+  const cancelled = await cancelBookingForAdminRow(id);
+  if (!cancelled) {
+    throw badRequest("Only pending-payment or confirmed bookings can be cancelled");
+  }
+  return cancelled;
+}
+
+export async function reallocateBookingForAdmin(id: string, input: ReallocateBookingInput): Promise<Booking> {
+  return db.transaction(async (tx) => {
+    const booking = await lockConfirmedBookingForAdmin(tx, id);
+    if (!booking) {
+      throw badRequest("Only confirmed bookings can be reallocated");
+    }
+    if (booking.roomTypeId === input.roomTypeId) {
+      throw badRequest("Booking is already assigned to this room type");
+    }
+
+    const roomType = await lockRoomTypeForBooking(tx, input.roomTypeId);
+    if (!roomType || roomType.deletedAt) {
+      throw badRequest("Room type not found");
+    }
+    if (roomType.hotelId !== booking.hotelId) {
+      throw badRequest("Room type does not belong to this booking's hotel");
+    }
+    if (roomType.maxAdults < booking.adults || roomType.maxKids < booking.kids) {
+      throw badRequest("This room type doesn't fit the booking's party size");
+    }
+
+    const stayDates = enumerateStayDates(booking.checkIn, booking.checkOut);
+    const [overrides, overlappingBookings] = await Promise.all([
+      findRateOverridesForRoomTypes([roomType.id], stayDates, tx),
+      findOverlappingBookings([roomType.id], booking.checkIn, booking.checkOut, HELD_BOOKING_STATUSES, tx),
+    ]);
+    const availability = resolveRoomTypeAvailability([roomType], stayDates, overrides, overlappingBookings).get(roomType.id);
+    if (!availability || availability.remainingInventory < booking.roomsBooked) {
+      throw badRequest("Not enough rooms available in the target room type for these dates");
+    }
+
+    const totalPrice = Math.round(availability.avgNightlyPrice * stayDates.length * booking.roomsBooked);
+    const reallocated = await reallocateBookingForAdminRow(tx, id, input.roomTypeId, totalPrice);
+    if (!reallocated) {
+      throw badRequest("Booking could not be reallocated");
+    }
+    return reallocated;
+  });
 }
 
 export type { AdminBookingSummaryRow };
