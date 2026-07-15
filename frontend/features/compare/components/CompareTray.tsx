@@ -15,36 +15,40 @@ export function CompareTray() {
 
   return (
     <div className="fixed inset-x-0 bottom-4 z-30 mx-auto max-w-3xl px-4">
-      <div className="flex items-center gap-3 rounded-2xl border border-border-default bg-surface px-5 py-4 shadow-elevated">
-        <div className="flex -space-x-2">
-          {hotels.map((hotel) => (
-            // eslint-disable-next-line @next/next/no-img-element -- S3-hosted photos, no next/image domain configured yet
-            <img
-              key={hotel.id}
-              src={hotel.mainImageUrl ?? ""}
-              alt={hotel.name}
-              className="h-9 w-9 rounded-full border-2 border-surface object-cover"
-            />
-          ))}
+      <div className="flex flex-col gap-3 rounded-2xl border border-border-default bg-surface px-5 py-4 shadow-elevated sm:flex-row sm:items-center">
+        <div className="flex items-center gap-3">
+          <div className="flex -space-x-2">
+            {hotels.map((hotel) => (
+              // eslint-disable-next-line @next/next/no-img-element -- S3-hosted photos, no next/image domain configured yet
+              <img
+                key={hotel.id}
+                src={hotel.mainImageUrl ?? ""}
+                alt={hotel.name}
+                className="h-9 w-9 rounded-full border-2 border-surface object-cover"
+              />
+            ))}
+          </div>
+          <span className="flex-1 text-sm font-medium text-text-secondary">
+            {ids.length} {ids.length === 1 ? "hotel" : "hotels"} selected
+          </span>
         </div>
-        <span className="flex-1 text-sm font-medium text-text-secondary">
-          {ids.length} {ids.length === 1 ? "hotel" : "hotels"} selected
-        </span>
-        <Button
-          render={<Link href="/compare" />}
-          nativeButton={false}
-          className="h-9 rounded-xl bg-accent-primary px-4 font-medium text-white transition-colors hover:bg-accent-hover hover:shadow-accent"
-        >
-          Compare
-        </Button>
-        <button
-          type="button"
-          onClick={clear}
-          aria-label="Clear compare selection"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-text-muted transition-colors hover:bg-subtle hover:text-text-secondary"
-        >
-          <XIcon className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-3 sm:shrink-0">
+          <Button
+            render={<Link href="/compare" />}
+            nativeButton={false}
+            className="h-9 flex-1 rounded-xl bg-accent-primary px-4 font-medium text-white transition-colors hover:bg-accent-hover hover:shadow-accent sm:flex-none"
+          >
+            Compare
+          </Button>
+          <button
+            type="button"
+            onClick={clear}
+            aria-label="Clear compare selection"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-text-muted transition-colors hover:bg-subtle hover:text-text-secondary"
+          >
+            <XIcon className="h-4 w-4" />
+          </button>
+        </div>
       </div>
     </div>
   );

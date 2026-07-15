@@ -46,24 +46,17 @@ export function HotelCard({ hotel, variant, isSelected, onLocate, isFavorited, o
       className={cn(
         "flex overflow-hidden rounded-2xl border bg-elevated shadow-card transition-colors",
         isSelected ? "border-accent-border" : "border-border-default",
-        variant === "grid" ? "flex-col" : "flex-row",
+        variant === "grid" ? "flex-col" : "flex-col sm:flex-row",
       )}
     >
       <div
         className={cn(
           "relative shrink-0",
-          variant === "grid" ? "aspect-[4/3] w-full" : "aspect-[4/3] w-56 sm:w-64",
+          variant === "grid" ? "aspect-[4/3] w-full" : "aspect-[4/3] w-full sm:w-56 md:w-64",
         )}
       >
         {/* eslint-disable-next-line @next/next/no-img-element -- S3-hosted photos, no next/image domain configured yet */}
-        <img
-          src={hotel.image ?? ""}
-          alt={hotel.name}
-          className={cn(
-            "h-full w-full object-cover",
-            variant === "grid" ? "rounded-t-2xl" : "rounded-l-2xl",
-          )}
-        />
+        <img src={hotel.image ?? ""} alt={hotel.name} className="h-full w-full object-cover" />
         <div className="absolute right-3 top-3 flex gap-2">
           <button
             type="button"
