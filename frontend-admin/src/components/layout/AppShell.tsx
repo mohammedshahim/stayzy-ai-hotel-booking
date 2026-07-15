@@ -10,7 +10,7 @@ export function AppShell({ children }: Props) {
   return (
     <div className="flex">
       <Sidebar />
-      <div className="min-h-screen flex-1 bg-base">
+      <div className="min-h-screen min-w-0 flex-1 bg-base">
         <Topbar />
         <div className="mx-auto max-w-7xl px-4 py-8 lg:px-6 lg:py-10">{children}</div>
       </div>
