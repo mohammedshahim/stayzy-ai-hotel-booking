@@ -13,10 +13,13 @@ export function CompareTray() {
 
   if (ids.length === 0) return null;
 
+  // w-fit from sm: so the pill hugs its content — at a fixed max-w-3xl a single selected hotel left
+  // a wide empty gap between the label and the Compare button. Grows as hotels are added, capped at
+  // max-w-3xl. Stays full-width below sm:, where the content stacks.
   return (
-    <div className="fixed inset-x-0 bottom-4 z-30 mx-auto max-w-3xl px-4">
+    <div className="fixed inset-x-0 bottom-4 z-30 mx-auto w-full max-w-3xl px-4 sm:w-fit">
       <div className="flex flex-col gap-3 rounded-2xl border border-border-default bg-surface px-5 py-4 shadow-elevated sm:flex-row sm:items-center">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-1 items-center gap-3">
           <div className="flex -space-x-2">
             {hotels.map((hotel) => (
               // eslint-disable-next-line @next/next/no-img-element -- S3-hosted photos, no next/image domain configured yet
