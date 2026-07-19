@@ -23,11 +23,23 @@ After completing any feature:
 
 ## Current Status
 
-**Phase:** 9 — Deployment
-**Current feature:** 31 Environment Variables
-**Next up:** 31 Environment Variables — read `build-plan.md`'s section for it. All production env vars (`backend`, `frontend`, `frontend-admin`) documented and configured in the hosting provider's dashboard. First item of Phase 9; Phase 8 (Polish) is now fully complete. Also still open: the Feature 16 rating-consistency question (carried over across multiple sessions now — see that Completed Features entry for the 3 remediation options); should now be mostly moot going forward since Feature 24 keeps `hotels.average_rating`/`review_count` genuinely in sync on every review write, but the header vs. section numbers can still diverge for any pre-existing hotel whose stored rating was never backed by a real review row.
-**Blocking issues:** None. Real S3 credentials confirmed working. Real Stripe test-mode keys confirmed working end-to-end including a real Payment Element checkout (Feature 21) and a real webhook-verified payment flow (Feature 22). `STRIPE_WEBHOOK_SECRET` is now consumed by `/webhooks/stripe`. `CRON_SECRET` env var protects the manual/scheduled cleanup endpoints (`/bookings/expire-stale`, `/bookings/complete-past`). No new env vars added in Feature 30. Still unresolved from Feature 27: the dev database has leftover test data from a prior session (a "Temp User 1" account with several bookings against Hotel Marais Charme, dated around 2026-07-13) that Feature 26's session notes claimed was cleaned up but wasn't — flagged to the developer, not deleted without confirmation.
-**Latest completed addition:** 30 Responsive Pass — 2026-07-15.
+**Phase:** 10 — Agent Foundation (AI phase)
+**Current feature:** 36 Agent Service Scaffold
+**Next up:** 36 Agent Service Scaffold — read **`ai-phase-plan.md`**, not `build-plan.md`, for every AI-phase feature. FastAPI skeleton, `settings.py`, health check, `backend_client.py`, OpenRouter LLM factory, `PostgresSaver` wired and `.setup()` run, plus documenting how to run four apps locally. Nothing is built yet — the AI phase was planned via `/architect` on 2026-07-19 and implementation starts fresh.
+
+**Sequencing changed 2026-07-19:** the AI phase (Features 36–51) now runs **before** deployment; Phase 9's Features 31–35 move to Phase 16 and run last. Feature IDs are unchanged. Feature 49 was planned and then deleted (the checkpointer uses `PostgresSaver` from Feature 36 in every environment, so there is nothing to swap) — the number is retired, not reused.
+
+Also still open: the Feature 16 rating-consistency question (carried over across multiple sessions — see that Completed Features entry for the 3 remediation options); mostly moot going forward since Feature 24 keeps `hotels.average_rating`/`review_count` in sync on every review write, but the header vs. section numbers can still diverge for any pre-existing hotel whose stored rating was never backed by a real review row.
+
+**Blocking issues:** None for Feature 36. Real S3 credentials confirmed working. Real Stripe test-mode keys confirmed working end-to-end including a real Payment Element checkout (Feature 21) and a real webhook-verified payment flow (Feature 22). `STRIPE_WEBHOOK_SECRET` is consumed by `/webhooks/stripe`. `CRON_SECRET` protects the cleanup endpoints (`/bookings/expire-stale`, `/bookings/complete-past`).
+
+Needed before Feature 36: an **OpenRouter API key**. Not yet obtained — this is the project's first metered dependency.
+
+Still unresolved from Feature 27: the dev database has leftover test data (a "Temp User 1" account with several bookings against Hotel Marais Charme, dated around 2026-07-13) that Feature 26's session notes claimed was cleaned up but wasn't — flagged to the developer, not deleted without confirmation. **This now matters more than it did:** it will pollute any chatbot eval that reads real bookings (Features 45–46, 51). Worth clearing before Feature 45.
+
+**Hosting provider still undecided** ("will do later") — no longer blocking anything, since deployment moved to Phase 16.
+
+**Latest completed addition:** Search bar on `/search` + compare alignment fixes (unnumbered) — 2026-07-19.
 
 ---
 
@@ -85,23 +97,70 @@ After completing any feature:
 
 - [x] 28 Skeleton loading
 - [x] 29 Empty states
-- [ ] 30 Responsive pass
+- [x] 30 Responsive pass
 
-### Phase 9 — Deployment
+Core product complete. Execution order from here: Phases 10–15 (AI), then Phase 16 (deployment).
+
+### Phase 10 — Agent Foundation
+
+Planned in `ai-phase-plan.md`. Read that file, not `build-plan.md`, for every feature below.
+
+- [ ] 36 Agent service scaffold
+- [ ] 37 Internal auth passthrough + rate limiting
+
+### Phase 11 — Summary Generator
+
+- [ ] 38 Hotel detail summary
+- [ ] 39 Compare summary
+
+### Phase 12 — Smart Search
+
+- [ ] 40 Query extraction chain
+- [ ] 41 Smart search UI
+- [ ] 42 Nearby search
+
+### Phase 13 — Chat Widget
+
+- [ ] 43 Widget graph
+- [ ] 44 Widget persistence + UI
+
+### Phase 14 — Chatbot
+
+- [ ] 45 Read-only tool suite
+- [ ] 46 Mutating tools
+- [ ] 47 Agent assembly
+- [ ] 48 Chatbot UI (`/assistant`)
+
+### Phase 15 — Hardening
+
+- ~~49~~ *retired — `PostgresSaver` is used from Feature 36, so there is nothing to swap*
+- [ ] 50 Tracing + cost controls
+- [ ] 51 Eval pass
+
+### Phase 16 — Production Deployment
+
+Moved from Phase 9 on 2026-07-19. Scope widened: `agent/` is a fourth deployable app, and Feature 31 must also cover its env vars.
 
 - [ ] 31 Environment variables
 - [ ] 32 Backend deployment
 - [ ] 33 User frontend deployment
 - [ ] 34 Admin frontend deployment
-- [ ] 35 Production smoke test
-
-### Phase 10 — AI Phase (Future)
-
-Not broken into features yet — planning starts after Phase 9 is complete and stable.
+- [ ] 35 Production smoke test (extended to the four AI features)
+- [ ] Agent service deployment
 
 ---
 
 ## Completed Features
+
+### ✅ Search bar on `/search` + compare alignment fixes (unplanned, between Features 30 and 36) — completed 2026-07-19
+Notes: Logged as an unnumbered entry following the `Admin manual location override` precedent below — unplanned work with no `build-plan.md` feature number. New `frontend/features/search/components/SearchBar.tsx`: `/search` previously had **no search bar at all**, so a user landing on results could change filters but not city, dates, or party size without going back to the homepage. The bar hydrates all six core params from the URL, holds edits as draft state, and commits on an explicit Search press; mounted full-width in `SearchPageContent.tsx` above the sidebar+results row. Supporting changes: `lib/date.ts` gained `toDateRange()`/`toIsoDates()` bridging `SearchState`'s ISO strings and `DateRangePicker`'s `Date` objects; `useSearchState.ts` exported `DEFAULT_STATE`, gained a `{history:"push"|"replace"}` option on `update()`, and gained the date-pair invariant in `serializeSearchState`; `HeroSearchWidget.tsx` now serializes through `serializeSearchState` instead of hand-rolling the same six params; `CompareTray.tsx` and `CompareTable.tsx` got alignment fixes.
+Decision: the URL stays the single source of truth for search state — the bar introduces no store, since the existing URL→state plumbing was already correct and a store would have created a second source of truth. **This decision is what makes the AI phase's smart search and widget navigation cheap** — an AI that wants to change what the user sees just writes a URL.
+Decision: draft state + explicit Search button, matching `HeroSearchWidget` and deliberately unlike `FilterSidebar` (which applies on every change) — avoids firing a request mid-date-selection.
+Decision: draft resync uses React's adjust-state-during-render pattern, keyed on a signature of the six core params — not a `useEffect` (flashes stale values for a frame) and not a `key` prop (would remount the pickers and close open popovers). Recorded in `ui-registry.md` as a do-not-do.
+Decision: a search submit is `router.push`; filters/sort/view stay `router.replace`. `router.replace` was silently destroying the back stack — Search Paris → refine to Tokyo → Back landed on the homepage, skipping the Paris results.
+Problems solved: (1) `th` defaults to `text-align: center` — this was the real CompareTable defect (city/country line rendered centered under a `text-left` hotel name). **Two earlier diagnoses of "unequal column widths" were wrong** — widths measured equal at every hotel count. (2) `w-full` + `m-2` on a segment box overhangs by 16px — `DateRangePicker` and `GuestsRoomsPicker` (both `PopoverTrigger`s) each carried `w-full`, which resolves to 100% of the parent *before* margins; measured 285 vs 301 at 375px. Pre-existing, also affected `HeroSearchWidget` and `RoomSelectionSection`, fixed once in the two shared components. (3) react-day-picker returns `{from:X, to:X}` on the first click in range mode — a zero-night range, *not* a half-open `to: undefined`; the backend 400s on both, surfacing as a dead-end "No hotels match these filters" empty state whose Clear filters button couldn't recover it (dates aren't in `EMPTY_FILTERS`). Guard is now `checkOut > checkIn` in `serializeSearchState` plus a disabled Search button and hint; an initial `from && !to` guard was dead code.
+Verified against the real running app (headless Chromium, live dev servers, real seeded data) after two code-reading-only diagnoses proved wrong: geometry measured at 1280/768/375, two-day selection → Search enabled → correct URL, same-day range → Search disabled + hint, same-day deep link → 200 (was a 400), Home → Paris → Tokyo → Back returns to Paris results with the bar resynced. `tsc --noEmit` and `eslint` clean. Committed in `e0f7922`…`0590b5c`.
+Open: the compare-tray `sm:w-fit` change is an interpretation, not a confirmed diagnosis — the developer reported that with one hotel selected "thumbnail and hotel selected text are not justified between"; no structural difference between the 1- and 2-hotel cases was reproducible. One class to revert if wrong.
 
 ### ✅ 30 Responsive Pass — completed 2026-07-15
 Notes: Full responsive audit of both frontends via real headless-browser (Playwright, ad hoc, not a project dependency) passes against the always-running dev servers and real seeded DB data — `frontend/` checked at mobile (375px)/tablet (768px)/desktop (1280px), `frontend-admin` at tablet (768px)/desktop (1280px) only (see scope decision below). Most of both apps already held up cleanly (`FilterSidebar`, `HotelDetailsContent`, `CheckoutPageContent`, admin dashboard, hotel form, room types accordion — all previously built with the right `lg:`/`sm:` gating). Three real gaps found and fixed: (1) `frontend/features/compare/components/CompareTray.tsx` — the floating tray's avatars/label/Compare/close row had no responsive classes at all and crowded at mobile widths; changed to `flex-col sm:flex-row` (avatars+label stack above a full-width Compare/close row below `sm:`, one row at `sm:` and up), matching the existing `RoomTypeCard`/`BookingListCard` stack-then-row precedent. (2) `frontend/features/search/components/HotelCard.tsx`'s `list` variant (used both by `/search`'s List view toggle and by `MapView`'s side list) was a fixed `flex-row` with a hardcoded 224px-wide image regardless of viewport — at 375px this squished the text column to the point of severely clipped hotel names/tags/price ("Hotel Mara...", "Se[e availability]"). Fixed the same way: outer `flex-col sm:flex-row`, image `w-full` below `sm:` and `sm:w-56 md:w-64` at and above it; also dropped the image's own conditional `rounded-t-2xl`/`rounded-l-2xl` classes as redundant (the outer wrapper already clips via `overflow-hidden rounded-2xl`, same simpler precedent `RoomTypeCard` already used). (3) `frontend-admin/src/components/layout/AppShell.tsx` — the `flex-1` content wrapper next to `Sidebar` had no `min-w-0`, the classic flexbox bug where a flex item won't shrink below its content's intrinsic width; at 768px this let the *entire page* (sidebar included) grow to the width of whatever table was rendered (1041px on Hotels, 1263px on Bookings) instead of containing the overflow to the table's own `overflow-x-auto` region. One-line fix (`min-w-0` added), verified it fixed both list pages at once.
@@ -301,6 +360,56 @@ Decision: [what was decided]
 Reason: [why]
 Impact: [what files or components this affects]
 ```
+
+### AI Phase planning — 2026-07-19 (`/architect`, no code written)
+Decision: The AI phase (Features 36–51) runs **before** deployment; Phase 9's Features 31–35 move to Phase 16 and run last. Feature IDs unchanged.
+Reason: Features 31–35 were never executed, so there is nothing live to disrupt. Deploying once, after the product is feature-complete with AI included, avoids standing up production infrastructure twice and avoids an intermediate live deployment that goes stale immediately.
+Impact: `build-plan.md` (Phase 9 note, Phases 10–16, feature-count table), `progress-tracker.md` Build Phases, new `ai-phase-plan.md`.
+
+### AI Phase planning — 2026-07-19
+Decision: The LangGraph checkpointer uses `PostgresSaver` in every environment from Feature 36. The planned Feature 49 (`InMemorySaver` → `PostgresSaver` swap) is deleted and its number retired.
+Reason: In-memory state dies on process restart, so a paused `interrupt()` confirmation silently evaporates in dev in a way it will not in production — and the difference would only surface after the hardest feature (48) was already built. Postgres already runs locally, so there is no cost to using the real thing from day one. `InMemorySaver` is retained for tests.
+Impact: `agent/src/config/checkpointer.py`, Feature 36 scope, Phase 15 loses a feature.
+
+### AI Phase planning — 2026-07-19
+Decision: `agent/` authenticates to `backend/`'s `internal/*` routes with a shared secret (`x-internal-secret`, compared via `crypto.timingSafeEqual`) plus an explicit `x-acting-user-id` header — not a signed JWT.
+Reason: Exactly the precedent already set by `requireCronSecret.ts:13-20`. A JWT would add tamper-evidence on the user id, but `agent/` is a trusted first-party service — if it is compromised it can mint whatever it wants either way. Avoids a signing library, key rotation, and clock-skew handling. Developer chose this over the JWT option during `/architect`.
+Impact: New `backend/src/middlewares/requireInternalService.ts`, `agent/src/api/deps.py`, `INTERNAL_SERVICE_SECRET` in both apps' env.
+
+### AI Phase planning — 2026-07-19
+Decision: Chat replies stream end-to-end via SSE, but `backend/` is a pure byte pipe — it never parses, buffers, or interprets the stream. Persistence is decoupled: `agent/` POSTs the finished turn to `/internal/chat/messages` on graph completion, independently of the stream.
+Reason: Keeps streaming from infecting the codebase — `lib/api-client.ts` stays untouched and streaming lives in one frontend hook. Decoupling persistence means a user closing the tab mid-reply still gets the message saved. Developer explicitly asked for streaming "with clean and neat architecture without complex code."
+Impact: `agent/src/streaming/events.py` (event vocabulary defined once), new `backend/` SSE route, one new `useChatStream` hook in `frontend/`.
+
+### AI Phase planning — 2026-07-19
+Decision: `chat_messages` is the source of truth for display; the LangGraph checkpointer is the source of truth for execution. A mismatch is logged as a warning and `chat_messages` wins — never thrown.
+Reason: Both stores genuinely hold the conversation, so one has to win explicitly. The developer initially chose a hard error; softened after it emerged that a turn dying between the two writes would poison that session permanently, showing the user an unfixable error every time they opened it. A dropped write now degrades to one missing bubble.
+Impact: `backend/src/services/ai.service.ts` load path, `chat_messages`/`chat_sessions` tables, `architecture.md` invariants.
+
+### AI Phase planning — 2026-07-19
+Decision: The chat widget is a **navigator**, not a Q&A box — read-only server tools plus two client-side actions (navigate-with-filters, compare toggle), on one rolling session per user that follows them across the site. It proposes navigation as a clickable action chip and never auto-redirects.
+Reason: The widget lives inside the app, so its answers can drive the UI — and because `/search` state is fully URL-encoded via `useSearchState`, "the AI changes what you're looking at" reduces to "the AI writes a URL," needing no new state machinery. Auto-navigating mid-sentence would be hostile, so the chip keeps the user in control. Mutations stay exclusively at `/assistant`, preserving the property that a stray click on an always-available bubble can never trigger a transaction.
+Impact: Features 43–44 scope, `chat_sessions.ended_at` (nullable, marks the active widget session), the context-staleness rule in Feature 43.
+
+### AI Phase planning — 2026-07-19
+Decision: The vector database is dropped from the AI phase. Nearby search uses PostGIS `ST_DWithin` plus LLM query extraction.
+Reason: `project-overview.md` originally scoped "vector-database-backed nearby-hotel search," but a GiST index and working geography queries already exist (`findSimilarHotels`, `hotels.queries.ts:146-174`) — a vector DB would add a dependency for a problem PostGIS already solves. Recorded as a deliberate deviation rather than silent drift.
+Impact: `project-overview.md` scope section, Feature 42.
+
+### AI Phase planning — 2026-07-19
+Decision: Stripe payment initiated from within the chat interface is removed from scope. The chatbot stops at creating a `pending_payment` booking and hands back a `/checkout/[bookingId]` link.
+Reason: Preserves the existing invariant that a booking confirms only via webhook and that Stripe Elements is the only payment surface. `project-overview.md` originally listed in-chat payment as AI-phase scope.
+Impact: `project-overview.md` scope section, Feature 46's booking tool, `architecture.md` invariants.
+
+### AI Phase planning — 2026-07-19
+Decision: Per-user rate limiting ships in Feature 37, not Feature 50 as originally planned.
+Reason: OpenRouter bills from Feature 38 onward. Leaving the cost ceiling to the last phase means four metered features run unbounded in between. This is the project's first genuinely metered dependency.
+Impact: Feature 37 scope, Feature 50 reduced to tracing + cost observability.
+
+### AI Phase planning — 2026-07-19 (found during codebase audit)
+Decision: Features 38 and 41 must **build** their UI slots, not merely wire them.
+Reason: The "reserved AI slots" described in `project-overview.md` largely do not exist. `/compare`'s does (`CompareTable.tsx:131-134`, a static `hidden` div), but `HotelDetailsContent.tsx` has no slot at all and `FilterSidebar.tsx` has no free-text input — despite the doc claiming both were reserved. Docs corrected.
+Impact: Features 38 and 41 scope, `project-overview.md` corrected in three places.
 
 ### 18 Compare Hotels — 2026-07-12
 Decision: `localStorage` holds bare hotel ids only — never cached name/thumbnail/price — with both the tray and the `/compare` table always re-fetching fresh data for the current selection from a new `GET /hotels/compare` endpoint.
@@ -677,6 +786,16 @@ Built: [what was completed]
 Left off: [exactly where the session ended]
 Next session starts with: [first thing to do next time]
 ```
+
+### Session — 2026-07-19 (2)
+Built: No code. `/architect` pass over the developer's AI-phase plan, then a full context-file update so the plan is durable before implementation starts.
+Left off: New `context/ai-phase-plan.md` written (Features 36–51, the authoritative file for every AI feature). Seven existing context files updated: `build-plan.md` (Phase 10–16 resequencing, feature-count table), `architecture.md` (stack row, `agent/` folder structure, system boundaries, three AI data-flow sections, four new tables, eleven new invariants), `project-overview.md` (AI scope moved from out-of-scope to planned, three false "reserved slot" claims corrected, `/assistant` added, vector DB and in-chat-payment removals recorded), `code-standards.md` (new Python/`agent/` conventions section, five new env vars, agent dependency list), `library-docs.md` (LangGraph/FastAPI/SSE/OpenRouter project rules — deliberately rules only, not API tutorials, since LangGraph's API changes across versions), `ui-rules.md` (chat surface patterns), `progress-tracker.md` (this file). Also logged the previously-unlogged 2026-07-19 search bar work as an unnumbered Completed Features entry, following the `Admin manual location override` precedent — that resolves the open "how to log unplanned work" question from the prior session.
+Next session starts with: Feature 36 Agent Service Scaffold — read `ai-phase-plan.md` first. Needs an OpenRouter API key before starting. Nothing in `agent/` exists yet; the folder is still only a reservation in `architecture.md`.
+
+### Session — 2026-07-19
+Built: Search bar on `/search` plus compare alignment fixes — unplanned, unnumbered. See the Completed Features entry.
+Left off: All committed (`e0f7922`…`0590b5c`), working tree clean, verified against the real running app.
+Next session starts with: was "Feature 31 Environment Variables"; superseded — the AI phase now runs first, so it is Feature 36.
 
 ### Session — 2026-07-12
 Built: Feature 18 Compare Hotels, in full — see Completed Features and Architecture Decisions above (Context + localStorage-ids-only compare state, the two new `GET /hotels/compare`/`GET /hotels/search-suggestions` endpoints, the 4-hotel cap, and the dropped-distance/floor-price scope cut).
