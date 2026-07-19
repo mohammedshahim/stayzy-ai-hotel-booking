@@ -4,7 +4,7 @@
 
 A full stack hotel booking platform. Users search hotels by destination, dates, and guest count, compare and shortlist properties, book a room, and pay online through Stripe. Hotel inventory, rooms, pricing, and bookings are managed by staff through a dedicated admin panel.
 
-AI-assisted search, comparison summaries, and a booking chatbot are planned for a later phase and are explicitly out of scope for the initial build.
+AI-assisted search, comparison summaries, a navigator chat widget, and a booking chatbot were out of scope for the initial build and are now planned in detail as Features 36–51 — see `ai-phase-plan.md`. They run **before** production deployment, not after.
 
 ---
 
@@ -37,6 +37,7 @@ For the business side, the admin panel gives hotel operations staff a single pla
 /bookings/[id]                 → Booking details, manage, cancel
 /bookings/[id]/review          → Leave/edit a review for a completed stay
 /profile                       → Account details
+/assistant                     → AI chatbot (Feature 48, not yet built)
 ```
 
 ### Admin Frontend (React + Vite)
@@ -59,6 +60,8 @@ For the business side, the admin panel gives hotel operations staff a single pla
 
 A floating compare tray appears at the bottom of the viewport, app-wide, whenever at least one hotel is added to compare (see Compare Hotels below). It persists across navigation until cleared or the user proceeds to `/compare`.
 
+Once Feature 44 ships, a floating AI widget trigger sits at `bottom-6 right-6`, app-wide and logged-in only, alongside the compare tray.
+
 **Admin frontend** — sidebar navigation: Dashboard, Hotels, Bookings. No public-facing pages; every route requires an authenticated admin session.
 
 ---
@@ -77,7 +80,7 @@ A floating compare tray appears at the bottom of the viewport, app-wide, wheneve
 ### Search Hotels (`/search`)
 
 - Sticky sidebar filters: price range, star rating, guest rating, amenities/facilities, room features, meals included, free cancellation, landmarks/points of interest, "things to do nearby"
-- Smart/free-text search box in the filter sidebar (reserved for AI-assisted search in a later phase — plain keyword match for now)
+- Smart/free-text search box in the filter sidebar — **not built.** No such input exists in `FilterSidebar.tsx` today; there is no keyword-match placeholder either. Feature 41 builds it as the AI query-extraction surface.
 - Sort control (separate from filters): Recommended (default), Price low to high, Price high to low, Guest rating, Star rating, Distance from city center
 - Active filters shown as removable chips above the results
 - List / Grid / Map view toggle — Map view splits the screen into a scrollable results list and an interactive map with a pin per hotel; hovering or selecting a card highlights its pin and vice versa
@@ -94,7 +97,7 @@ A floating compare tray appears at the bottom of the viewport, app-wide, wheneve
 - Reviews section: average rating breakdown plus individual written reviews
 - Favorite and Compare actions
 - Similar hotels section below the fold — same destination, overlapping price band or star rating, ranked by proximity (PostGIS `ST_DWithin`) and rating; excludes the hotel currently being viewed
-- AI summary placeholder slot reserved for the later AI phase (not rendered until then)
+- AI summary slot — **not built.** `HotelDetailsContent.tsx` has no slot and no placeholder despite this document previously claiming one was reserved. Feature 38 builds it.
 - Skeleton loading for gallery, room list, and reviews while data loads
 
 ### Favorites (`/favorites`)
@@ -112,7 +115,7 @@ A floating compare tray appears at the bottom of the viewport, app-wide, wheneve
 - Users can also open `/compare` directly and add hotels from a search box on that page
 - Comparison table shows: image, name, star/guest rating, price for selected dates, key amenities, distance from a reference point, cancellation policy
 - Only the first two hotels are shown side by side by default; from the third hotel onward, the table scrolls horizontally so the layout doesn't get cramped
-- An AI summary section is reserved at the bottom of the compare table for the later AI phase
+- An AI summary section is reserved at the bottom of the compare table — this one **does exist**, as a static `hidden` div at `CompareTable.tsx:131-134`. Feature 39 unhides and wires it.
 
 ### Book, Checkout, Payment, My Bookings
 
@@ -177,15 +180,24 @@ A floating compare tray appears at the bottom of the viewport, app-wide, wheneve
 
 ---
 
-## Features Out of Scope (Phase 1)
+## AI Phase (Features 36–51 — planned, not built)
 
-Deferred to the AI phase, once the core booking product is stable:
+Deferred out of the core build, now fully planned in `ai-phase-plan.md`:
 
-- AI chat widget
-- AI-generated hotel summaries (hotel details + compare page)
-- Chatbot able to perform booking operations end-to-end
-- Stripe payment initiated from within the AI chat interface
-- Vector-database-backed nearby-hotel search assisted by AI
+- **AI chat widget** — a read-only *navigator*, not just Q&A. It answers about the current page, and can propose filtered `/search` URLs and toggle compare selections as clickable action chips. One rolling session per user, following them across the site. It can never mutate server data.
+- **AI-generated hotel and compare summaries** — cached server-side, regenerated only when the underlying content changes.
+- **Smart search** — a natural-language box that extracts structured filters into the existing URL-driven search pipeline.
+- **Nearby search** — PostGIS `ST_DWithin` radius filtering, reachable from natural language ("hotels near Hotel Marais Charme under ₹5000").
+- **`/assistant` chatbot** — the full tool suite, including booking, cancel, favorite, and review, each gated behind an explicit confirmation card.
+
+Two scope changes decided during `/architect` on 2026-07-19:
+
+- **Stripe payment from within the chat interface is no longer in scope.** The chatbot stops at creating a `pending_payment` booking and hands back a `/checkout/[bookingId]` link. Stripe Elements stays the only payment surface, preserving the existing invariant that a booking confirms only via webhook.
+- **Vector-database-backed nearby search is dropped** in favor of PostGIS + LLM query extraction. A GiST index and working geography queries already exist; a vector DB would add a dependency for a problem PostGIS already solves.
+
+---
+
+## Features Out of Scope
 
 Not planned at all for this product:
 
@@ -205,6 +217,14 @@ Not planned at all for this product:
 - A completed booking becomes reviewable, and the hotel's aggregate rating updates immediately after the review is submitted
 - Admin staff can create a bookable hotel (with rooms, pricing, images) end to end without engineering help
 - Admin dashboard reflects real booking and revenue data with no manual reconciliation
+
+AI phase (Features 36–51):
+
+- A cached hotel summary renders on second load with no LLM call
+- A natural-language search query produces filters the user can correct, never a dead end
+- The chat widget can change what the user is looking at, but can never write their data or move money
+- The chatbot completes a booking through an explicit confirmation and hands off a checkout link — it never collects payment
+- An out-of-domain request is refused rather than answered
 
 ---
 
