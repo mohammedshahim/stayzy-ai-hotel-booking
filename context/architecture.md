@@ -13,7 +13,8 @@
 | Admin frontend         | React + Vite + TypeScript                   | Internal operations panel                             |
 | Styling (both)         | Tailwind CSS + shadcn/ui                    | Design system primitives                              |
 | Admin data layer       | Redux Toolkit + RTK Query                   | All admin API calls, caching, and state               |
-| AI agent (future)      | Not yet implemented                          | Reserved `agent/` folder for the later AI phase       |
+| AI agent               | Python + FastAPI + LangGraph                | Summaries, query extraction, chat widget, chatbot     |
+| LLM provider           | OpenRouter (provider-agnostic)              | Model chosen per use case in `agent/src/config/llm.py` |
 
 This repository is a single monorepo with independent, separately deployable apps at the root:
 
@@ -24,10 +25,10 @@ This repository is a single monorepo with independent, separately deployable app
 ├── backend/
 ├── frontend/
 ├── frontend-admin/
-└── agent/                      → not implemented yet, reserved for the AI phase
+└── agent/                      → Python; built in the AI phase (Features 36+)
 ```
 
-Each app has its own `package.json`, dependency tree, and deployment. `backend/` is the only service either frontend talks to — the two frontends never call each other or share a database connection directly.
+Each app has its own dependency manifest (`package.json`, or `pyproject.toml` for `agent/`) and its own deployment. **`backend/` is the only service any other app talks to** — the two frontends never call each other, never call `agent/`, and never share a database connection directly. `agent/` is reached only through `backend/`, and calls back only into `backend/`'s `internal/*` routes.
 
 ---
 
@@ -191,6 +192,30 @@ frontend-admin/
 └── package.json
 ```
 
+### agent/ (Python + FastAPI + LangGraph)
+
+Built in the AI phase. Full structure and per-file responsibilities live in `ai-phase-plan.md` — this is the shape:
+
+```
+agent/
+├── src/
+│   ├── main.py                  → FastAPI entrypoint
+│   ├── config/                  → settings, OpenRouter LLM factory, PostgresSaver checkpointer
+│   ├── api/                     → routers + deps.py (validates the internal service secret)
+│   ├── graphs/                  → stateful multi-turn LangGraph agents (chatbot, chat_widget)
+│   ├── chains/                  → stateless single-shot LLM flows (summaries, query extraction)
+│   ├── clients/backend_client.py → internal-only httpx client back into backend/
+│   ├── schemas/                 → pydantic request/response models
+│   ├── streaming/events.py      → the SSE event vocabulary, defined once
+│   ├── middlewares/
+│   └── utils/
+├── tests/
+├── pyproject.toml
+└── .env
+```
+
+No `alembic/` and no `models/` for business data. `agent/` owns no product tables — its only database footprint is the LangGraph checkpointer, in its own schema, created by the library's own `.setup()`.
+
 ---
 
 ## System Boundaries
@@ -206,6 +231,10 @@ frontend-admin/
 | `frontend/components`      | Shared, reusable UI only. No data fetching, no feature-specific logic.                       |
 | `frontend-admin/features/*`| Feature-scoped UI + RTK Query API slices. Same isolation rule as the user frontend.          |
 | `frontend-admin/app/store` | Single RTK store; every feature registers its API slice reducer/middleware here.            |
+| `backend/src/routes/internal` | The only surface `agent/` may call. Thin wrappers around existing services — no new business logic ever lands here. |
+| `agent/src/chains`        | Stateless single-shot LLM flows. No graph, no checkpointer, no conversation state.            |
+| `agent/src/graphs`        | Stateful multi-turn LangGraph agents. Owns conversation execution state via the checkpointer, nothing else. |
+| `agent/src/clients`       | The only place `agent/` makes outbound HTTP calls. Tools never call `httpx` directly.        |
 
 ---
 
@@ -595,6 +624,58 @@ Address is geocoded server-side; hotels.location (geography Point) is set/update
 Room types, amenities, and images are managed as nested resources under the hotel
 ```
 
+### AI Summary (Features 38–39, not yet built)
+
+```
+Page requests the summary → GET /ai/hotels/:id/summary (backend, session-authed)
+        ↓
+backend computes content_hash (description + amenities + avg rating + review count)
+        ↓
+hash matches hotel_ai_summaries row? → return cached summary, no LLM call
+        ↓ (miss)
+backend POSTs hotel context to agent/ → chain runs → summary returned
+        ↓
+backend upserts hotel_ai_summaries with the new hash, returns the summary
+```
+
+Compare summaries follow the same path against `compare_ai_summaries`, keyed by a hash of the selected hotel ids and invalidated by TTL rather than content.
+
+### Smart Search (Features 40–42, not yet built)
+
+```
+User types a natural-language query in the search sidebar
+        ↓
+POST /ai/search/extract (backend) → agent/ query-extraction chain
+        ↓
+Chain returns structured filters matching search.schemas.ts's existing params
+        ↓
+frontend renders them as editable chips and writes them into the URL
+        ↓
+Normal search runs — the existing URL-driven pipeline, unchanged
+```
+
+The AI never queries hotels itself. It produces filters; the existing search path does the rest. A "near this hotel/place" query resolves to a reference point and hits `GET /hotels/nearby` (`ST_DWithin`) instead of a city match.
+
+### Chat (Features 43–48, not yet built)
+
+```
+User sends a message
+        ↓
+POST /ai/chat (backend) — session-authed, mints the internal service secret
+        ↓
+backend opens the upstream request to agent/ and pipes the SSE body straight through
+        ↓  (backend does not parse, buffer, or interpret the stream)
+agent/ graph runs; streams token / tool_start / tool_end / action / interrupt / done events
+        ↓
+frontend's useChatStream reduces events into message state
+        ↓
+On graph completion, agent/ POSTs the finished turn to /internal/chat/messages
+```
+
+Persistence is deliberately **not** coupled to the stream — if the user closes the tab mid-reply, the stream dies but the message still lands.
+
+Two stores hold the conversation, with an explicit winner: `chat_messages` is the source of truth for **display**; the checkpointer is the source of truth for **execution** (tool results, interrupt state, graph position). On load, a mismatch is logged as a warning and `chat_messages` wins — never thrown. See `ai-phase-plan.md` for why.
+
 ---
 
 ## Database Schema
@@ -772,6 +853,55 @@ Same guest/account duality as `favorites`, same merge-on-login behavior.
 
 Trending destinations are **not** a stored table — they are computed on read as a query over `bookings` grouped by `hotels.city`, ordered by count within a recent time window, and cached briefly at the API layer.
 
+### `hotel_ai_summaries` (Feature 38, not yet built)
+
+| Column        | Type        | Notes                                                        |
+| ------------- | ----------- | ------------------------------------------------------------ |
+| id            | uuid        |                                                                |
+| hotel_id      | uuid        | unique — one cached summary per hotel                          |
+| content_hash  | text        | description + amenities + average_rating + review_count         |
+| summary       | text        |                                                                |
+| model_version | text        | so a model change can invalidate deliberately                   |
+| generated_at  | timestamptz |                                                                |
+
+A hash miss regenerates. A new review changes the hash; editing a typo inside one review body does not.
+
+### `compare_ai_summaries` (Feature 39, not yet built)
+
+| Column          | Type        | Notes                                       |
+| --------------- | ----------- | --------------------------------------------- |
+| id              | uuid        |                                                |
+| hotel_ids_hash  | text        | unique — hash of the sorted selected hotel ids |
+| summary         | text        |                                                |
+| generated_at    | timestamptz | TTL-based invalidation, not content-based      |
+
+### `chat_sessions` (Feature 44, not yet built)
+
+| Column          | Type        | Notes                                                              |
+| --------------- | ----------- | -------------------------------------------------------------------- |
+| id              | uuid        | doubles as the LangGraph `thread_id`                                  |
+| user_id         | text        | FK to `user` — chat is logged-in only, no guest duality               |
+| feature         | text        | `widget` \| `chatbot`, CHECK-constrained                              |
+| title           | text        |                                                                       |
+| created_at      | timestamptz |                                                                       |
+| last_message_at | timestamptz |                                                                       |
+| ended_at        | timestamptz | nullable — a `widget` row with `ended_at IS NULL` is the active one   |
+
+The widget has at most one active session per user, resumed on open and closed only by an explicit "New chat". The chatbot has many, browsable in a list.
+
+### `chat_messages` (Feature 44, not yet built)
+
+| Column          | Type        | Notes                                            |
+| --------------- | ----------- | -------------------------------------------------- |
+| id              | uuid        |                                                     |
+| session_id      | uuid        | FK to `chat_sessions`, CASCADE                      |
+| role            | text        | `user` \| `assistant`, CHECK-constrained            |
+| content         | text        |                                                     |
+| tool_calls_json | jsonb       | nullable — what the assistant invoked for this turn |
+| created_at      | timestamptz |                                                     |
+
+This is the display source of truth. The LangGraph checkpointer holds the same messages as execution state, in its own schema, and loses on mismatch.
+
 ---
 
 ## PostGIS
@@ -807,7 +937,7 @@ A GiST index on `hotels.location` is required for these queries to be fast at sc
 CREATE INDEX hotels_location_gist_idx ON hotels USING GIST (location);
 ```
 
-The AI phase's vector-database nearby search (mentioned in the project plan) is a separate, later concern — PostGIS covers all map/nearby needs for the core product.
+PostGIS covers all map and nearby needs, including the AI phase's. The vector database originally scoped for AI nearby search was dropped on 2026-07-19 — `ST_DWithin` plus LLM query extraction does the job without a new dependency. Feature 42 generalizes `findSimilarHotels`'s existing city-equality filter into a real radius filter.
 
 ---
 
@@ -857,3 +987,16 @@ Rules Claude must never violate:
 - `frontend/features/*` and `frontend-admin/features/*` never import another feature's internal components or hooks directly — shared UI goes through `components/`.
 - All admin API calls go through RTK Query in `frontend-admin/` — no ad hoc `fetch` calls in components.
 - No hardcoded hex values or raw Tailwind color classes anywhere — always the CSS variable token classes from `ui-tokens.md`.
+
+### AI phase (Features 36+)
+
+- Neither frontend ever calls `agent/` directly — every AI feature is a `backend/` route that internally calls `agent/`. `agent/` never sees a user session cookie.
+- `agent/` never writes to a product table. Every mutation goes through `backend/src/routes/internal/*`, which are thin wrappers around existing services and contain no new business logic.
+- `backend/src/routes/internal/*` is reachable only with the internal service secret, and every call carries an explicit acting user id — an internal route never infers the user from a session.
+- The chat widget is wired to read-only tools only. No booking, cancel, favorite, or review tool is ever exposed to it — mutations exist exclusively at `/assistant`.
+- The chatbot never collects payment. A money-moving action stops at a `pending_payment` booking and hands back a `/checkout/[bookingId]` link; Stripe Elements remains the only payment surface, and a booking still confirms only via webhook.
+- The AI never invents prices, availability, or hotel facts — every such value comes from a real-time tool call against `backend/`.
+- `chat_messages` is the display source of truth; the LangGraph checkpointer is the execution source of truth. A mismatch is logged and `chat_messages` wins — never thrown.
+- `backend/` streams by piping `agent/`'s SSE body through untouched. It never parses, buffers, or interprets the stream.
+- `agent/`'s only database footprint is the LangGraph checkpointer, in its own schema, created by the library's `.setup()` — never Alembic, never a hand-rolled migration.
+- The AI produces search *filters*, never search *results* — extracted filters flow into the existing URL-driven search pipeline unchanged.
