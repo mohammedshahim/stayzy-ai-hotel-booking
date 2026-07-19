@@ -263,7 +263,7 @@ Table wrapper:  bg-surface rounded-2xl border border-border-default overflow-x-a
 First two hotels: shown inline, columns min-w-[16rem]
 Third+ hotels:    same column width, revealed via horizontal scroll — never wrap or shrink columns to fit
 Row label column: sticky left-0 bg-surface text-sm font-medium text-text-secondary
-AI summary slot:  reserved bottom section, bg-elevated rounded-2xl border border-border-default p-5, hidden until the AI phase ships
+AI summary slot:  reserved bottom section, bg-elevated rounded-2xl border border-border-default p-5 — currently `hidden` at CompareTable.tsx:131-134; Feature 39 unhides and wires it
 ```
 
 ### Table (admin — hotels list, bookings list)
@@ -318,6 +318,63 @@ Spinner:    h-4 w-4 border-2 border-accent-border border-t-accent-primary rounde
 ```
 
 Applies to search results, hotel details (gallery/rooms/reviews), favorites, compare, bookings, and admin tables.
+
+### Chat Surfaces (AI phase — Features 44, 48, not yet built)
+
+Two surfaces share one `ChatThread` component. **Build it once and mount it twice** — the widget and `/assistant` differ only in layout wrapper and available actions. Do not fork the thread UI.
+
+**Widget shell**
+
+```
+Trigger:        fixed bottom-6 right-6, round — same positioning precedent as the Compare Tray
+Panel < sm:     fixed inset-0, full-screen takeover, no radius
+Panel >= sm:    sm:inset-auto sm:bottom-6 sm:right-6 sm:w-96 sm:max-h-[70vh]
+Panel styling:  bg-surface rounded-2xl border border-border-default shadow-elevated
+```
+
+`max-h` in `vh`, never a fixed `rem` — the panel must scale with the viewport rather than overflow a short screen.
+
+**Chatbot page shell**
+
+```
+Layout:         flex h-[calc(100vh-4rem)] flex-col lg:flex-row   (navbar-offset calc, as MapView uses)
+Session list:   drawer below lg:, persistent lg:w-72 lg:shrink-0 lg:border-r lg:border-border-default
+Session item:   h-10 rounded-xl px-3 text-text-secondary hover:bg-subtle
+Active item:    border border-accent-border bg-accent-dim text-accent-text
+Thread column:  flex-1 flex flex-col, list flex-1 overflow-y-auto
+Composer:       border-t border-border-default p-4, pinned inside the column — not fixed
+```
+
+Reuses `FilterSidebar`'s existing `w-72` rather than inventing a width.
+
+**Message patterns**
+
+```
+User bubble:      bg-accent-primary text-white, right-aligned
+Assistant bubble: bg-elevated border border-border-default, left-aligned
+Assistant avatar: bg-accent-dim text-accent-text — matches AccountMenu's fallback treatment
+Streaming:        three-dot pulse in an assistant bubble, animate-pulse
+Tool-status chip: inline-flex items-center gap-1.5 rounded-full bg-subtle px-2.5 py-1 text-xs text-text-muted + spinner
+Action chip:      Skill-Tag pattern + trailing arrow icon (navigate / compare proposals)
+Rich results:     flex gap-3 overflow-x-auto row of trimmed SimilarHotelCard-style cards inside the bubble
+Inline error:     text-xs text-error + retry affordance — same tone as Checkout's inline error
+```
+
+**Confirmation card** — the `interrupt()` pause before a mutating tool runs.
+
+```
+rounded-2xl border border-border-default bg-elevated p-5 shadow-card
+```
+
+Rendered as its own full-width card, **never nested inside a `ChatBubble`** — that would violate the never-put-a-card-inside-a-card rule, and a confirmation is a distinct, higher-stakes moment. Shows the action's real details (hotel, room, dates, total) plus Confirm (Primary) / Cancel (Secondary). The composer is disabled until one is chosen.
+
+**Rules**
+
+- The chat empty state is **not** the locked `EmptyState` component — that is for "no data"; this is "no conversation started." Use a short welcome line plus 2–3 suggested-prompt chips in the Skill-Tag pattern, clickable to send.
+- Auto-scroll to the newest message, but **never yank scroll position** if the user has scrolled up to reread.
+- An action chip proposes; it never auto-navigates. Changing the page out from under someone mid-sentence is not acceptable.
+- A failed tool call or LLM error always surfaces inline with a retry — never a silent failure, never an empty bubble.
+- Every new pattern here gets a `ui-registry.md` entry once built, per its one-entry-per-component rule.
 
 ---
 
