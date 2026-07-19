@@ -14,8 +14,10 @@ type Props = {
 };
 
 // Per ui-rules.md's Compare Table spec: columns never wrap/shrink, extras reveal via horizontal scroll.
-const ROW_LABEL_CLASS = "sticky left-0 z-10 whitespace-nowrap bg-surface px-4 py-3 text-sm font-medium text-text-secondary";
-const CELL_CLASS = "min-w-[16rem] px-4 py-3 text-sm text-text-secondary align-top";
+// text-left is explicit because <th> defaults to center, which left the header cells
+// (city line, "Hotel" label) misaligned against the left-aligned <td> content below them.
+const ROW_LABEL_CLASS = "sticky left-0 z-10 whitespace-nowrap bg-surface px-4 py-3 text-left text-sm font-medium text-text-secondary";
+const CELL_CLASS = "min-w-[16rem] px-4 py-3 text-left text-sm text-text-secondary align-top";
 
 export function CompareTable({ hotels }: Props) {
   const { remove } = useCompareSelection();
