@@ -4,7 +4,9 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import type { SearchState, SortOption, ViewMode } from "@/features/search/types";
 
-const DEFAULT_STATE: SearchState = {
+// Exported so entry points that build a URL from scratch (HeroSearchWidget, RecentSearches)
+// can serialize through serializeSearchState instead of hand-rolling the same params.
+export const DEFAULT_STATE: SearchState = {
   destination: "",
   checkIn: null,
   checkOut: null,
@@ -100,8 +102,15 @@ export function serializeSearchState(state: SearchState): string {
   const params = new URLSearchParams();
 
   if (state.destination) params.set("destination", state.destination);
-  if (state.checkIn) params.set("checkIn", state.checkIn);
-  if (state.checkOut) params.set("checkOut", state.checkOut);
+  // Dates go out only as a valid pair. The backend 400s ("checkOut must be after checkIn") on both
+  // a lone checkIn and a same-day range — and react-day-picker's first click in range mode yields
+  // {from: X, to: X}, so the same-day case is one click away. That 400 surfaced as a dead-end
+  // "No hotels match these filters" empty state whose Clear filters button couldn't recover it.
+  // ISO yyyy-MM-dd strings compare correctly lexicographically.
+  if (state.checkIn && state.checkOut && state.checkOut > state.checkIn) {
+    params.set("checkIn", state.checkIn);
+    params.set("checkOut", state.checkOut);
+  }
   if (state.adults !== DEFAULT_STATE.adults) params.set("adults", String(state.adults));
   if (state.kids !== DEFAULT_STATE.kids) params.set("kids", String(state.kids));
   if (state.rooms !== DEFAULT_STATE.rooms) params.set("rooms", String(state.rooms));
@@ -127,7 +136,10 @@ export function useSearchState() {
 
   const state = parseSearchState(searchParams);
 
-  function update(partial: Partial<SearchState>) {
+  // history: "replace" (default) keeps incremental filter/sort/view tweaks out of the back stack.
+  // SearchBar passes "push" so a submitted search is a real history entry — otherwise Back from a
+  // refined search skips every earlier result set and lands on whatever preceded /search.
+  function update(partial: Partial<SearchState>, options?: { history?: "push" | "replace" }) {
     const next: SearchState = { ...state, ...partial };
     const touchesFilters = FILTER_KEYS.some((key) => key in partial);
     if (touchesFilters && !("page" in partial)) {
@@ -135,7 +147,12 @@ export function useSearchState() {
     }
 
     const query = serializeSearchState(next);
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    const href = query ? `${pathname}?${query}` : pathname;
+    if (options?.history === "push") {
+      router.push(href, { scroll: false });
+    } else {
+      router.replace(href, { scroll: false });
+    }
   }
 
   return { state, update };

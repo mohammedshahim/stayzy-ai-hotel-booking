@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { format } from "date-fns";
 import { SearchIcon } from "lucide-react";
 import type { DateRange } from "react-day-picker";
 
@@ -10,9 +9,14 @@ import { Button } from "@/components/ui/button";
 import { DestinationInput } from "@/features/search/components/DestinationInput";
 import { DateRangePicker } from "@/features/search/components/DateRangePicker";
 import { GuestsRoomsPicker, type GuestCounts } from "@/features/search/components/GuestsRoomsPicker";
-import { defaultDateRange } from "@/lib/date";
+import { DEFAULT_STATE, serializeSearchState } from "@/features/search/hooks/useSearchState";
+import { defaultDateRange, toIsoDates } from "@/lib/date";
 
-const DEFAULT_GUESTS: GuestCounts = { adults: 2, kids: 0, rooms: 1 };
+const DEFAULT_GUESTS: GuestCounts = {
+  adults: DEFAULT_STATE.adults,
+  kids: DEFAULT_STATE.kids,
+  rooms: DEFAULT_STATE.rooms,
+};
 
 export function HeroSearchWidget() {
   const router = useRouter();
@@ -21,15 +25,17 @@ export function HeroSearchWidget() {
   const [guests, setGuests] = useState<GuestCounts>(DEFAULT_GUESTS);
 
   function handleSearch() {
-    const params = new URLSearchParams();
-    if (destination) params.set("destination", destination);
-    if (dateRange?.from) params.set("checkIn", format(dateRange.from, "yyyy-MM-dd"));
-    if (dateRange?.to) params.set("checkOut", format(dateRange.to, "yyyy-MM-dd"));
-    if (guests.adults !== DEFAULT_GUESTS.adults) params.set("adults", String(guests.adults));
-    if (guests.kids !== DEFAULT_GUESTS.kids) params.set("kids", String(guests.kids));
-    if (guests.rooms !== DEFAULT_GUESTS.rooms) params.set("rooms", String(guests.rooms));
-
-    const query = params.toString();
+    const { checkIn, checkOut } = toIsoDates(dateRange);
+    // Serialized through the same helper /search reads back, so the two can never drift.
+    const query = serializeSearchState({
+      ...DEFAULT_STATE,
+      destination,
+      checkIn,
+      checkOut,
+      adults: guests.adults,
+      kids: guests.kids,
+      rooms: guests.rooms,
+    });
     router.push(query ? `/search?${query}` : "/search");
   }
 
