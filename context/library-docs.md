@@ -1,6 +1,6 @@
 # Library Docs
 
-Project-specific usage patterns for every third-party library in Stayzy. This file only covers how **we** use each library in **this** project — rules, patterns, and constraints specific to Stayzy, not general documentation.
+Project-specific usage patterns for every third-party library in Stayzy, across all four apps. This file only covers how **we** use each library in **this** project — rules, patterns, and constraints specific to Stayzy, not general documentation.
 
 Read the relevant section before implementing any feature that touches these libraries.
 
@@ -538,3 +538,65 @@ export const createBookingSchema = z.object({
 
 - Every backend route handling a body has a schema in `types/*.schemas.ts`
 - Never use `.passthrough()` on a schema that touches money, dates, or ownership fields
+
+---
+
+# AI Phase Libraries (Features 36+, not yet installed)
+
+> **Do not write LangGraph or FastAPI code from training knowledge.** LangGraph's API — `StateGraph`, checkpointer packages, `interrupt()`/`Command` resume semantics, and `astream` modes — has changed repeatedly and across major versions. Check for an installed skill or MCP server first, then read the installed package's own docs, before writing a single node. The sections below are **project rules only**, deliberately not API tutorials.
+
+## LangGraph
+
+**Where things live** — see `code-standards.md`'s Agent Conventions. In short: `graphs/` for stateful multi-turn agents, `chains/` for stateless single-shot flows. If it does not need conversation state, it is not a graph.
+
+**Rules:**
+
+- The checkpointer is `PostgresSaver` in **every** environment, including local dev. `InMemorySaver` is for tests only. Developing human-in-the-loop flows on in-memory state hides a real behavioral difference — a paused `interrupt()` survives a restart in production and does not in memory
+- Checkpointer schema is created by the library's own `.setup()` call. Never Alembic, never a hand-rolled migration, never a Drizzle table
+- `thread_id` is always `chat_sessions.id`. No other identifier is ever used as a thread key
+- The checkpointer is **execution** state only. Nothing outside the graph reads it for display — `chat_messages` in `backend/`'s Postgres is the display source of truth
+- Every mutating tool is gated behind `interrupt()` before it executes. No exceptions, and none are registered on the widget graph at all
+- One ReAct agent plus a tool node. **Not** a multi-agent supervisor — the tool count does not justify one, and adding one is a decision to revisit explicitly, not to drift into
+- Tool docstrings are the model's interface to the tool. Write them for the model
+
+## FastAPI
+
+**Rules:**
+
+- Routers live in `api/`, one module per feature, mounted through `api/router.py`
+- The internal service secret is validated in `api/deps.py` as a dependency — never inline in a route
+- Responses use the same `{success, data?, error?}` envelope as `backend/`, produced centrally by `middlewares/error_handler.py`
+- Pydantic models for every request and response, in `schemas/` — no raw dicts crossing a route boundary
+
+## Server-Sent Events (streaming)
+
+Chat replies stream; summaries and query extraction do not. The event vocabulary is defined once, in `agent/src/streaming/events.py`:
+
+```
+{type:"token", text}          → append to the in-flight assistant message
+{type:"tool_start", name}     → render the tool-status chip
+{type:"tool_end"}             → clear the chip
+{type:"action", action}       → navigate / compare-toggle proposal (widget)
+{type:"interrupt", payload}   → render the confirmation card (chatbot)
+{type:"done", messageId}      → finalize
+{type:"error", message}       → render inline error + retry
+```
+
+**Rules:**
+
+- **`backend/` is a byte pipe.** It authenticates the session, opens the upstream request with the service secret, and pipes the body through with `Content-Type: text/event-stream`. It never parses, buffers, or interprets the stream
+- **Persistence is not coupled to the stream.** `agent/` POSTs the finished turn to `/internal/chat/messages` on graph completion, so a closed tab still persists the message
+- The frontend uses `fetch` + `response.body.getReader()`, **not `EventSource`** — `EventSource` cannot POST a body
+- Streaming lives in exactly one frontend file, `useChatStream`. `lib/api-client.ts` is untouched and continues to serve every non-chat feature
+- An error inside a stream is emitted as an `error` event, never a mid-stream exception that truncates the response silently
+
+## OpenRouter
+
+Accessed through `langchain-openai` — OpenRouter speaks the OpenAI protocol, so no OpenRouter-specific package is needed. Configured once in `agent/src/config/llm.py` as a factory returning a client per use case.
+
+**Rules:**
+
+- Model choice is per use case, in config, never hardcoded at a call site: a cheap fast model for summaries and query extraction, a stronger one for the chatbot's tool loop
+- `OPENROUTER_API_KEY` lives only in `agent/`'s environment. It never reaches `backend/` and never reaches a browser
+- This is the project's first genuinely metered dependency. Per-user rate limiting ships in Feature 37, **before** the first billable feature in Feature 38
+- Summaries are cached server-side and regenerate only on a content-hash miss. A cache hit must make no LLM call at all — that is the acceptance test for Feature 38

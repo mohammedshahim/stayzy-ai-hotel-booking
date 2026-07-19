@@ -1,6 +1,6 @@
 # Code Standards
 
-Implementation rules and conventions for all three apps — `backend/`, `frontend/`, `frontend-admin/`. Claude must follow these in every session without exception. These rules prevent pattern drift across sessions and across apps.
+Implementation rules and conventions for all four apps — `backend/`, `frontend/`, `frontend-admin/`, and `agent/` (Python, built in the AI phase). Claude must follow these in every session without exception. These rules prevent pattern drift across sessions and across apps.
 
 ---
 
@@ -279,7 +279,55 @@ Same isolation rule as the user frontend — a feature never imports another fea
 
 ---
 
-## File and Folder Naming (all three apps)
+## Agent Conventions (`agent/` — Python + FastAPI + LangGraph)
+
+Built in the AI phase (Features 36+). Python is the only non-TypeScript app in this repo, so it gets its own rules rather than inheriting the TypeScript ones by analogy.
+
+### Python baseline
+
+- Python 3.12+, `pyproject.toml`, dependencies managed with `uv`
+- **Full type hints on every function** — parameters and return types, no exceptions. This is the direct equivalent of the TypeScript strict-mode rule
+- Never use bare `Any` — narrow the type, same reasoning as `unknown` in TypeScript
+- `ruff` for lint and format — no separate `black`/`isort`
+- `snake_case` for functions, variables, and module files; `PascalCase` for classes and pydantic models
+- No bare `except:` — always catch a specific exception, always log with a context prefix
+
+### Layering
+
+`agent/` mirrors the backend's discipline of one responsibility per layer:
+
+```
+api/ (routes) → graphs/ or chains/ → clients/ → backend/
+```
+
+- `api/` — FastAPI routers. Request/response shaping and dependency injection only. No prompts, no LLM calls, no business logic
+- `chains/` — stateless single-shot LLM flows. No graph, no checkpointer, no conversation state
+- `graphs/` — stateful multi-turn LangGraph agents. Owns conversation execution state through the checkpointer and nothing else
+- `clients/` — the only place outbound HTTP happens. **A tool function never calls `httpx` directly**; it goes through `backend_client.py`
+- `schemas/` — pydantic request/response models, one module per route
+
+### Prompts
+
+- Every prompt lives in a `prompts.py` beside the chain or graph that uses it — never inline in a node, a tool, or a route
+- Prompts are module-level constants, not f-strings built at call time; variable content is passed as template values
+- A prompt change is a behavioral change: re-run the Feature 51 eval set before considering it done
+
+### Tools
+
+- One tool does one thing, with a docstring the model actually reads — the docstring is the tool's interface, so write it for the model, not for a human skimming code
+- A tool never invents data. Prices, availability, and hotel facts always come from a real `backend/` call
+- Mutating tools are only ever registered on the chatbot graph — never the widget graph
+- Every mutating tool is gated behind `interrupt()` before it executes
+
+### Error handling
+
+- Route-level errors are caught by `middlewares/error_handler.py` and returned in the same `{success, data?, error?}` envelope the backend uses — both apps' clients assume it
+- Inside a stream, an error is emitted as an `{type:"error"}` SSE event, never a mid-stream exception that truncates the response silently
+- Log prefixes match the rest of the repo: `[module/function]`
+
+---
+
+## File and Folder Naming (all three TypeScript apps)
 
 - Folders: kebab-case — `hotel-details`, `room-types`
 - Component files: PascalCase — `HotelCard.tsx`, `CompareTray.tsx`
@@ -335,8 +383,15 @@ Never hardcode any key, URL, or secret anywhere in the codebase. Each app has it
 | `NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN`     | frontend          | `features/search/components/MapView.tsx`, `features/hotel-details/components/LocationMapPanel.tsx` |
 | `VITE_API_BASE_URL`                   | frontend-admin    | `lib/apiBaseQuery.ts`             |
 | `VITE_MAPBOX_ACCESS_TOKEN`            | frontend-admin    | `features/hotels/components/HotelLocationPicker.tsx` |
+| `INTERNAL_SERVICE_SECRET`             | backend + agent   | `middlewares/requireInternalService.ts` / `agent` `api/deps.py` — same value both sides (Feature 37) |
+| `AGENT_BASE_URL`                      | backend           | `services/ai.service.ts` (Feature 36)              |
+| `BACKEND_INTERNAL_URL`                | agent             | `clients/backend_client.py` (Feature 36)           |
+| `OPENROUTER_API_KEY`                  | agent             | `config/llm.py` (Feature 36)                       |
+| `AGENT_DATABASE_URL`                  | agent             | `config/checkpointer.py` — same database as `DATABASE_URL`, separate schema (Feature 36) |
 
 `NEXT_PUBLIC_` / `VITE_` prefixes mean the variable is exposed to the browser. Never add them to secret keys.
+
+`INTERNAL_SERVICE_SECRET` is shared between exactly two apps and must never reach either frontend. It is compared with `crypto.timingSafeEqual`, following the `CRON_SECRET` precedent in `requireCronSecret.ts`.
 
 ---
 
@@ -378,5 +433,7 @@ Approved dependencies:
 **frontend/** — `next`, `react`, `better-auth` (client), `@stripe/stripe-js`, `@stripe/react-stripe-js`, `tailwindcss`, `shadcn/ui` components, `lucide-react`, `react-day-picker` + `date-fns` (shadcn's `Calendar` primitive and its date-math peer dependency, added in Feature 05 for the homepage date-range picker), `react-map-gl` + `mapbox-gl` (Map view on `/search`, added in Feature 06 — `mapbox-gl` ships its own TypeScript types, no `@types/` package needed)
 
 **frontend-admin/** — `react`, `vite`, `@reduxjs/toolkit`, `react-redux` (required peer for using the store from components), `react-router-dom`, `tailwindcss`, `shadcn/ui` components, `lucide-react`, `react-map-gl` + `mapbox-gl` (draggable location pin on the hotel edit form, added for the manual-coordinate-override feature — same versions and usage pattern as `frontend/`'s `LocationMapPanel`/`MapView`, no new abstraction)
+
+**agent/** (AI phase, not yet installed) — `fastapi`, `uvicorn`, `langgraph`, `langchain-core`, `langchain-openai` (OpenRouter speaks the OpenAI protocol, so this is the client — no OpenRouter-specific package), `langgraph-checkpoint-postgres`, `pydantic` + `pydantic-settings`, `httpx`, `psycopg` (the checkpointer's driver — never queried directly). Dev only: `pytest`, `ruff`.
 
 Do not install any other packages without updating this list first.
