@@ -4,7 +4,7 @@
 
 UI and logic built together for every feature. Every feature must be visible and testable before moving to the next. No invisible backend-only phases beyond what a feature strictly needs before its UI can be wired to it. Mock/static data is acceptable only as an explicit stepping stone toward the next feature in the same phase — never as a stopping point.
 
-The AI phase (chat widget, AI summaries, chatbot booking, vector-assisted nearby search) is intentionally not broken down here. It starts only after Phase 9 (Deployment) is complete and stable.
+The AI phase is broken down in its own companion file, `ai-phase-plan.md` (Features 36–51). **It now runs before deployment, not after** — see the sequencing note on Phase 9 below.
 
 ---
 
@@ -405,6 +405,10 @@ Full responsive audit of both frontends at mobile, tablet, and desktop breakpoin
 
 ## Phase 9 — Deployment
 
+> **Resequenced 2026-07-19: this phase now runs last, as Phase 16.** The AI phase (Features 36–51) runs first. Features 31–35 were never executed, so there is nothing live to disrupt, and deploying once — after the product is feature-complete with AI included — avoids standing up production infrastructure twice. Feature ID numbers are unchanged; only execution order moved. See `ai-phase-plan.md`.
+>
+> When this phase finally runs, its scope is wider than described below: `agent/` is a fourth deployable app, and Feature 31 must also cover its env vars. See `ai-phase-plan.md`'s Phase 16 section.
+
 ### 31 Environment Variables
 
 All production env vars (`backend`, `frontend`, `frontend-admin`) documented and configured in the hosting provider's dashboard.
@@ -431,9 +435,29 @@ Full end-to-end pass in production:
 
 ---
 
-## Phase 10 — AI Phase (Future)
+## Phases 10–15 — AI Phase (Features 36–51)
 
-Not broken into features yet. Will cover: AI chat widget, AI-generated hotel/compare summaries, chatbot-driven booking (including Stripe payment from the chat interface), and vector-database-assisted nearby-hotel search. Planning for this phase starts only after Phase 9 is complete and stable in production.
+Fully planned in **`ai-phase-plan.md`** — read that file, not this section, before starting any AI feature. Summary of what it covers:
+
+- **Phase 10 (36–37)** — `agent/` service scaffold (Python, FastAPI + LangGraph), internal service auth, rate limiting
+- **Phase 11 (38–39)** — AI summaries on `/hotels/[id]` and `/compare`, with cache tables
+- **Phase 12 (40–42)** — natural-language query extraction, smart search UI, PostGIS `ST_DWithin` nearby search
+- **Phase 13 (43–44)** — the chat widget: a read-only navigator that can drive the app's URL state
+- **Phase 14 (45–48)** — the `/assistant` chatbot: full tool suite with `interrupt()`-gated mutations
+- **Phase 15 (50–51)** — tracing, cost controls, eval pass
+
+Two changes from this file's original framing, both decided during `/architect` on 2026-07-19:
+
+- **This phase runs before deployment**, not after. Deployment becomes Phase 16.
+- **The vector database is dropped.** Nearby search uses PostGIS + LLM query extraction instead. A GiST index and working geography queries already exist; a vector DB would add a dependency for a problem PostGIS already solves.
+
+Feature 49 (`InMemorySaver` → `PostgresSaver` swap) was planned and then deleted — the checkpointer uses `PostgresSaver` from Feature 36 in every environment, so there is nothing to swap. The number is retired, not reused.
+
+---
+
+## Phase 16 — Production Deployment
+
+Features 31–35, moved here from Phase 9 above, plus agent service deployment. See `ai-phase-plan.md`'s Phase 16 section for the widened scope.
 
 ---
 
@@ -449,5 +473,15 @@ Not broken into features yet. Will cover: AI chat widget, AI-generated hotel/com
 | Phase 6 — Reviews                  | 1        |
 | Phase 7 — Admin Operations         | 3        |
 | Phase 8 — Polish                   | 3        |
-| Phase 9 — Deployment               | 5        |
-| **Total (excluding AI phase)**     | **35**   |
+| **Core product subtotal**          | **30**   |
+| Phase 10 — Agent Foundation        | 2        |
+| Phase 11 — Summary Generator       | 2        |
+| Phase 12 — Smart Search            | 3        |
+| Phase 13 — Chat Widget             | 2        |
+| Phase 14 — Chatbot                 | 4        |
+| Phase 15 — Hardening               | 2        |
+| **AI phase subtotal**              | **15**   |
+| Phase 16 — Deployment (was 9)      | 5        |
+| **Total**                          | **50**   |
+
+Feature IDs run 01–51; Feature 49 is retired and unused, so the total is 50 rather than 51. Execution order is Phases 1–8, then 10–15, then 16.
