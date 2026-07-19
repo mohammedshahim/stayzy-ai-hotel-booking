@@ -32,7 +32,8 @@ export function GuestsRoomsPicker({ value, onChange, className }: Props) {
     <Popover>
       <PopoverTrigger
         className={cn(
-          "m-2 flex w-full flex-col gap-1 rounded-xl border border-border-default bg-subtle px-4 py-2.5 text-left transition-colors focus-visible:border-accent-border focus-visible:ring-1 focus-visible:ring-accent-border aria-expanded:border-accent-border aria-expanded:ring-1 aria-expanded:ring-accent-border",
+          // No w-full — see DateRangePicker: it overhangs m-2's margins by 16px.
+          "m-2 flex flex-col gap-1 rounded-xl border border-border-default bg-subtle px-4 py-2.5 text-left transition-colors focus-visible:border-accent-border focus-visible:ring-1 focus-visible:ring-accent-border aria-expanded:border-accent-border aria-expanded:ring-1 aria-expanded:ring-accent-border",
           className,
         )}
       >
