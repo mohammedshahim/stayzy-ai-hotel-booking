@@ -2,6 +2,7 @@ import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { env } from "./env";
 import * as adminAuthSchema from "../models/admin-auth.schema";
+import * as aiSchema from "../models/ai.schema";
 import * as authSchema from "../models/auth.schema";
 import * as bookingSchema from "../models/booking.schema";
 import * as favoriteSchema from "../models/favorite.schema";
@@ -15,6 +16,7 @@ export const schema = {
   ...roomTypeSchema,
   ...bookingSchema,
   ...favoriteSchema,
+  ...aiSchema,
   ...authSchema,
   ...adminAuthSchema,
 };
