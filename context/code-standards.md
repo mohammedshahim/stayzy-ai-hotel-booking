@@ -283,6 +283,25 @@ Same isolation rule as the user frontend — a feature never imports another fea
 
 Built in the AI phase (Features 36+). Python is the only non-TypeScript app in this repo, so it gets its own rules rather than inheriting the TypeScript ones by analogy.
 
+### Simplicity comes first (read before writing any Python)
+
+**The developer must be able to read any file in `agent/` top to bottom and understand it without tracing indirection.** This outranks cleverness, DRY, extensibility, and every pattern below. LangGraph and FastAPI already bring enough concepts of their own; the code around them stays boring on purpose.
+
+Concretely:
+
+- **Functions by default, classes only for real state.** A class that holds no mutable state and whose methods never call each other is a namespace pretending to be an object — make it module-level functions. `httpx`/LLM clients get a module-level instance, not a wrapper class
+- **No accessor triads.** `get_x()` / `open_x()` / `close_x()` around a private global is three ways to touch one variable. Prefer a module-level object created once, plus a lifespan hook if it needs opening and closing
+- **No factory + cache for config.** One module-level `settings` object, created at import, is the whole pattern — the same shape as `backend/src/config/env.ts`
+- **Named functions over parameterised dispatch.** `get_fast_llm()` / `get_smart_llm()` reads better than `get_llm(use_case=...)` with an enum. Two obvious functions beat one configurable one until there are four or more
+- **Docstrings are 1–3 lines.** State what the function does and any non-obvious caveat. Long "why" belongs in `agent/README.md` or here, written once, not re-explained in every file that touches the topic. A tool's docstring is the exception — that one is written for the model and can be as long as the model needs
+- **No abstraction with a single implementation.** No base classes, no protocols, no registries, no custom decorators, no dependency-injection helpers beyond FastAPI's own `Depends`
+- **Shallow code.** Aim for functions under ~30 lines and nesting under three levels. One comprehension deep, never nested
+- **Delete dead code immediately.** An unused model or helper written "for later" is a maintenance cost with no reader benefit
+
+What simplicity does **not** mean: type hints, error handling, and the log prefixes below are all still required. Those make code easier to read, not harder.
+
+When a rule elsewhere in this file conflicts with this section, this section wins — and flag the conflict to the developer rather than silently picking one.
+
 ### Python baseline
 
 - Python 3.12+, `pyproject.toml`, dependencies managed with `uv`
@@ -290,6 +309,7 @@ Built in the AI phase (Features 36+). Python is the only non-TypeScript app in t
 - Never use bare `Any` — narrow the type, same reasoning as `unknown` in TypeScript
 - `ruff` for lint and format — no separate `black`/`isort`
 - `snake_case` for functions, variables, and module files; `PascalCase` for classes and pydantic models
+- Route modules are `<domain>_routes.py` — **not** `<domain>.routes.py`. A dot in a module name makes it unimportable (`from src.api.health.routes import router` looks for a `health` package). The `agent/` folder sketch in `ai-phase-plan.md` uses the dotted form; that is the one place it must not be followed literally
 - No bare `except:` — always catch a specific exception, always log with a context prefix
 
 ### Layering
@@ -304,7 +324,7 @@ api/ (routes) → graphs/ or chains/ → clients/ → backend/
 - `chains/` — stateless single-shot LLM flows. No graph, no checkpointer, no conversation state
 - `graphs/` — stateful multi-turn LangGraph agents. Owns conversation execution state through the checkpointer and nothing else
 - `clients/` — the only place outbound HTTP happens. **A tool function never calls `httpx` directly**; it goes through `backend_client.py`
-- `schemas/` — pydantic request/response models, one module per route
+- `schemas/` — pydantic request/response models, one module per route. A model used by exactly one route and small enough to read at a glance may live in that route module instead — a separate file per two-field model is indirection without benefit (see Simplicity)
 
 ### Prompts
 
@@ -384,10 +404,16 @@ Never hardcode any key, URL, or secret anywhere in the codebase. Each app has it
 | `VITE_API_BASE_URL`                   | frontend-admin    | `lib/apiBaseQuery.ts`             |
 | `VITE_MAPBOX_ACCESS_TOKEN`            | frontend-admin    | `features/hotels/components/HotelLocationPicker.tsx` |
 | `INTERNAL_SERVICE_SECRET`             | backend + agent   | `middlewares/requireInternalService.ts` / `agent` `api/deps.py` — same value both sides (Feature 37) |
-| `AGENT_BASE_URL`                      | backend           | `services/ai.service.ts` (Feature 36)              |
-| `BACKEND_INTERNAL_URL`                | agent             | `clients/backend_client.py` (Feature 36)           |
+| `AGENT_BASE_URL`                      | backend           | `services/ai.service.ts` — **not yet added**, lands with the first backend route that calls the agent (Feature 38) |
+| `BACKEND_INTERNAL_URL`                | agent             | `clients/backend_client.py` (Feature 36) — required, no default |
 | `OPENROUTER_API_KEY`                  | agent             | `config/llm.py` (Feature 36)                       |
-| `AGENT_DATABASE_URL`                  | agent             | `config/checkpointer.py` — same database as `DATABASE_URL`, separate schema (Feature 36) |
+| `OPENROUTER_BASE_URL`                 | agent             | `config/llm.py` — defaults to `https://openrouter.ai/api/v1` |
+| `OPENROUTER_MODEL_FAST` / `OPENROUTER_MODEL_SMART` | agent | `config/llm.py` — model per use case, never hardcoded at a call site |
+| `AGENT_DATABASE_URL`                  | agent             | `config/checkpointer.py` — same database as `DATABASE_URL`, separate schema (Feature 36) — required, no default |
+| `CHECKPOINTER_SCHEMA`                 | agent             | `config/checkpointer.py` — defaults to `agent`; pinned via libpq `search_path` |
+| `PORT`                                | agent             | `main.py` — defaults to 4100 |
+
+`agent/` deliberately gives `AGENT_DATABASE_URL` and `BACKEND_INTERNAL_URL` **no localhost default**, unlike `backend/src/config/env.ts:7-9`. A defaulted URL lets an unset production value boot successfully and then fail silently; the Feature 31 audit flagged exactly that on `backend/`. New apps should follow `agent/`'s pattern here, not `backend/`'s.
 
 `NEXT_PUBLIC_` / `VITE_` prefixes mean the variable is exposed to the browser. Never add them to secret keys.
 

@@ -171,10 +171,11 @@ agent/
 │   ├── api/
 │   │   ├── router.py                → mounts all routers
 │   │   ├── deps.py                  → validates the internal service secret, extracts acting user_id
-│   │   ├── summary.routes.py
-│   │   ├── chat_widget.routes.py    → SSE
-│   │   ├── chatbot.routes.py        → SSE
-│   │   └── smart_search.routes.py
+│   │   ├── health_routes.py
+│   │   ├── summary_routes.py
+│   │   ├── chat_widget_routes.py    → SSE
+│   │   ├── chatbot_routes.py        → SSE
+│   │   └── smart_search_routes.py
 │   ├── graphs/                      → stateful, multi-turn LangGraph agents
 │   │   ├── chatbot/
 │   │   │   ├── graph.py             → StateGraph, nodes, edges, checkpointer wiring
@@ -216,6 +217,8 @@ agent/
 ```
 
 No `alembic/`, no `models/` for business data — those stay in `backend/`.
+
+**Corrected 2026-07-20 (Feature 36):** route modules were originally sketched as `summary.routes.py` etc., mirroring `backend/`'s `<domain>.routes.ts`. A dot makes a Python module unimportable, so the convention is `<domain>_routes.py`. Also added above: `health_routes.py`, and `scripts/` (holding `setup_checkpointer.py`), neither of which the original sketch included.
 
 ---
 

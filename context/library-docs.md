@@ -566,7 +566,7 @@ export const createBookingSchema = z.object({
 - Routers live in `api/`, one module per feature, mounted through `api/router.py`
 - The internal service secret is validated in `api/deps.py` as a dependency — never inline in a route
 - Responses use the same `{success, data?, error?}` envelope as `backend/`, produced centrally by `middlewares/error_handler.py`
-- Pydantic models for every request and response, in `schemas/` — no raw dicts crossing a route boundary
+- Pydantic models for every request and response — no raw dicts crossing a route boundary. Shared ones live in `schemas/`; a small single-route model may stay in its route module (see `code-standards.md`'s Simplicity section)
 
 ## Server-Sent Events (streaming)
 
