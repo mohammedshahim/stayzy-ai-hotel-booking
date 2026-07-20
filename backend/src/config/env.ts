@@ -26,6 +26,12 @@ const envSchema = z.object({
   CRON_SECRET: z.string().optional(),
   BOOKING_EXPIRY_MINUTES: z.coerce.number().int().positive().default(20),
 
+  // Required, unlike the secrets above: an unset value would silently 401 every
+  // internal call in production.
+  INTERNAL_SERVICE_SECRET: z.string().min(1),
+  INTERNAL_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
+  INTERNAL_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
+
   S3_BUCKET: z.string().optional(),
   S3_REGION: z.string().optional(),
   S3_ACCESS_KEY_ID: z.string().optional(),
