@@ -1,82 +1,79 @@
-# Memory — Search Bar on /search + Compare Alignment Fixes (unplanned, between Features 30 and 31)
+# Memory — Feature 36 Agent Service Scaffold (+ Python simplicity standard)
 
-Last updated: 2026-07-19
+Last updated: 2026-07-20
 
 ## What was built
 
-Unplanned work — none of this is a numbered feature in `build-plan.md`. Feature 31 (Environment Variables) was started via `/architect`, then explicitly parked by the developer before any of it was built.
+**Feature 36 — the `agent/` app now exists and runs on :4100.** The fourth app, and the only non-TypeScript one. Python 3.12.11 (downloaded by `uv`; the machine's own Python is 3.13), managed with `uv`.
 
-**New: `frontend/features/search/components/SearchBar.tsx`.** `/search` previously had **no search bar at all** — destination/dates/guests were read-only there, so a user landing on the results page could change filters but not city, dates, or party size without going back to the home page. The new bar hydrates all six core params from the URL, holds edits as draft state, and commits on an explicit Search press. Mounted full-width in `SearchPageContent.tsx` above the sidebar+results row; the now-redundant `in {destination}` text was removed from the results-count line.
+Files, all under `agent/`:
 
-Supporting changes:
-- `frontend/lib/date.ts` — added `toDateRange()` / `toIsoDates()` bridging `SearchState`'s ISO strings and `DateRangePicker`'s `Date` objects.
-- `frontend/features/search/hooks/useSearchState.ts` — exported `DEFAULT_STATE`; added a `{ history: "push" | "replace" }` option to `update()`; added the date-pair invariant to `serializeSearchState`.
-- `frontend/features/search/components/HeroSearchWidget.tsx` — now serializes through `serializeSearchState` instead of hand-rolling the same six params.
-- `frontend/features/search/components/{DateRangePicker,GuestsRoomsPicker}.tsx` — removed `w-full` from both triggers (see Problems solved).
-- `frontend/features/compare/components/CompareTray.tsx` — `flex-1` on the avatars+label group; wrapper now `w-full max-w-3xl sm:w-fit`.
-- `frontend/features/compare/components/CompareTable.tsx` — explicit `text-left` on both cell classes.
-- `context/ui-registry.md` — new `SearchBar` entry; dated 2026-07-19 notes added to the Hero Search Widget and CompareTray/CompareTable entries.
+- `pyproject.toml` — the exact dependency set `code-standards.md` names, plus ruff with `ANN` selected so the full-type-hints rule is enforced by the linter, not by discipline. Includes `dev-mode-dirs = ["."]` (see Problems solved) and a `setup-checkpointer` script entry point
+- `src/config/settings.py` — pydantic-settings, one module-level `settings` object
+- `src/config/checkpointer.py` — `AsyncPostgresSaver` over an `AsyncConnectionPool`; `open_pool`/`close_pool` called from the app lifespan
+- `src/config/llm.py` — OpenRouter via `langchain-openai`; `get_fast_llm()` / `get_smart_llm()`
+- `src/clients/backend_client.py` — the single outbound-HTTP chokepoint. Module-level `httpx.AsyncClient` + `get`/`post`/`close`. Attaches `x-internal-secret` and `x-acting-user-id`, unwraps `{success, data?, error?}`, raises `BackendError`
+- `src/middlewares/error_handler.py` — same envelope for HTTP, validation, and unhandled errors; generic message on 500
+- `src/api/health_routes.py`, `src/api/router.py`, `src/schemas/common.py`, `src/main.py`, `src/scripts/setup_checkpointer.py`
+- `README.md`, `.gitignore`, `.env.example` (tracked) and `.env` (gitignored)
+
+421 lines across 10 files, largest 78.
+
+**Context files updated:** `context/code-standards.md` (new Simplicity section + Python naming rule + corrected env table), `context/library-docs.md` (schemas rule relaxed), `context/ai-phase-plan.md` (corrected folder sketch), `context/progress-tracker.md` (Feature 36 entry, status moved to 37), `CLAUDE.md` (agent app row, commands, two new gotchas).
 
 ## Decisions made
 
-- **The URL stays the single source of truth for search state.** The bar hydrates from `useSearchState()` and introduces no store — the existing URL→state plumbing was already correct, and a store would have created a second source of truth.
-- **Draft state + explicit Search button**, matching `HeroSearchWidget` and deliberately unlike `FilterSidebar` (which applies on every change). Avoids firing a request mid-date-selection.
-- **Draft resync uses React's "adjust state during render" pattern**, keyed on a signature of the six core params — not a `useEffect` (flashes stale values for a frame) and not a `key` prop (would remount the pickers and close open popovers). This is recorded in `ui-registry.md` as a do-not-do.
-- **A search submit is `router.push`; filters/sort/view stay `router.replace`.** Opt-in per call via `update(partial, { history: "push" })`.
-- **Search bar breaks to a row at `md:`, not `lg:` like `HeroSearchWidget`** — a stacked bar on the results page pushes hotels below the fold in a way it doesn't on a hero. Destination gets `2fr` only at `lg:`; at `md:` all three columns are equal because `2fr` at 768px squeezes dates/guests to ~123px and doubles the bar's height.
-- **Mobile collapse is an inline expanding panel, not a sheet/drawer** — no Sheet primitive exists in `components/ui/` and building one was out of scope.
-- **`ui-registry.md` entries are prose with dated inline notes, not the `/imprint` skill's table template** — same call as Feature 30; all ~40 existing entries are prose.
+- **`.setup()` is an explicit command (`uv run setup-checkpointer`), never a boot-time hook.** Counterpart to `pnpm migrate`. Running DDL on every start would require schema-creation privileges in production forever and turn a crash loop into a DDL loop.
+- **The checkpointer's four tables live in their own `agent` Postgres schema, not `public`.** The library creates `checkpoints`/`checkpoint_blobs`/`checkpoint_writes`/`checkpoint_migrations` *unqualified*, so left alone they land among Drizzle's 25 product tables. Every connection pins `search_path` via a libpq `options` parameter rather than a session `SET`, so it survives pool reconnects. The setup script creates the schema first — `search_path` cannot resolve to a schema that does not exist.
+- **Feature 36 touched `agent/` and docs only — no `backend/` changes.** `AGENT_BASE_URL` / `services/ai.service.ts` were listed against Feature 36 in the env table but nothing calls the agent yet, so they were moved to Feature 38 and the table corrected. Scope is sacred.
+- **`AGENT_DATABASE_URL` and `BACKEND_INTERNAL_URL` are required with no default**, deliberately unlike `backend/src/config/env.ts:7-9`. The Feature 31 audit flagged those localhost defaults as a silent production failure; that pattern was not copied into a fourth app. `code-standards.md` now names `agent/` as the pattern for new apps.
+- **No tests**, though `pytest` is installed per `code-standards.md`. No app in this repo has a test suite; the standard is verification against the real running app.
+- **Simplicity is now a standing rule for all of Features 37–51** (developer's instruction, late in the session). Lives in `code-standards.md` → Agent Conventions → "Simplicity comes first", sits above every other Python rule, and explicitly wins any conflict with them. Feature 36's code was refactored against it the same day: dropped an `@lru_cache` settings factory, a client class + global singleton, an `LlmUseCase` enum, a three-function checkpointer accessor triad, a two-field schema file, and an unused `ErrorResponse` model. No behaviour changed; every verification was re-run and passed identically.
+- Two context rules were **relaxed rather than silently broken** to fit that: `code-standards.md` and `library-docs.md` both required pydantic models to live in `schemas/`; a small single-route model may now stay in its route module.
 
 ## Problems solved
 
-- **`th` defaults to `text-align: center`.** This was the real CompareTable defect: the city/country line rendered centered under a `text-left` hotel name, and the "Hotel" label was centered against left-aligned `td` labels. **Two earlier diagnoses of "unequal column widths" were wrong** — widths measured equal at every hotel count (493/493 at two, 329×3, 256×4). Recorded in `ui-registry.md` so the wrong hypothesis isn't re-derived.
-- **`w-full` + `m-2` on a segment box overhangs by 16px.** `DateRangePicker` and `GuestsRoomsPicker` (both `PopoverTrigger`s, needing explicit sizing where `DestinationInput`'s `div` gets stretch for free) each carried `w-full`, which resolves to 100% of the parent *before* margins. Measured 285 vs 301 at 375px. Pre-existing; affected `HeroSearchWidget` and `RoomSelectionSection` too, fixed once in the two shared components.
-- **react-day-picker returns `{from: X, to: X}` on the first click in range mode** — a zero-night range, *not* a half-open `to: undefined`. The backend 400s on both (`checkOut must be after checkIn`), and the error surfaced as a dead-end "No hotels match these filters" empty state whose Clear filters button couldn't recover it (dates aren't in `EMPTY_FILTERS`). Guard is now `checkOut > checkIn` in `serializeSearchState` plus a disabled Search button and hint. **An initial `from && !to` guard was dead code** — worth remembering before writing any future date-range validation.
-- **`router.replace` silently destroys the back stack.** Search Paris → refine to Tokyo → Back landed on the *home page*, skipping the Paris results.
-- A `{/* */}` JSX comment cannot precede the root element inside a `return (` — use a `//` comment above the `return`.
+- **`<domain>.routes.py` is not importable in Python.** A dot makes the module unreachable (`from src.api.health.routes import router` looks for a `health` *package*). `ai-phase-plan.md`'s folder sketch used that form throughout — corrected there, in `code-standards.md`, and in `CLAUDE.md` so Features 38+ do not repeat it. Convention is `<domain>_routes.py`.
+- **The editable install produced no path hook**, so `uv run setup-checkpointer` died with `ModuleNotFoundError: No module named 'src'`. Hatchling needs `dev-mode-dirs = ["."]` for this `src`-as-package layout.
+- **uvicorn's reloader watched `.venv`**, logging "38 changes detected" and reload-looping on dependency files. Fixed with `reload_dirs=["src"]`.
+- **`uv sync` is genuinely slow here** — roughly 96 KB/s, several minutes, with long stretches of no visible output. It looks exactly like a hang and is not one. Documented in `agent/README.md`.
+- Installed versions are far newer than model training data (LangGraph **1.2.9**, langchain-core **1.4.9**, langgraph-checkpoint-postgres **3.1.0**, FastAPI **0.139.2**). Per `library-docs.md`'s standing warning, the real installed package source was read before writing any of it. Worth doing again for Features 37+.
 
 ## Current state
 
-All work is complete, verified, and **uncommitted** in the working tree on `main` (developer's standing preference). `tsc --noEmit` and `eslint` clean across `features` and `lib`.
+Feature 36 is complete and verified. **Nothing is committed** — working tree has `agent/` untracked plus modified `CLAUDE.md`, `context/ai-phase-plan.md`, `context/code-standards.md`, `context/progress-tracker.md`.
 
-Verified against the real running app (headless Chromium, live dev servers, real seeded data) — not just code reading, after two code-reading-only diagnoses proved wrong this session:
-- Geometry measured at 1280/768/375: desktop destination 340→519px, Search button `y=117 h=62` matching fields, all three mobile fields equal at 285px, no horizontal overflow at any width.
-- Two-day selection → Search enabled → correct URL; same-day range → Search disabled + hint; same-day deep link → 200 with results (was a 400).
-- Home → Paris → Tokyo → Back → returns to Paris results with the bar resynced to "Paris".
-- Compare tray hugs content at 1 and 3 hotels; compare table city lines and "Hotel" label left-aligned, column widths unchanged.
-- No console errors.
+Verified against the real running app and real database, not by reading code:
 
-```
- M context/ui-registry.md
- M frontend/features/compare/components/CompareTable.tsx
- M frontend/features/compare/components/CompareTray.tsx
- M frontend/features/search/components/DateRangePicker.tsx
- M frontend/features/search/components/GuestsRoomsPicker.tsx
- M frontend/features/search/components/HeroSearchWidget.tsx
- M frontend/features/search/components/SearchPageContent.tsx
- M frontend/features/search/hooks/useSearchState.ts
- M frontend/lib/date.ts
-?? frontend/features/search/components/SearchBar.tsx
-```
+- `uv run setup-checkpointer` creates the schema and all four tables; re-running is a clean no-op
+- `psql` independently confirms all four tables in schema `agent`, **zero in `public`**, Drizzle's 25 tables untouched
+- Service boots, lifespan opens the pool, `GET /health` → `200 {"success":true,...}`; unknown path → `404 {"success":false,"error":"Not Found"}`; no reload churn
+- **Checkpoint write/read round-trip through the connection pool** — the load-bearing test, since setup uses `from_conn_string` while runtime uses the pool, so it proves `search_path` pinning holds where it matters
+- `backend_client` reached the real backend, unwrapped a real envelope (8 seeded amenities from `GET /amenities`), and raised on a bad route
+- Settings with required vars stripped refuses to boot and names all four
+- `ruff check` and `ruff format` clean across `src/`
+- Verification checkpoint rows deleted afterward; all three `agent.*` tables confirmed back to 0 rows
 
-Also uncommitted and **unrelated to this session's work**: `backend/pnpm-workspace.yaml` and `frontend/pnpm-workspace.yaml` (untracked) plus three modified `pnpm-lock.yaml` files. The workspace files contain only pnpm 10 `allowBuilds:` build-approval records (`esbuild`, `sharp`, `unrs-resolver`) — benign, safe to commit as a chore. They predate this session; provenance unknown.
+**Not verified: anything involving OpenRouter.** The LLM factory constructs clients with the right model and base URL, but no call has been made — the API key is still a placeholder. The model slug (see below) is therefore unvalidated against OpenRouter's catalog.
 
-I restarted the `frontend/` dev server on :3000 mid-session — it was already running when the session began and died partway through testing (cause unknown). It is up now. The backend on :4000 was used read-only.
+Both dev servers were left running: backend on :4000, agent on :4100.
 
 ## Next session starts with
 
-1. **Commit this session's work** — nothing is committed. Suggested split: (a) the two compare alignment fixes, (b) the `w-full` fix in the two shared pickers (stands alone — touches three call sites), (c) the search bar including the push/replace history fix, (d) the `ui-registry.md` update, (e) a separate chore commit for the pnpm workspace/lockfile files.
-2. **Update `context/progress-tracker.md`** — this session's work is not logged there at all. It is unplanned work with no feature number; the developer has not said how they want it tracked.
-3. Then **Feature 31 — Environment Variables** (first item of Phase 9, Deployment). An `/architect` pass was already started on it and produced a full audit — do not redo it, see Open questions.
+1. **Commit this session's work** — nothing is committed. Suggested split: (a) `agent/` scaffold, (b) the context/docs updates, (c) the simplicity standard + refactor if you want it separable. Note `agent/uv.lock` should be committed; `agent/.env` and `agent/.venv/` are correctly gitignored.
+2. Then **Feature 37 — Internal auth passthrough + rate limiting**. Read `ai-phase-plan.md`, not `build-plan.md`. **First step: copy the `INTERNAL_SERVICE_SECRET` value that already exists in `agent/.env` into `backend/.env`** — the two must match. Then `requireInternalService.ts` following the `requireCronSecret.ts` precedent (`crypto.timingSafeEqual`), `x-acting-user-id`, and per-user rate limiting on the AI routes. `agent/`'s half already works — `backend_client.py` sends both headers. There are no `internal/*` routes yet, so Feature 37 builds the first one and is the first chance to test the header pair end to end.
 
 ## Open questions
 
-- **How to log unplanned work in `progress-tracker.md`** — not yet decided.
-- **The compare-tray `sm:w-fit` change is an interpretation, not a confirmed diagnosis.** The developer reported that with one hotel selected "thumbnail and hotel selected text are not justified between"; I could not reproduce any structural difference between the 1- and 2-hotel cases (both render avatars+label left, Compare+X right). The shrink-to-fit change is my best reading of the complaint. One class to revert if wrong.
-- **Stale line in `ui-registry.md`'s Hero Search Widget entry**: it still claims the search button has "no `onClick`... does not navigate or call an API yet", false since Feature 06. Flagged to the developer, left unfixed pending their call.
-- **Feature 31 audit already done — reuse it.** A full env-var audit was completed before Feature 31 was parked. Key findings: `backend/src/config/env.ts` already validates 24 keys with zod, but defaults `APP_URL`/`ADMIN_APP_URL`/`API_URL` to **localhost** (`env.ts:7-9`), so in production an unset value boots fine and then silently breaks CORS and Better Auth callbacks; neither frontend validates anything (`lib/api-client.ts:3` will `fetch("undefined/...")`); **`frontend/.gitignore:34` uses `.env*`, which ignores `frontend/.env.local.example` itself — that file is untracked, so a fresh clone has no frontend env template**; `NODE_ENV` is read at `backend/src/utils/resolveOwner.ts:24` but is in no schema or example file; no package documents its env setup. Hosting provider still undecided ("will do later"), which is what blocks the "configure in the hosting provider's dashboard" half of the feature.
-- **Leftover "Temp User 1" test data in the dev DB** (bookings against Hotel Marais Charme, ~2026-07-13) — flagged across Features 26/27/28/29/30, still not deleted, still awaiting a decision.
-- The Feature 16 rating-consistency question — carried over many sessions, likely mostly moot since Feature 24, but never re-verified.
+- **A real OpenRouter API key is still not obtained.** `agent/.env` holds a placeholder. Fine through Feature 37 — nothing calls an LLM until **Feature 38**, which is where it becomes hard-blocking.
+- **Both model slots are set to `nvidia/nemotron-3-ultra-550b-a55b:free`** (developer's call: "for now later will update"). The slug is unverified against OpenRouter's catalog since no call has been made. The fast/smart split is retained in config so the chatbot's model can be raised without touching a call site.
+- **Leftover "Temp User 1" test data in the dev DB** (bookings against Hotel Marais Charme, ~2026-07-13) — flagged since Feature 26, still not deleted, still awaiting a decision. This now matters more: it will pollute any chatbot eval that reads real bookings (Features 45–46, 51). Worth clearing before Feature 45.
+- **`agent/`'s `graphs/` and `chains/` directories do not exist yet** — deliberately, since nothing needs them until Feature 38. The `ai-phase-plan.md` sketch shows them.
+- The compare-tray `sm:w-fit` change from the prior session remains an interpretation, not a confirmed diagnosis — one class to revert if it looks wrong.
+- The Feature 16 rating-consistency question — carried over many sessions, likely mostly moot since Feature 24, never re-verified.
 - Whether to retrofit the fetch-error-state pattern onto `HotelsListPage` and other existing admin lists — not blocking, flagged in `ui-registry.md`.
-- Whether to retrofit `frontend/`'s `Input` primitive with the `text-foreground` fix applied to `frontend-admin`'s copy in Feature 25 — dormant until a native date input exists in `frontend/`.
-- Whether `frontend-admin` will ever need real phone-width support (would require the hamburger/drawer nav deliberately deferred in Feature 30) — a deliberate scope cut, not an oversight.
+- Hosting provider still undecided; no longer blocking anything since deployment moved to Phase 16.
+
+## Note on secrets
+
+No credential values are recorded in this file. `INTERNAL_SERVICE_SECRET` (generated locally), `OPENROUTER_API_KEY` (placeholder), and the database connection string live only in `agent/.env`, which is gitignored. `agent/.env.example` is the tracked template and contains placeholders only.
