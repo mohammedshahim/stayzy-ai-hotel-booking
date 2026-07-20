@@ -6,6 +6,7 @@ declare global {
     interface Request {
       user?: typeof auth.$Infer.Session.user;
       adminUser?: typeof authAdmin.$Infer.Session.user;
+      actingUserId?: string;
     }
   }
 }
