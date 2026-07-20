@@ -32,6 +32,14 @@ const envSchema = z.object({
   INTERNAL_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   INTERNAL_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
 
+  AGENT_BASE_URL: z.string().url().default("http://localhost:4100"),
+  // Keyed on IP, not the acting user — see middlewares/rateLimit.ts.
+  AI_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
+  AI_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(20),
+  // Short: a browser is waiting. The seed script overrides it with its own budget.
+  AI_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
+  AI_SEED_TIMEOUT_MS: z.coerce.number().int().positive().default(300_000),
+
   S3_BUCKET: z.string().optional(),
   S3_REGION: z.string().optional(),
   S3_ACCESS_KEY_ID: z.string().optional(),
