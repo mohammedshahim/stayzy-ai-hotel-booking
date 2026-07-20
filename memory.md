@@ -1,79 +1,78 @@
-# Memory — Feature 36 Agent Service Scaffold (+ Python simplicity standard)
+# Memory — Feature 37 Internal Auth Passthrough + Rate Limiting (+ comment discipline standard)
 
 Last updated: 2026-07-20
 
 ## What was built
 
-**Feature 36 — the `agent/` app now exists and runs on :4100.** The fourth app, and the only non-TypeScript one. Python 3.12.11 (downloaded by `uv`; the machine's own Python is 3.13), managed with `uv`.
+**Feature 37 is complete and verified.** The trust boundary between `agent/` and `backend/` is live, and the per-user rate-limiting mechanism exists. All changes are in `backend/` — **no `agent/` code was written**, because `backend_client.py` already sent both headers from Feature 36.
 
-Files, all under `agent/`:
+New files:
 
-- `pyproject.toml` — the exact dependency set `code-standards.md` names, plus ruff with `ANN` selected so the full-type-hints rule is enforced by the linter, not by discipline. Includes `dev-mode-dirs = ["."]` (see Problems solved) and a `setup-checkpointer` script entry point
-- `src/config/settings.py` — pydantic-settings, one module-level `settings` object
-- `src/config/checkpointer.py` — `AsyncPostgresSaver` over an `AsyncConnectionPool`; `open_pool`/`close_pool` called from the app lifespan
-- `src/config/llm.py` — OpenRouter via `langchain-openai`; `get_fast_llm()` / `get_smart_llm()`
-- `src/clients/backend_client.py` — the single outbound-HTTP chokepoint. Module-level `httpx.AsyncClient` + `get`/`post`/`close`. Attaches `x-internal-secret` and `x-acting-user-id`, unwraps `{success, data?, error?}`, raises `BackendError`
-- `src/middlewares/error_handler.py` — same envelope for HTTP, validation, and unhandled errors; generic message on 500
-- `src/api/health_routes.py`, `src/api/router.py`, `src/schemas/common.py`, `src/main.py`, `src/scripts/setup_checkpointer.py`
-- `README.md`, `.gitignore`, `.env.example` (tracked) and `.env` (gitignored)
+- `src/middlewares/requireInternalService.ts` — constant-time secret compare lifted from `requireCronSecret.ts`; sets `req.actingUserId`
+- `src/middlewares/rateLimit.ts` — one configured `express-rate-limit` instance, keyed on the acting user
+- `src/controllers/internal/bookings.controller.ts` + `src/routes/internal/bookings.routes.ts` — `GET /internal/bookings`, the first `internal/*` route, a thin wrapper over the existing `listBookingsForOwner`
 
-421 lines across 10 files, largest 78.
+Modified: `src/config/env.ts` (required `INTERNAL_SERVICE_SECRET` + two rate-limit knobs), `src/types/express.d.ts` (`actingUserId`), `src/routes/index.ts` (mount), `.env.example`, `package.json`/`pnpm-lock.yaml`.
 
-**Context files updated:** `context/code-standards.md` (new Simplicity section + Python naming rule + corrected env table), `context/library-docs.md` (schemas rule relaxed), `context/ai-phase-plan.md` (corrected folder sketch), `context/progress-tracker.md` (Feature 36 entry, status moved to 37), `CLAUDE.md` (agent app row, commands, two new gotchas).
+New dependency: **`express-rate-limit` 8.6.0** — the first added to `backend/` in a while. Its installed `.d.ts` was read before use per `library-docs.md`'s standing rule, and it now has its own section there.
+
+**Context files updated:** `progress-tracker.md` (Feature 37 entry, status moved to 38, second standing-rule block), `architecture.md` (invariant corrected + new invariant + middleware tree), `code-standards.md` (Comments section rewritten, Engineering Mindset bullet, env table), `library-docs.md` (`express-rate-limit` section), `ai-phase-plan.md` (two corrections), `CLAUDE.md` (third standing rule).
 
 ## Decisions made
 
-- **`.setup()` is an explicit command (`uv run setup-checkpointer`), never a boot-time hook.** Counterpart to `pnpm migrate`. Running DDL on every start would require schema-creation privileges in production forever and turn a crash loop into a DDL loop.
-- **The checkpointer's four tables live in their own `agent` Postgres schema, not `public`.** The library creates `checkpoints`/`checkpoint_blobs`/`checkpoint_writes`/`checkpoint_migrations` *unqualified*, so left alone they land among Drizzle's 25 product tables. Every connection pins `search_path` via a libpq `options` parameter rather than a session `SET`, so it survives pool reconnects. The setup script creates the schema first — `search_path` cannot resolve to a schema that does not exist.
-- **Feature 36 touched `agent/` and docs only — no `backend/` changes.** `AGENT_BASE_URL` / `services/ai.service.ts` were listed against Feature 36 in the env table but nothing calls the agent yet, so they were moved to Feature 38 and the table corrected. Scope is sacred.
-- **`AGENT_DATABASE_URL` and `BACKEND_INTERNAL_URL` are required with no default**, deliberately unlike `backend/src/config/env.ts:7-9`. The Feature 31 audit flagged those localhost defaults as a silent production failure; that pattern was not copied into a fourth app. `code-standards.md` now names `agent/` as the pattern for new apps.
-- **No tests**, though `pytest` is installed per `code-standards.md`. No app in this repo has a test suite; the standard is verification against the real running app.
-- **Simplicity is now a standing rule for all of Features 37–51** (developer's instruction, late in the session). Lives in `code-standards.md` → Agent Conventions → "Simplicity comes first", sits above every other Python rule, and explicitly wins any conflict with them. Feature 36's code was refactored against it the same day: dropped an `@lru_cache` settings factory, a client class + global singleton, an `LlmUseCase` enum, a three-function checkpointer accessor triad, a two-field schema file, and an unused `ErrorResponse` model. No behaviour changed; every verification was re-run and passed identically.
-- Two context rules were **relaxed rather than silently broken** to fit that: `code-standards.md` and `library-docs.md` both required pydantic models to live in `schemas/`; a small single-route model may now stay in its route module.
+- **The first `internal/*` route is `GET /internal/bookings`, chosen because it is user-scoped.** A hotel route would have been a smaller wrapper but a worthless test — hotel data is identical regardless of who asks, so swapping the acting-user header would prove nothing. Feature 46 needs the route anyway.
+- **The rate limiter's `internal/*` mount is defence in depth, NOT the cost ceiling.** This surfaced during `/architect` and changes what Feature 38 must do. `internal/*` is `agent/`→`backend/` and costs nothing; worse, limiting it throttles the expensive-but-legitimate chatbot turn (five tool calls) while a summary generation (zero internal calls, real money) passes unbounded. **The mount that caps OpenRouter spend goes on the inbound AI route and lands with Feature 38.** Now an invariant in `architecture.md`.
+- **Secret always required, `x-acting-user-id` optional.** Feature 38's summary generation is hotel-scoped and has no user to name. Routes needing a user check `req.actingUserId` themselves and 400. This corrected an `architecture.md` invariant that claimed every internal call carries an acting user id.
+- **`INTERNAL_SERVICE_SECRET` is required in `env.ts` with no default**, unlike `CRON_SECRET`. `backend/` now refuses to boot without it — the alternative fails closed but silently, giving internal routes that 401 forever in production.
+- **`agent/src/api/deps.py` deferred to Feature 38**, correcting the tracker's earlier claim it belonged in 37. Nothing calls `agent/` until Feature 38 creates the first inbound route.
+- **`express-rate-limit` over a hand-rolled counter** — same configuration effort, but stale-key eviction and `RateLimit-*` headers come free. In-memory, so counters reset on restart and don't span instances; a `store:` option at Phase 16, not a rewrite.
+- **Comments are the exception, not the habit — now a standing rule for all four apps, every remaining feature** (developer's instruction, late in the session). The rule already existed at `code-standards.md` → Comments and simply was not followed; it was tightened with three concrete tests rather than reinvented, and promoted to the top of `CLAUDE.md` so it is in context every session.
 
 ## Problems solved
 
-- **`<domain>.routes.py` is not importable in Python.** A dot makes the module unreachable (`from src.api.health.routes import router` looks for a `health` *package*). `ai-phase-plan.md`'s folder sketch used that form throughout — corrected there, in `code-standards.md`, and in `CLAUDE.md` so Features 38+ do not repeat it. Convention is `<domain>_routes.py`.
-- **The editable install produced no path hook**, so `uv run setup-checkpointer` died with `ModuleNotFoundError: No module named 'src'`. Hatchling needs `dev-mode-dirs = ["."]` for this `src`-as-package layout.
-- **uvicorn's reloader watched `.venv`**, logging "38 changes detected" and reload-looping on dependency files. Fixed with `reload_dirs=["src"]`.
-- **`uv sync` is genuinely slow here** — roughly 96 KB/s, several minutes, with long stretches of no visible output. It looks exactly like a hang and is not one. Documented in `agent/README.md`.
-- Installed versions are far newer than model training data (LangGraph **1.2.9**, langchain-core **1.4.9**, langgraph-checkpoint-postgres **3.1.0**, FastAPI **0.139.2**). Per `library-docs.md`'s standing warning, the real installed package source was read before writing any of it. Worth doing again for Features 37+.
+- **Nothing genuinely hard this session.** Worth knowing: the first two verification curls returned HTTP 000 and looked exactly like a hang — it was `tsx watch` mid-reload after the edits, not a defect. The same request measured 10ms once the reload settled. Do not debug this as a code problem.
+- A mid-verification `BackendError: ... -> 429` was not a bug either — the 60s window from the hammer test was still open. Waiting it out was the fix.
+- **Feature 37 shipped over-commented and was corrected the same day**: ~30 comment lines down to 6. `rateLimit.ts` had an 11-line docstring restating design rationale already written in `progress-tracker.md` and `library-docs.md`. The lesson recorded in `code-standards.md`: anything needing a paragraph is design rationale and belongs in `context/`, never in code — the copy in the code is the one nobody updates.
 
 ## Current state
 
-Feature 36 is complete and verified. **Nothing is committed** — working tree has `agent/` untracked plus modified `CLAUDE.md`, `context/ai-phase-plan.md`, `context/code-standards.md`, `context/progress-tracker.md`.
+Feature 37 complete and verified. `pnpm build` clean. **Nothing is committed** — 12 modified files plus 4 untracked paths in the working tree.
 
-Verified against the real running app and real database, not by reading code:
+Verified against both real running apps and the real seeded database, not by reading code:
 
-- `uv run setup-checkpointer` creates the schema and all four tables; re-running is a clean no-op
-- `psql` independently confirms all four tables in schema `agent`, **zero in `public`**, Drizzle's 25 tables untouched
-- Service boots, lifespan opens the pool, `GET /health` → `200 {"success":true,...}`; unknown path → `404 {"success":false,"error":"Not Found"}`; no reload churn
-- **Checkpoint write/read round-trip through the connection pool** — the load-bearing test, since setup uses `from_conn_string` while runtime uses the pool, so it proves `search_path` pinning holds where it matters
-- `backend_client` reached the real backend, unwrapped a real envelope (8 seeded amenities from `GET /amenities`), and raised on a bad route
-- Settings with required vars stripped refuses to boot and names all four
-- `ruff check` and `ruff format` clean across `src/`
-- Verification checkpoint rows deleted afterward; all three `agent.*` tables confirmed back to 0 rows
+- Valid secret + acting user → `200` with real bookings
+- Wrong secret → 401; absent secret → 401; valid secret with no acting user → 400
+- **Passthrough (the load-bearing test): user A returned 18 bookings, user B returned 9, matching `select user_id, count(*) from bookings` exactly** — this is what proves the acting-user header actually scopes data rather than the secret alone opening everything
+- Limiter: `RateLimit-Policy: 120;w=60` on responses; hammering one user 130× tripped **the first 429 at request #121**, body `{"success":false,"error":"Rate limit exceeded"}`; **the second user still got 200 at that same moment**, proving per-user keying rather than one global bucket
+- Through the real client: `backend_client.get("/internal/bookings", user_id=…)` from `agent/`'s venv returned 18 and 9 unwrapped lists, and raised `BackendError` on both the 400 and the 401
+- Public `/amenities` still 200 — no regression
+- All of the above re-run after the comment trim, returning identically
 
-**Not verified: anything involving OpenRouter.** The LLM factory constructs clients with the right model and base URL, but no call has been made — the API key is still a placeholder. The model slug (see below) is therefore unvalidated against OpenRouter's catalog.
+**Not verified: anything involving OpenRouter** — unchanged from Feature 36. Feature 37 makes no LLM calls. The API key is still a placeholder and the model slug is still unvalidated against OpenRouter's catalog.
 
-Both dev servers were left running: backend on :4000, agent on :4100.
+Backend dev server was left running on :4000. The agent service was not left running (verification used its venv directly, not the HTTP service).
 
 ## Next session starts with
 
-1. **Commit this session's work** — nothing is committed. Suggested split: (a) `agent/` scaffold, (b) the context/docs updates, (c) the simplicity standard + refactor if you want it separable. Note `agent/uv.lock` should be committed; `agent/.env` and `agent/.venv/` are correctly gitignored.
-2. Then **Feature 37 — Internal auth passthrough + rate limiting**. Read `ai-phase-plan.md`, not `build-plan.md`. **First step: copy the `INTERNAL_SERVICE_SECRET` value that already exists in `agent/.env` into `backend/.env`** — the two must match. Then `requireInternalService.ts` following the `requireCronSecret.ts` precedent (`crypto.timingSafeEqual`), `x-acting-user-id`, and per-user rate limiting on the AI routes. `agent/`'s half already works — `backend_client.py` sends both headers. There are no `internal/*` routes yet, so Feature 37 builds the first one and is the first chance to test the header pair end to end.
+1. **Commit this session's work** — nothing is committed. Suggested split of four: (a) middleware + internal route, (b) `express-rate-limit` dependency + env changes, (c) the comment-discipline rule across `code-standards.md`/`CLAUDE.md` — worth its own commit since it outlives this feature, (d) remaining context updates.
+2. Then **Feature 38 — Hotel detail summary**. Read `ai-phase-plan.md`, not `build-plan.md`. Chain + `hotel_ai_summaries` table + hand-written `.down.sql` sibling, and **build the slot** in `HotelDetailsContent.tsx` — it does not exist, despite `project-overview.md` having claimed it was reserved.
+
+Three things Feature 38 inherits and must not rebuild or forget:
+
+- `GET /internal/bookings` is the working reference for any new `internal/*` route: mount `requireInternalService` then `internalRateLimit`, **in that order** (reversed, the limiter keys every request to the fallback bucket).
+- **Feature 38 must attach a limiter to the inbound AI route it creates.** This is the mount that bounds OpenRouter billing, and Feature 38 is where unbounded spend starts if skipped. Give it its own tighter window/max env pair rather than reusing the internal one.
+- Feature 38 also builds `agent/src/api/deps.py` (the FastAPI mirror of `requireInternalService.ts`) and adds `AGENT_BASE_URL`, since it creates the first inbound `agent/` route.
 
 ## Open questions
 
-- **A real OpenRouter API key is still not obtained.** `agent/.env` holds a placeholder. Fine through Feature 37 — nothing calls an LLM until **Feature 38**, which is where it becomes hard-blocking.
-- **Both model slots are set to `nvidia/nemotron-3-ultra-550b-a55b:free`** (developer's call: "for now later will update"). The slug is unverified against OpenRouter's catalog since no call has been made. The fast/smart split is retained in config so the chatbot's model can be raised without touching a call site.
-- **Leftover "Temp User 1" test data in the dev DB** (bookings against Hotel Marais Charme, ~2026-07-13) — flagged since Feature 26, still not deleted, still awaiting a decision. This now matters more: it will pollute any chatbot eval that reads real bookings (Features 45–46, 51). Worth clearing before Feature 45.
-- **`agent/`'s `graphs/` and `chains/` directories do not exist yet** — deliberately, since nothing needs them until Feature 38. The `ai-phase-plan.md` sketch shows them.
-- The compare-tray `sm:w-fit` change from the prior session remains an interpretation, not a confirmed diagnosis — one class to revert if it looks wrong.
-- The Feature 16 rating-consistency question — carried over many sessions, likely mostly moot since Feature 24, never re-verified.
+- **A real OpenRouter API key is now HARD-BLOCKING.** Fine through Feature 37, which made no LLM calls. Feature 38 cannot be completed without one. `agent/.env` holds a placeholder.
+- **Both model slots are set to `nvidia/nemotron-3-ultra-550b-a55b:free`** (developer's call, "for now later will update"). The slug is still unverified against OpenRouter's catalog — Feature 38 is the first real call, so expect this to be where a bad slug surfaces.
+- **Leftover "Temp User 1" test data in the dev DB** (bookings against Hotel Marais Charme, ~2026-07-13) — flagged since Feature 26, still not deleted, still awaiting a decision. Will pollute any chatbot eval reading real bookings (Features 45–46, 51). Worth clearing before Feature 45.
+- The compare-tray `sm:w-fit` change from an earlier session remains an interpretation, not a confirmed diagnosis — one class to revert if it looks wrong.
+- The Feature 16 rating-consistency question — carried over many sessions, mostly moot since Feature 24, never re-verified.
 - Whether to retrofit the fetch-error-state pattern onto `HotelsListPage` and other existing admin lists — not blocking, flagged in `ui-registry.md`.
-- Hosting provider still undecided; no longer blocking anything since deployment moved to Phase 16.
+- Hosting provider still undecided; not blocking since deployment moved to Phase 16.
 
 ## Note on secrets
 
-No credential values are recorded in this file. `INTERNAL_SERVICE_SECRET` (generated locally), `OPENROUTER_API_KEY` (placeholder), and the database connection string live only in `agent/.env`, which is gitignored. `agent/.env.example` is the tracked template and contains placeholders only.
+No credential values are recorded in this file. `INTERNAL_SERVICE_SECRET` now exists in both `backend/.env` and `agent/.env` (both gitignored) and the two were confirmed byte-identical. `OPENROUTER_API_KEY` is a placeholder. Both `.env.example` templates are tracked and contain placeholders only — `backend/.env.example` deliberately leaves `INTERNAL_SERVICE_SECRET=` bare so a missing value fails loudly at boot.
