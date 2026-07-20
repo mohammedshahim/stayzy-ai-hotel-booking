@@ -11,6 +11,7 @@ Implementation rules and conventions for all four apps — `backend/`, `frontend
 - **Scope is sacred** — only build what the current feature requires, per `build-plan.md`. Never go beyond scope even if it seems helpful
 - **Every feature must be testable** — if it cannot be verified immediately after implementation, it is incomplete
 - **Clean over clever** — simple readable code that a junior developer can understand is always preferred over clever abstractions
+- **Comments are the exception, not the habit** — the default is no comment; write one only when the code cannot carry the meaning itself. See **Comments** below for the three tests it must pass
 - **One thing at a time** — complete one feature fully before touching the next
 - **Money and inventory are not "best effort"** — booking status transitions, availability math, and payment confirmation must be exact and server-verified, never assumed from client state
 
@@ -403,7 +404,8 @@ Never hardcode any key, URL, or secret anywhere in the codebase. Each app has it
 | `NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN`     | frontend          | `features/search/components/MapView.tsx`, `features/hotel-details/components/LocationMapPanel.tsx` |
 | `VITE_API_BASE_URL`                   | frontend-admin    | `lib/apiBaseQuery.ts`             |
 | `VITE_MAPBOX_ACCESS_TOKEN`            | frontend-admin    | `features/hotels/components/HotelLocationPicker.tsx` |
-| `INTERNAL_SERVICE_SECRET`             | backend + agent   | `middlewares/requireInternalService.ts` / `agent` `api/deps.py` — same value both sides (Feature 37) |
+| `INTERNAL_SERVICE_SECRET`             | backend + agent   | `middlewares/requireInternalService.ts` (Feature 37) / `agent` `api/deps.py` (Feature 38) — same value both sides, **required in both, no default** |
+| `INTERNAL_RATE_LIMIT_WINDOW_MS` / `INTERNAL_RATE_LIMIT_MAX` | backend | `middlewares/rateLimit.ts` (Feature 37) — defaults to 120 requests per 60s per acting user |
 | `AGENT_BASE_URL`                      | backend           | `services/ai.service.ts` — **not yet added**, lands with the first backend route that calls the agent (Feature 38) |
 | `BACKEND_INTERNAL_URL`                | agent             | `clients/backend_client.py` (Feature 36) — required, no default |
 | `OPENROUTER_API_KEY`                  | agent             | `config/llm.py` (Feature 36)                       |
@@ -417,7 +419,7 @@ Never hardcode any key, URL, or secret anywhere in the codebase. Each app has it
 
 `NEXT_PUBLIC_` / `VITE_` prefixes mean the variable is exposed to the browser. Never add them to secret keys.
 
-`INTERNAL_SERVICE_SECRET` is shared between exactly two apps and must never reach either frontend. It is compared with `crypto.timingSafeEqual`, following the `CRON_SECRET` precedent in `requireCronSecret.ts`.
+`INTERNAL_SERVICE_SECRET` is shared between exactly two apps and must never reach either frontend. It is compared with `crypto.timingSafeEqual`, following the `CRON_SECRET` precedent in `requireCronSecret.ts`. Unlike `CRON_SECRET` it is **required** in `env.ts` — `backend/` refuses to boot without it, because the alternative is internal routes that 401 silently in production.
 
 ---
 
@@ -438,9 +440,25 @@ import { Button } from "../../../components/ui/button";
 
 ## Comments
 
+**Applies to all four apps, every feature. The default is no comment.** A comment is something you justify, not something you add by habit.
+
 - No comments explaining what the code does — code must be self-explanatory
 - Comments only for why — a non-obvious decision, a workaround, or an invariant that isn't visible from the code alone
 - Never leave TODO comments in committed code
+
+**Before writing a comment, it must pass all three:**
+
+1. **Could better naming remove the need for it?** If yes, rename instead.
+2. **Does it survive the code changing?** A comment describing current behaviour rots into a lie. One recording a constraint does not.
+3. **Would a competent developer reading this file be wrong without it?** Not "would it help" — would they be *wrong*.
+
+**Keep it to one or two lines.** If the explanation needs a paragraph, it is design rationale, not a comment: it belongs in `progress-tracker.md` (a decision) or `library-docs.md` (a library constraint). Code is the wrong place for it — a reader hits it every time they open the file, and it goes stale silently because nothing verifies it.
+
+Do not restate in a comment what the context files already record. Reference the decision instead of duplicating it — duplicated rationale drifts out of sync, and the copy in the code is the one nobody updates.
+
+`requireCronSecret.ts` is the house style: one line, above the non-obvious bit (the constant-time compare), explaining why that compare is not `===`.
+
+**Added 2026-07-20 after Feature 37 shipped over-commented** — an 11-line docstring in `rateLimit.ts` restating design rationale already written in `progress-tracker.md` and `library-docs.md`, plus several comments narrating what the next line plainly did. Trimmed the same day. The rule above already existed and was not followed; these tests exist to make it concrete.
 
 ---
 

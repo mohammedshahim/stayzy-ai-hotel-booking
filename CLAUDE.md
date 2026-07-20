@@ -16,7 +16,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | `context/library-docs.md` | Project-specific rules for each third-party library |
 | `context/ui-rules.md` / `ui-tokens.md` / `ui-registry.md` | Design system rules, CSS variable tokens, and one entry per built component |
 
-Two standing rules from those files worth repeating here: **scope is sacred** (build only what the current feature requires), and **verify against the real running app**, not by reading code alone.
+Three standing rules from those files worth repeating here: **scope is sacred** (build only what the current feature requires), **verify against the real running app** rather than by reading code alone, and **comments are the exception, not the habit** — the default is no comment, and anything needing a paragraph is design rationale that belongs in `context/`, not in the code. See `code-standards.md` → Comments.
 
 ## Project
 
