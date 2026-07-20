@@ -11,6 +11,7 @@ import { useFavoriteHotelIds } from "@/features/favorites/hooks/useFavoriteHotel
 import { useCompareSelection } from "@/features/compare/hooks/useCompareSelection";
 import { useHotelDetails } from "@/features/hotel-details/hooks/useHotelDetails";
 import { HotelGallery } from "@/features/hotel-details/components/HotelGallery";
+import { HotelSummarySection } from "@/features/hotel-details/components/HotelSummarySection";
 import { AmenitiesList } from "@/features/hotel-details/components/AmenitiesList";
 import { PoliciesSection } from "@/features/hotel-details/components/PoliciesSection";
 import { RoomSelectionSection } from "@/features/hotel-details/components/RoomSelectionSection";
@@ -91,6 +92,8 @@ export function HotelDetailsContent({ id, initialSearch }: Props) {
       <div className="grid gap-8 lg:grid-cols-[1fr_22rem]">
         <div className="flex flex-col gap-6">
           <p className="whitespace-pre-line text-sm text-text-secondary">{hotel.description}</p>
+
+          <HotelSummarySection hotelId={hotel.id} />
 
           <AmenitiesList amenities={hotel.amenities} />
 

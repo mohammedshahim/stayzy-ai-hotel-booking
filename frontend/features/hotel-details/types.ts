@@ -54,6 +54,12 @@ export type ResolvedRoomSelectionSearch = {
   rooms: number;
 };
 
+// Shape returned by GET /ai/hotels/:id/summary. summary is null when generation
+// failed or timed out — the section hides rather than showing an error.
+export type HotelAiSummary = {
+  summary: string | null;
+};
+
 // Shape returned by GET /hotels/:id/similar — mirrors backend's SimilarHotel.
 export type SimilarHotel = {
   id: string;
