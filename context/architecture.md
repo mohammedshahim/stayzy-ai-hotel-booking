@@ -85,6 +85,8 @@ backend/
 │   ├── middlewares/
 │   │   ├── requireAuth.ts
 │   │   ├── requireAdmin.ts
+│   │   ├── requireInternalService.ts    → guards internal/*; shared secret + acting user (Feature 37)
+│   │   ├── rateLimit.ts                 → per-acting-user limiter (Feature 37)
 │   │   ├── validateRequest.ts           → zod schema validation
 │   │   └── errorHandler.ts
 │   ├── types/
@@ -992,7 +994,8 @@ Rules Claude must never violate:
 
 - Neither frontend ever calls `agent/` directly — every AI feature is a `backend/` route that internally calls `agent/`. `agent/` never sees a user session cookie.
 - `agent/` never writes to a product table. Every mutation goes through `backend/src/routes/internal/*`, which are thin wrappers around existing services and contain no new business logic.
-- `backend/src/routes/internal/*` is reachable only with the internal service secret, and every call carries an explicit acting user id — an internal route never infers the user from a session.
+- `backend/src/routes/internal/*` is reachable only with the internal service secret. A **user-scoped** internal route additionally requires an explicit acting user id and rejects the call without one — it never infers the user from a session. Not every internal route is user-scoped (hotel summary generation is not), so `requireInternalService` enforces the secret always and the acting user never; the route owns that check. Implemented in Feature 37; `GET /internal/bookings` is the reference.
+- **Every inbound route that reaches `agent/` carries a per-user rate limit.** That is the mount that bounds OpenRouter spend — `internal/*` is `agent/`→`backend/`, costs nothing, and limiting it throttles a chatbot turn's tool loop while leaving summary generation unbounded. `middlewares/rateLimit.ts` is the reusable piece; a feature that adds an AI route and no limiter has not finished.
 - The chat widget is wired to read-only tools only. No booking, cancel, favorite, or review tool is ever exposed to it — mutations exist exclusively at `/assistant`.
 - The chatbot never collects payment. A money-moving action stops at a `pending_payment` booking and hands back a `/checkout/[bookingId]` link; Stripe Elements remains the only payment surface, and a booking still confirms only via webhook.
 - The AI never invents prices, availability, or hotel facts — every such value comes from a real-time tool call against `backend/`.

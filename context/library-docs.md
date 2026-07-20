@@ -516,6 +516,23 @@ export const store = configureStore({
 
 ---
 
+## express-rate-limit (`backend/`)
+
+Added in Feature 37. Version installed is **8.6.0** — well ahead of most training data, so read `node_modules/.pnpm/express-rate-limit@*/node_modules/express-rate-limit/dist/index.d.ts` before using an option you have not used here.
+
+One configured limiter lives in `backend/src/middlewares/rateLimit.ts`. Rules:
+
+- **Key on a user, never an IP.** All internal traffic originates from the single `agent/` process, so an IP key collapses every user into one bucket. `keyGenerator` reads `req.actingUserId`.
+- **Never reference `req.ip` inside a `keyGenerator`.** v8 validates for this and warns about unmasked IPv6 addresses. This project has no reason to key on IP at all.
+- **Always pass a `handler`.** The library's default response body is a bare string; every response in this app is `{success, error}`. The `handler` writes the envelope explicitly.
+- `standardHeaders: true` / `legacyHeaders: false` — emit `RateLimit-*`, not the deprecated `X-RateLimit-*`.
+- Counters are **in-memory**: they reset on restart and are per-process. Fine while `backend/` runs as one instance. A multi-instance deployment (Phase 16) needs a shared store, which is a `store:` option, not a rewrite.
+- Mount the limiter **after** the auth middleware that sets the key it reads. Reversed, every request keys on the fallback bucket.
+
+The limit that caps OpenRouter spend belongs on the inbound AI routes that call `agent/`, not on `internal/*` — internal traffic is `agent/` reading from `backend/` and costs nothing. See the Feature 37 entry in `progress-tracker.md`.
+
+---
+
 ## Zod
 
 Used on the backend for request validation, shared where practical with the frontend for form validation.

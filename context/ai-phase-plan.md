@@ -60,6 +60,8 @@ It does expose a latent bug to fix in the same feature: **`sort: "distance"` has
 
 **Per-user rate limiting lands in Feature 37, not Feature 50.** Metered spend begins at Feature 38; leaving the cost ceiling to the last phase means four billable features run unbounded in between.
 
+**Corrected 2026-07-20 (Feature 37):** the *mechanism* shipped in 37, but the mount that actually caps spend cannot live on `internal/*`. That direction is `agent/`→`backend/` and costs nothing — and limiting it throttles a chatbot turn's tool loop while leaving summary generation (zero internal calls, real money) unbounded. **Every feature that adds an inbound AI route must attach a limiter to it**, starting with Feature 38. `middlewares/rateLimit.ts` is the reusable piece.
+
 ---
 
 ## Streaming
@@ -231,6 +233,7 @@ No `alembic/`, no `models/` for business data — those stay in `backend/`.
 
 **37. Internal auth passthrough + rate limiting** — `requireInternalService.ts`, shared secret both sides, `x-acting-user-id`, per-user rate limiting on the AI routes.
 *Test:* an authenticated internal call from `agent/` to `backend/` returns real data; an unauthenticated one 401s; the rate limit trips.
+*Shipped 2026-07-20 as:* the above plus `GET /internal/bookings` — the first `internal/*` route, needed because the test requires a real route and a user-scoped one is the only kind that proves the acting-user header does anything. `agent/src/api/deps.py` moved to Feature 38: nothing calls `agent/` until then.
 
 ### Phase 11 — Summary Generator
 
