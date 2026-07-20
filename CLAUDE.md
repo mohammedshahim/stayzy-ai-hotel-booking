@@ -31,7 +31,7 @@ A monorepo of independently deployable apps. **`backend/` is the only service an
 | `backend/` | Node + Express + TypeScript, Drizzle, PostgreSQL + PostGIS | 4000 |
 | `frontend/` | Next.js App Router | 3000 |
 | `frontend-admin/` | React + Vite | 5173 |
-| `agent/` | Python + FastAPI + LangGraph — **not built yet**, Features 36+ | — |
+| `agent/` | Python + FastAPI + LangGraph — scaffolded in Feature 36 | 4100 |
 
 ## Commands
 
@@ -56,6 +56,13 @@ npx tsc --noEmit      # typecheck
 pnpm dev              # :5173
 pnpm build            # tsc -b && vite build
 pnpm lint             # oxlint
+
+# agent/  (uv, not pnpm — Python 3.12+)
+uv sync                     # create .venv and install
+uv run python -m src.main   # :4100
+uv run setup-checkpointer   # create checkpointer schema + tables (idempotent)
+uv run ruff check src/      # lint
+uv run ruff format src/     # format
 ```
 
 `backend/` has no lint tooling — `pnpm build` is the check. There is no test suite in any app; features are verified by running the real app against the real seeded database.
@@ -68,6 +75,8 @@ pnpm lint             # oxlint
 - `frontend/`'s middleware file is named `proxy.ts`, not `middleware.ts`
 - Two separate better-auth instances back user and admin auth, with separate tables and cookie prefixes
 - A booking only ever confirms via Stripe webhook — never from a client response or redirect
+- **`agent/`'s checkpointer schema is created by `uv run setup-checkpointer`, never on app boot and never by a migration tool.** Its four tables live in the `agent` Postgres schema, not `public`, because the library creates them unqualified and would otherwise sit among Drizzle's tables
+- **Python module files cannot use the `<domain>.routes.py` form** the AI phase plan sketches — a dot makes the module unimportable. Use `<domain>_routes.py`
 
 ## Installed skills
 
