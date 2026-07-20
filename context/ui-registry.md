@@ -688,3 +688,31 @@ h-4 w-4 border-2 border-accent-border border-t-accent-primary rounded-full anima
 fixed bottom-4 inset-x-0 mx-auto max-w-3xl
 bg-surface rounded-2xl border border-border-default shadow-elevated px-5 py-4
 ```
+
+### Section Card
+
+```
+rounded-2xl border border-border-default bg-elevated p-5 shadow-card
+Heading: text-lg font-semibold text-text-primary
+Content: mt-4 (always — the gap between an h2 and its content)
+```
+
+The shared shell behind `AmenitiesList`, `PoliciesSection`, `HotelSummarySection`, `LocationMapPanel`, and `BookingSummaryCard`. Written down retroactively during Feature 38's `/imprint`, because it had been copied five times without ever being recorded — which is exactly how the `mt-3`/`mt-4` drift below happened. **Any new section card copies these three lines verbatim.**
+
+### AI Summary Card ("At a glance")
+
+```
+Shell:      [Section Card, above — unchanged]
+Heading:    flex items-center gap-2 text-lg font-semibold text-text-primary
+AI icon:    SparklesIcon h-4 w-4 text-accent-text strokeWidth={1.5}
+Body:       mt-4 text-sm text-text-secondary
+Disclaimer: mt-3 text-xs text-text-muted
+```
+
+`frontend/features/hotel-details/components/HotelSummarySection.tsx` (Feature 38). Takes the Section Card shell unchanged, so the AI block reads as one more section rather than a special surface.
+
+**Standing rule for the AI phase — the sparkle icon marks AI-generated content.** Confirmed with the developer 2026-07-20. This is the **only** section heading in the app that carries an icon; all ten others are plain text, so it is a deliberate exception, not drift. It exists to signal "a model wrote this" at a glance. **Features 39, 44 and 48 must reuse the same `SparklesIcon h-4 w-4 text-accent-text` treatment** for the compare summary and the chat surfaces — if they invent their own AI marker, this stops being a signal and becomes noise. Paired with it, generated text is **always** closed by a `text-xs text-text-muted` disclaimer line; the icon says it, the disclaimer proves it.
+
+**First component in the app to show a skeleton for a non-instant network wait rather than rendering nothing.** Sibling sections (`SimilarHotelsSection`) return `null` while loading because their data arrives in milliseconds; a cache-miss summary can take 10s+, and a block of text appearing that late with no warning reads as a glitch. The skeleton follows the standard Loading Skeleton recipe above (`bg-subtle animate-pulse`, `rounded-xl` text bars inside a `rounded-2xl` card shell). On failure the whole section returns `null` — no error state, matching the sibling sections' habit, since a missing summary is not something a visitor can act on.
+
+**Caught by `/imprint` and fixed:** this card originally used `mt-3` between the heading and body where every sibling section uses `mt-4`. A three-pixel drift, invisible in isolation and obvious once five cards stack in one column — the reason the Section Card entry above now exists.

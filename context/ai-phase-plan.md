@@ -25,7 +25,7 @@ These were verified against the codebase during `/architect`. The first two chan
 | Surface | Reality |
 | --- | --- |
 | `/compare` | Slot **exists** — `frontend/features/compare/components/CompareTable.tsx:131-134`, a static `hidden` div. Feature 39 unhides and wires it. |
-| `/hotels/[id]` | **Nothing exists.** `HotelDetailsContent.tsx` has no slot and no comment, despite `project-overview.md` claiming one is reserved. Feature 38 must build it. |
+| `/hotels/[id]` | **Built in Feature 38.** `HotelSummarySection.tsx`, mounted in `HotelDetailsContent.tsx` between the description and `AmenitiesList`. The audit was right: no slot had existed. |
 | Search sidebar | **Nothing exists.** `FilterSidebar.tsx` has seven filter sections and no free-text input. Feature 41 must build it. |
 
 **Migrations follow a convention the original draft missed.** Not `backend/migrations/000X_*.sql` + `schema_migrations`. The real mechanism is drizzle-kit generating into `backend/drizzle/`, tracked in `drizzle.__drizzle_migrations`. Critically, **every migration must ship a hand-written `.down.sql` sibling** — `backend/src/config/migrate-down.ts:48-53` refuses to roll back without one. All four new tables need them.
@@ -239,6 +239,7 @@ No `alembic/`, no `models/` for business data — those stay in `backend/`.
 
 **38. Hotel detail summary** — chain + `hotel_ai_summaries` + down migration; **build the slot** in `HotelDetailsContent.tsx`.
 *Test:* first load generates and caches; reload is instant with no LLM call; adding a review invalidates the cache.
+*Shipped 2026-07-20 as:* the above plus three things the sketch did not anticipate. **The route is public** (`GET /ai/hotels/:id/summary`), because the hotel page is — which forced `aiRateLimit` to key on **IP** rather than the acting user, the opposite of Feature 37's limiter. **`pnpm seed:ai-summaries` warms the cache for every published hotel**, added because this model takes 4–15s and the developer was otherwise looking at a 300s browser timeout; the long budget lives in the CLI, the short one in the request path. **`model_version` is recorded but not compared** — comparing it would duplicate `agent/`'s model config inside `backend/`; use `--force` on the seed command instead. `agent/src/api/deps.py` landed here as planned.
 
 **39. Compare summary** — chain + `compare_ai_summaries` + down migration; unhide and wire the existing slot at `CompareTable.tsx:131-134`.
 *Test:* summary reflects the selected hotels; regenerates after the TTL window.

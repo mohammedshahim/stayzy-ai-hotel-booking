@@ -86,7 +86,7 @@ backend/
 │   │   ├── requireAuth.ts
 │   │   ├── requireAdmin.ts
 │   │   ├── requireInternalService.ts    → guards internal/*; shared secret + acting user (Feature 37)
-│   │   ├── rateLimit.ts                 → per-acting-user limiter (Feature 37)
+│   │   ├── rateLimit.ts                 → internalRateLimit, per acting user (37); aiRateLimit, per IP (38)
 │   │   ├── validateRequest.ts           → zod schema validation
 │   │   └── errorHandler.ts
 │   ├── types/
@@ -626,19 +626,25 @@ Address is geocoded server-side; hotels.location (geography Point) is set/update
 Room types, amenities, and images are managed as nested resources under the hotel
 ```
 
-### AI Summary (Features 38–39, not yet built)
+### AI Summary (Feature 38 built; 39 not yet)
 
 ```
-Page requests the summary → GET /ai/hotels/:id/summary (backend, session-authed)
+Page requests the summary → GET /ai/hotels/:id/summary (backend, PUBLIC, IP rate-limited)
         ↓
-backend computes content_hash (description + amenities + avg rating + review count)
+backend computes content_hash over the same fields it is about to send
         ↓
 hash matches hotel_ai_summaries row? → return cached summary, no LLM call
         ↓ (miss)
-backend POSTs hotel context to agent/ → chain runs → summary returned
+backend POSTs hotel context to agent/ POST /summary/hotel, with x-internal-secret
+        ↓
+agent/ runs the summary chain (fast model) → returns {summary, model}
         ↓
 backend upserts hotel_ai_summaries with the new hash, returns the summary
+        ↓ (failure, timeout, or empty content)
+returns {summary: null}, writes nothing — the frontend section hides
 ```
+
+The route is public because the hotel page is. `pnpm seed:ai-summaries` warms every published hotel up front, so the synchronous generation path is normally only reached for a new or just-edited hotel.
 
 Compare summaries follow the same path against `compare_ai_summaries`, keyed by a hash of the selected hotel ids and invalidated by TTL rather than content.
 
@@ -855,18 +861,20 @@ Same guest/account duality as `favorites`, same merge-on-login behavior.
 
 Trending destinations are **not** a stored table — they are computed on read as a query over `bookings` grouped by `hotels.city`, ordered by count within a recent time window, and cached briefly at the API layer.
 
-### `hotel_ai_summaries` (Feature 38, not yet built)
+### `hotel_ai_summaries` (Feature 38)
 
-| Column        | Type        | Notes                                                        |
-| ------------- | ----------- | ------------------------------------------------------------ |
-| id            | uuid        |                                                                |
-| hotel_id      | uuid        | unique — one cached summary per hotel                          |
-| content_hash  | text        | description + amenities + average_rating + review_count         |
-| summary       | text        |                                                                |
-| model_version | text        | so a model change can invalidate deliberately                   |
-| generated_at  | timestamptz |                                                                |
+| Column        | Type        | Notes                                                                    |
+| ------------- | ----------- | ------------------------------------------------------------------------ |
+| id            | uuid        |                                                                            |
+| hotel_id      | uuid        | unique — one cached summary per hotel, FK to hotels, CASCADE               |
+| content_hash  | text        | name + description + city + country + star_rating + amenities + average_rating + review_count |
+| summary       | text        |                                                                            |
+| model_version | text        | informational only — **not** part of the cache check                       |
+| generated_at  | timestamptz |                                                                            |
 
-A hash miss regenerates. A new review changes the hash; editing a typo inside one review body does not.
+A hash miss regenerates. A new review changes the hash (`review.service.ts` recomputes `average_rating`/`review_count` on every write); editing a typo inside one review body does not.
+
+`model_version` records which model wrote the row but is deliberately **not** compared. Comparing it would force `backend/` to know `agent/`'s configured model, duplicating config across the service boundary. A model or prompt change is rolled out with `pnpm seed:ai-summaries --force` instead.
 
 ### `compare_ai_summaries` (Feature 39, not yet built)
 
@@ -995,7 +1003,12 @@ Rules Claude must never violate:
 - Neither frontend ever calls `agent/` directly — every AI feature is a `backend/` route that internally calls `agent/`. `agent/` never sees a user session cookie.
 - `agent/` never writes to a product table. Every mutation goes through `backend/src/routes/internal/*`, which are thin wrappers around existing services and contain no new business logic.
 - `backend/src/routes/internal/*` is reachable only with the internal service secret. A **user-scoped** internal route additionally requires an explicit acting user id and rejects the call without one — it never infers the user from a session. Not every internal route is user-scoped (hotel summary generation is not), so `requireInternalService` enforces the secret always and the acting user never; the route owns that check. Implemented in Feature 37; `GET /internal/bookings` is the reference.
-- **Every inbound route that reaches `agent/` carries a per-user rate limit.** That is the mount that bounds OpenRouter spend — `internal/*` is `agent/`→`backend/`, costs nothing, and limiting it throttles a chatbot turn's tool loop while leaving summary generation unbounded. `middlewares/rateLimit.ts` is the reusable piece; a feature that adds an AI route and no limiter has not finished.
+- **Every inbound route that reaches `agent/` carries a rate limit.** That is the mount that bounds OpenRouter spend — `internal/*` is `agent/`→`backend/`, costs nothing, and limiting it throttles a chatbot turn's tool loop while leaving summary generation unbounded. `middlewares/rateLimit.ts` is the reusable piece; a feature that adds an AI route and no limiter has not finished.
+- **A limiter keys on the acting user when the route is authenticated, and on IP when it is public.** These are opposites and both are deliberate. `internalRateLimit` must not key on IP: all internal traffic comes from the one `agent/` process, so an IP key collapses every user into one bucket. `aiRateLimit` cannot key on a user: the hotel page is public, so there is no user to key on. Anyone reading one after the other will assume the second is a bug; it is not.
+- **`trust proxy` is unset, and that is a Phase 16 decision, not an oversight.** IP keying only works if Express sees the real client address. Behind a load balancer it does not, and every visitor shares one bucket. Setting `trust proxy` without knowing the deployment topology is strictly worse — it makes `X-Forwarded-For` forgeable and the limiter bypassable by anyone who sends a header. Revisit when the host is chosen.
+- **A cached AI feature is bounded by its cache, not by its limiter.** A hotel summary is generated once per content change no matter how many people load the page; the limiter only stops someone forcing many *distinct* generations. Size limits against that threat, not against traffic.
+- **Whatever is sent to the model must be inside the cache key.** `services/ai.service.ts` builds its content hash and its request payload from the same field list. A field the model sees but the hash ignores pins a stale answer until something else happens to change.
+- **A failed or empty generation is never cached.** The configured model reasons before answering and returns empty content when its token budget runs out mid-thought, so an empty string is a failure, not a short answer. Caching it would pin a blank result until the source content changed. The user-facing section hides instead of showing an error.
 - The chat widget is wired to read-only tools only. No booking, cancel, favorite, or review tool is ever exposed to it — mutations exist exclusively at `/assistant`.
 - The chatbot never collects payment. A money-moving action stops at a `pending_payment` booking and hands back a `/checkout/[bookingId]` link; Stripe Elements remains the only payment surface, and a booking still confirms only via webhook.
 - The AI never invents prices, availability, or hotel facts — every such value comes from a real-time tool call against `backend/`.

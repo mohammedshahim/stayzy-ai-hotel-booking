@@ -24,16 +24,16 @@ After completing any feature:
 ## Current Status
 
 **Phase:** 11 — Summary Generator (AI phase)
-**Current feature:** 38 Hotel Detail Summary
-**Next up:** 38 — read **`ai-phase-plan.md`**, not `build-plan.md`, for every AI-phase feature. Summary chain + `hotel_ai_summaries` table + down migration, and **build the slot** in `HotelDetailsContent.tsx` (it does not exist — see the 2026-07-19 audit entry).
+**Current feature:** 39 Compare Summary
+**Next up:** 39 — read **`ai-phase-plan.md`**, not `build-plan.md`. Compare chain + `compare_ai_summaries` table + down migration; unhide and wire the existing slot at `CompareTable.tsx:131-134`. Unlike Feature 38's hash-based cache, this one is **TTL-based**.
 
-**Feature 38 is the first feature that spends real money**, and it inherits three things from Feature 37 that it must not rebuild:
+**Feature 38 is done and the AI phase now really spends money.** What Feature 39 inherits from it and must not rebuild:
 
-1. **`INTERNAL_SERVICE_SECRET` is live in both `.env` files** and required in both apps' config. `GET /internal/bookings` is the working reference for any new `internal/*` route: mount `requireInternalService` then `internalRateLimit`, in that order.
-2. **`middlewares/rateLimit.ts` exists and is currently mounted only on `internal/*`, which does not cap spend.** `internal/*` is `agent/`→`backend/` and costs nothing. **Feature 38 must attach a limiter to the inbound AI route it creates** — the one a user hits, which then calls `agent/`. That is the mount that bounds OpenRouter billing, and Feature 38 is where unbounded spend starts if it is skipped. Give it its own tighter window/max env pair rather than reusing the internal one.
-3. **`agent/src/api/deps.py` was deliberately deferred to Feature 38** (correcting this file's earlier note, which listed it under 37). Nothing called `agent/` until now. Feature 38 creates the first inbound `agent/` route, so it also builds the FastAPI dependency that checks `x-internal-secret` on the way in — the mirror image of `requireInternalService.ts`. `AGENT_BASE_URL` lands here too.
-
-Also still needed for 38: a **real OpenRouter API key** (see below) — this is where the placeholder stops being survivable.
+1. **`services/ai.service.ts`, `controllers/ai.controller.ts`, `routes/ai.routes.ts` all exist** and are mounted at `/ai`. Feature 39 adds a route to the same files rather than creating a parallel set.
+2. **`aiRateLimit` in `middlewares/rateLimit.ts` is already mounted on the whole `/ai` router**, so any route added there is covered automatically. It is **IP-keyed**, deliberately the opposite of `internalRateLimit` — see the invariant in `architecture.md`.
+3. **`agent/src/api/deps.py` exists** — `require_internal_service` / the `ActingUser` alias. Every new `agent/` route depends on it. `agent/src/chains/summary/` already holds the prompt-and-chain shape to copy.
+4. **The cost ceiling on a cached feature is the cache, not the limiter.** A hotel generates once per content change no matter the traffic. Size Feature 39's TTL with that in mind.
+5. **`pnpm seed:ai-summaries` is the warm-the-cache precedent.** It takes `--force`. A sibling for compare summaries is worth considering only if the key space is small — `compare_ai_summaries` is keyed on a *combination* of hotels, so it is not enumerable the way hotels are. Do not blindly copy it.
 
 **Standing rule added 2026-07-20 — applies to every remaining AI feature:** `agent/` code must stay plainly readable. The rule lives in **`code-standards.md` → Agent Conventions → "Simplicity comes first"**, sits above every other Python rule there, and wins any conflict with them (flag the conflict, do not silently resolve it). Read it before writing Python in Features 37–51, not just when something feels over-built. Feature 36's code was refactored against it the day it was written.
 
@@ -43,9 +43,14 @@ Also still needed for 38: a **real OpenRouter API key** (see below) — this is 
 
 Also still open: the Feature 16 rating-consistency question (carried over across multiple sessions — see that Completed Features entry for the 3 remediation options); mostly moot going forward since Feature 24 keeps `hotels.average_rating`/`review_count` in sync on every review write, but the header vs. section numbers can still diverge for any pre-existing hotel whose stored rating was never backed by a real review row.
 
-**Blocking issues:** A real OpenRouter API key now blocks Feature 38 (see below). Real S3 credentials confirmed working. Real Stripe test-mode keys confirmed working end-to-end including a real Payment Element checkout (Feature 21) and a real webhook-verified payment flow (Feature 22). `STRIPE_WEBHOOK_SECRET` is consumed by `/webhooks/stripe`. `CRON_SECRET` protects the cleanup endpoints (`/bookings/expire-stale`, `/bookings/complete-past`).
+**Blocking issues:** None outstanding. The OpenRouter key is live and confirmed working (Feature 38). Real S3 credentials confirmed working. Real Stripe test-mode keys confirmed working end-to-end including a real Payment Element checkout (Feature 21) and a real webhook-verified payment flow (Feature 22). `STRIPE_WEBHOOK_SECRET` is consumed by `/webhooks/stripe`. `CRON_SECRET` protects the cleanup endpoints (`/bookings/expire-stale`, `/bookings/complete-past`).
 
-**Still needed: a real OpenRouter API key. This is now hard-blocking.** Not yet obtained. `agent/.env` holds a placeholder. Feature 37 did not need it; **Feature 38 cannot be completed without it.** Both model slots are set to `nvidia/nemotron-3-ultra-550b-a55b:free` (developer's call, 2026-07-20, "later will update"); the fast/smart split is retained in config so the chatbot's model can be raised without touching a call site. **The model slug is unverified against OpenRouter's catalog** — no call has been made with it.
+**OpenRouter is live as of 2026-07-20 (Feature 38).** The developer supplied a real key; `agent/.env` no longer holds a placeholder. Both model slots remain `nvidia/nemotron-3-ultra-550b-a55b:free` and the slug is now **confirmed present in OpenRouter's catalog** and returning 200s at zero cost. The fast/smart split is retained in config so the chatbot's model can be raised without touching a call site.
+
+Two things learned from the first real calls, which every later AI feature inherits:
+
+- **This model reasons before it answers, and the reasoning is billed and buffered separately.** LangChain's `response.content` holds the clean answer; the thinking lands in a separate `reasoning` field. But with too low a token ceiling the reply is truncated *mid-thought* and `content` comes back **empty**, not short. `chains/summary/hotel_summary_chain.py` sets `MAX_TOKENS = 600` for this reason. Any new chain needs the same headroom, and any new caller must treat an empty string as failure rather than caching it.
+- **Latency is 4–14s per call and varies a lot** — the same prompt measured 4.2s direct and 13.8s through the full stack. Anything user-facing needs either a warm cache or a non-blocking design; a naive synchronous call will occasionally brush a 20s timeout.
 
 Still unresolved from Feature 27: the dev database has leftover test data (a "Temp User 1" account with several bookings against Hotel Marais Charme, dated around 2026-07-13) that Feature 26's session notes claimed was cleaned up but wasn't — flagged to the developer, not deleted without confirmation. **This now matters more than it did:** it will pollute any chatbot eval that reads real bookings (Features 45–46, 51). Worth clearing before Feature 45.
 
@@ -122,7 +127,7 @@ Planned in `ai-phase-plan.md`. Read that file, not `build-plan.md`, for every fe
 
 ### Phase 11 — Summary Generator
 
-- [ ] 38 Hotel detail summary
+- [x] 38 Hotel detail summary
 - [ ] 39 Compare summary
 
 ### Phase 12 — Smart Search
@@ -163,6 +168,36 @@ Moved from Phase 9 on 2026-07-19. Scope widened: `agent/` is a fourth deployable
 ---
 
 ## Completed Features
+
+### ✅ 38 Hotel Detail Summary — completed 2026-07-20
+
+Notes: The first feature that spends real money, and the first time `backend/` ever calls `agent/`. A short AI-written paragraph renders on `/hotels/[id]` in a new "At a glance" card between the hotel description and Amenities.
+
+`backend/`: new `models/ai.schema.ts` (`hotel_ai_summaries` — uuid id, unique `hotel_id`, `content_hash`, `summary`, `model_version`, `generated_at`), migration `0002_add_hotel_ai_summaries.sql` with its hand-written `.down.sql`, `queries/ai-summaries.queries.ts` (find + upsert), `services/ai.service.ts`, `controllers/ai.controller.ts`, `routes/ai.routes.ts` mounted at `/ai`, `aiRateLimit` added to `middlewares/rateLimit.ts`, and `config/seed-ai-summaries.ts` behind a new `pnpm seed:ai-summaries`. New env: `AGENT_BASE_URL`, `AI_RATE_LIMIT_WINDOW_MS`, `AI_RATE_LIMIT_MAX`, `AI_REQUEST_TIMEOUT_MS`, `AI_SEED_TIMEOUT_MS`.
+
+`agent/`: new `api/deps.py` (`require_internal_service` + the `ActingUser` alias — the mirror of `requireInternalService.ts`), `api/summary_routes.py`, `chains/summary/hotel_summary_chain.py` + `prompts.py`, `schemas/summary.py`.
+
+`frontend/`: new `useHotelSummary.ts` and `HotelSummarySection.tsx`, wired into `HotelDetailsContent.tsx` under the description. The slot genuinely did not exist — the 2026-07-19 audit was right.
+
+Decision (confirmed with the developer during `/architect`): **the summary route is public**, matching the hotel page it renders on. That forced the limiter to key on **IP**, deliberately the opposite of `internalRateLimit`'s acting-user key — a public route has no user to key on, and unlike internal traffic these are real browsers from many addresses. Recorded as an invariant in `architecture.md`.
+
+Decision: **`trust proxy` is deliberately NOT set, and is a Phase 16 deployment task.** Behind a production load balancer, IP keying collapses every visitor into one bucket and the limit becomes useless. Setting `trust proxy` without knowing the topology is worse than leaving it — it lets anyone forge `X-Forwarded-For` and bypass the limiter outright. Harmless in dev.
+
+Decision: **the cache, not the limiter, is the real spend bound.** A hotel generates once per content change regardless of traffic; the limiter exists only to stop someone spraying many distinct hotel ids. Hence a generous 20/min rather than something tight.
+
+Decision (developer's call, mid-`/architect`): **generation stays synchronous with a 20s timeout, paired with a pre-generate command.** The developer initially asked for a 300s timeout because free models can be slow; that was pushed back on — a 5-minute browser request gets abandoned, and a cancelled request throws the generation away *uncached*, so you pay and store nothing, and production proxies cut it to ~60s anyway. The resolution puts the long budget where nothing is waiting: `AI_SEED_TIMEOUT_MS` (300s) for `pnpm seed:ai-summaries`, `AI_REQUEST_TIMEOUT_MS` (20s) for the browser path. With the cache warmed the synchronous path is only reached for a new or just-edited hotel.
+
+Decision: **only the hashed fields are sent to the model.** `buildContentHash` and the request payload are built from the same list, and the code says so — a field fed to the model but missing from the hash would pin a stale summary forever. The hash spans name, description, city, country, star rating, sorted amenity names, average rating and review count — **wider than `ai-phase-plan.md`'s original four fields**, because the prompt legitimately wants location and star rating.
+
+Deviation from the `/architect` plan, worth knowing: **`model_version` is recorded but is NOT part of the cache check.** Comparing it would require `backend/` to know which model `agent/` is configured with, duplicating config across the service boundary. The column stays informational ("which model wrote this row"), and a model or prompt change is handled by `pnpm seed:ai-summaries --force`. Feature 39 should follow the same rule rather than reinventing it.
+
+Decision: **a failure hides the section rather than showing an error**, matching `SimilarHotelsSection`'s existing return-`null` habit, and failures are never cached so the next visit retries. An empty model response counts as a failure — see the reasoning-model note under Current Status.
+
+Verified against both real running apps and the real seeded database, not by reading code: `agent/`'s route 401s with no secret and with a wrong secret, and returns a real summary with the right one (4.2s); through `backend/`, a cache miss generated in 13.8s and the immediate reload returned the identical text in **0.09s with no LLM call**; editing a hotel's description changed `content_hash` and regenerated; bumping `review_count`/`average_rating` (the columns `review.service.ts` recomputes on every review write) also regenerated; **restoring the original content reproduced the original hash exactly**, proving the hash is deterministic; with `agent/` stopped the route returned `200 {"summary":null}` rather than a 500 **and wrote no row**, and recovered on the next request once `agent/` was back; `pnpm seed:ai-summaries` generated 5 and correctly skipped 1 already-current, and a re-run was a 1.2s no-op with zero LLM calls; the limiter returned its first 429 at exactly request #21 against a limit of 20. Real headless-browser pass (Playwright, **zero console errors**): the card renders between the description and Amenities with the disclaimer line. `pnpm build` clean for `backend`, `tsc --noEmit` + `eslint` clean for `frontend`, `ruff check` + `ruff format --check` clean for `agent`.
+
+Quality check worth recording: the model **did not hallucinate**. "Steps from the Seine" is verbatim in the seeded description, and Bar/Restaurant/Free Wi-Fi are that hotel's real amenities. With `review_count = 0` it correctly said nothing at all about guest ratings, which is an explicit prompt rule.
+
+Observed, out of scope: `backend/.env` declares `INTERNAL_SERVICE_SECRET` **twice** (lines 28 and 40). Both hold the same value and it matches `agent/.env`, so nothing is broken today — but the later line silently wins, so rotating only one would break internal calls in a confusing way. Left for the developer to clean up. Also observed: a published hotel literally named **"test room"** now has a generated summary; it is leftover test data, in the same family as the "Temp User 1" rows still flagged above.
 
 ### ✅ 37 Internal Auth Passthrough + Rate Limiting — completed 2026-07-20
 Notes: The trust boundary between `agent/` and `backend/` is live, and the per-user rate-limiting mechanism exists. Built in `backend/`: `middlewares/requireInternalService.ts` (constant-time secret compare lifted from `requireCronSecret.ts`, sets `req.actingUserId`); `middlewares/rateLimit.ts` (one configured `express-rate-limit` instance, keyed on the acting user); `controllers/internal/bookings.controller.ts` and `routes/internal/bookings.routes.ts` — `GET /internal/bookings`, the first `internal/*` route, a thin wrapper over the existing `listBookingsForOwner`; `types/express.d.ts` gained `actingUserId`; `config/env.ts` gained `INTERNAL_SERVICE_SECRET` (required) plus the two rate-limit knobs. New dependency: **`express-rate-limit` 8.6.0** — the first added to `backend/` in some time; its installed `.d.ts` was read before use per `library-docs.md`'s standing rule, and it now has its own section there. **No `agent/` code was written** — `backend_client.py` already sent both headers from Feature 36.

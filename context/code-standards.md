@@ -406,7 +406,10 @@ Never hardcode any key, URL, or secret anywhere in the codebase. Each app has it
 | `VITE_MAPBOX_ACCESS_TOKEN`            | frontend-admin    | `features/hotels/components/HotelLocationPicker.tsx` |
 | `INTERNAL_SERVICE_SECRET`             | backend + agent   | `middlewares/requireInternalService.ts` (Feature 37) / `agent` `api/deps.py` (Feature 38) — same value both sides, **required in both, no default** |
 | `INTERNAL_RATE_LIMIT_WINDOW_MS` / `INTERNAL_RATE_LIMIT_MAX` | backend | `middlewares/rateLimit.ts` (Feature 37) — defaults to 120 requests per 60s per acting user |
-| `AGENT_BASE_URL`                      | backend           | `services/ai.service.ts` — **not yet added**, lands with the first backend route that calls the agent (Feature 38) |
+| `AGENT_BASE_URL`                      | backend           | `services/ai.service.ts` (Feature 38) — defaults to `http://localhost:4100` |
+| `AI_RATE_LIMIT_WINDOW_MS` / `AI_RATE_LIMIT_MAX` | backend | `middlewares/rateLimit.ts` (Feature 38) — defaults to 20 requests per 60s **per IP**, since the AI routes are public |
+| `AI_REQUEST_TIMEOUT_MS`               | backend           | `services/ai.service.ts` (Feature 38) — 20s, the browser-facing budget |
+| `AI_SEED_TIMEOUT_MS`                  | backend           | `config/seed-ai-summaries.ts` (Feature 38) — 300s; nothing is waiting on the CLI, so it can afford a slow model |
 | `BACKEND_INTERNAL_URL`                | agent             | `clients/backend_client.py` (Feature 36) — required, no default |
 | `OPENROUTER_API_KEY`                  | agent             | `config/llm.py` (Feature 36)                       |
 | `OPENROUTER_BASE_URL`                 | agent             | `config/llm.py` — defaults to `https://openrouter.ai/api/v1` |

@@ -616,4 +616,17 @@ Accessed through `langchain-openai` — OpenRouter speaks the OpenAI protocol, s
 - Model choice is per use case, in config, never hardcoded at a call site: a cheap fast model for summaries and query extraction, a stronger one for the chatbot's tool loop
 - `OPENROUTER_API_KEY` lives only in `agent/`'s environment. It never reaches `backend/` and never reaches a browser
 - This is the project's first genuinely metered dependency. Per-user rate limiting ships in Feature 37, **before** the first billable feature in Feature 38
-- Summaries are cached server-side and regenerate only on a content-hash miss. A cache hit must make no LLM call at all — that is the acceptance test for Feature 38
+- Summaries are cached server-side and regenerate only on a content-hash miss. A cache hit must make no LLM call at all — that is the acceptance test for Feature 38 (verified: 0.09s cached vs 13.8s on a miss)
+
+**Reasoning models need token headroom — learned the hard way in Feature 38.**
+
+The configured model (`nvidia/nemotron-3-ultra-550b-a55b:free`) thinks before it answers. OpenRouter returns that thinking in a **separate** `reasoning` field, and `response.content` holds the clean answer — so the split is handled for you. The trap is the token ceiling:
+
+- With `max_tokens` set too low, the model is cut off **mid-reasoning** and `content` comes back **empty**, not merely short. The first smoke test with `max_tokens=20` returned pure chain-of-thought and no answer
+- Budget for reasoning **plus** output. A 2–3 sentence summary needs ~600, not ~150, because ~100 tokens go to thinking before a word is written
+- **Always treat empty content as a failure**, never as a valid short answer, and never cache it. `services/ai.service.ts` does this explicitly
+- Check `usage.completion_tokens_details.reasoning_tokens` when a response looks wrong — if it equals `completion_tokens`, the budget was spent entirely on thinking
+
+**Latency is high and variable.** The same prompt measured 4.2s calling `agent/` directly and 13.8s through the full `backend/` path. Assume 4–15s per call. Anything user-facing needs a warm cache (`pnpm seed:ai-summaries`) or a design that does not block on the model.
+
+**Verify a model slug before trusting it.** `GET https://openrouter.ai/api/v1/models` lists every id; a wrong slug fails only at the first real call. The configured slug was confirmed present in the catalog during Feature 38.
