@@ -12,6 +12,19 @@ export const compareHotelsQuerySchema = z.object({
 
 export type CompareHotelsQuery = z.infer<typeof compareHotelsQuerySchema>;
 
+export const MIN_COMPARE_SUMMARY_HOTELS = 2;
+// Mirrors MAX_COMPARE_HOTELS in the frontend's CompareProvider.
+export const MAX_COMPARE_SUMMARY_HOTELS = 4;
+
+export const compareSummaryQuerySchema = z.object({
+  ids: z
+    .string()
+    .transform((value) => value.split(",").filter(Boolean))
+    .pipe(z.array(z.string().uuid()).min(MIN_COMPARE_SUMMARY_HOTELS).max(MAX_COMPARE_SUMMARY_HOTELS)),
+});
+
+export type CompareSummaryQuery = z.infer<typeof compareSummaryQuerySchema>;
+
 export const hotelSearchSuggestionsQuerySchema = z.object({
   q: z.string().min(1),
   excludeIds: z
