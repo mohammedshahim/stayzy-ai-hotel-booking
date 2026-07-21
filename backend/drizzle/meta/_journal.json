@@ -22,6 +22,13 @@
       "when": 1784545241728,
       "tag": "0002_add_hotel_ai_summaries",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1784632372659,
+      "tag": "0003_add_compare_ai_summaries",
+      "breakpoints": true
     }
   ]
 }
