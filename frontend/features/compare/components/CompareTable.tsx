@@ -7,6 +7,7 @@ import { StarRating } from "@/components/common/StarRating";
 import { GuestRatingBadge } from "@/components/common/GuestRatingBadge";
 import { getGuestRatingLabel } from "@/features/search/lib/guest-rating";
 import { useCompareSelection } from "@/features/compare/hooks/useCompareSelection";
+import { CompareSummarySection } from "@/features/compare/components/CompareSummarySection";
 import type { CompareHotel } from "@/features/compare/types";
 
 type Props = {
@@ -128,10 +129,7 @@ export function CompareTable({ hotels }: Props) {
         </table>
       </div>
 
-      {/* Reserved for the later AI phase (project-overview.md); hidden/static until that phase ships. */}
-      <div className="hidden rounded-2xl border border-border-default bg-elevated p-5">
-        <p className="text-sm text-text-muted">AI summary coming soon.</p>
-      </div>
+      <CompareSummarySection hotelIds={hotels.map((hotel) => hotel.id)} />
     </div>
   );
 }

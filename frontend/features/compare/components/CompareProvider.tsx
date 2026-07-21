@@ -3,6 +3,7 @@
 import { createContext, useEffect, useState, type ReactNode } from "react";
 
 const STORAGE_KEY = "stayzy-compare-ids";
+export const MIN_COMPARE_HOTELS = 2;
 export const MAX_COMPARE_HOTELS = 4;
 
 export type CompareContextValue = {

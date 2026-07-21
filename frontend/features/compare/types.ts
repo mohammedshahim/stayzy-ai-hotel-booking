@@ -14,6 +14,11 @@ export type CompareHotel = {
   amenities: string[];
 };
 
+// Shape returned by GET /ai/hotels/compare-summary. `summary` is null when generation failed.
+export type CompareAiSummary = {
+  summary: string | null;
+};
+
 // Shape returned by GET /hotels/search-suggestions — the /compare page's "add hotel" box.
 export type HotelSearchSuggestion = {
   id: string;
