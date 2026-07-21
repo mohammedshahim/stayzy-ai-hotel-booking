@@ -152,11 +152,11 @@ No booking, cancel, favorite, or review tool is ever wired into the widget, so a
 **Tables** (each with a hand-written `.down.sql`)
 
 - `hotel_ai_summaries` — id, hotel_id (unique), content_hash, summary, model_version, generated_at
-- `compare_ai_summaries` — id, hotel_ids_hash (unique), summary, generated_at
+- `compare_ai_summaries` — id, hotel_ids_hash (unique), content_hash, summary, model_version, generated_at *(shipped with `content_hash` and `model_version` the sketch did not anticipate — see Feature 39)*
 - `chat_sessions` — id, user_id, feature (`widget` | `chatbot`), title, created_at, last_message_at, ended_at (nullable — a widget session with `ended_at IS NULL` is the active one)
 - `chat_messages` — id, session_id, role, content, tool_calls_json, created_at
 
-**Cache invalidation.** `hotel_ai_summaries.content_hash` spans hotel description + amenities + aggregate rating + review count, so a new review changes it but fixing a typo in one review body does not. `compare_ai_summaries` is TTL-based.
+**Cache invalidation.** `hotel_ai_summaries.content_hash` spans hotel description + amenities + aggregate rating + review count, so a new review changes it but fixing a typo in one review body does not. `compare_ai_summaries` was planned as TTL-based; **it shipped content-hash based instead** — see Feature 39 below and the corrected invariant in `architecture.md`.
 
 ---
 
@@ -243,6 +243,13 @@ No `alembic/`, no `models/` for business data — those stay in `backend/`.
 
 **39. Compare summary** — chain + `compare_ai_summaries` + down migration; unhide and wire the existing slot at `CompareTable.tsx:131-134`.
 *Test:* summary reflects the selected hotels; regenerates after the TTL window.
+*Shipped 2026-07-21 as:* the above with **two deliberate deviations**, both confirmed with the developer during `/architect`.
+
+**The cache is content-hash based, not TTL-based**, so the test above no longer applies — nothing expires on a timer. The TTL existed because a comparison was assumed to mention price, and price moves too fast to hash. Price was excluded from the summary instead, leaving only stable fields, at which point Feature 38's exact-invalidation mechanism ports over unchanged and a staleness window buys nothing. `architecture.md`'s cache invariant was corrected to match.
+
+**Generation is behind a button, not automatic.** Compare selections are built one hotel at a time, so auto-generating bills for every throwaway intermediate set — and unlike hotels, combinations cannot be pre-warmed. There is deliberately no `seed:compare-summaries`. The general rule now recorded in `architecture.md`: auto-generate when the cache key is enumerable and warmable, require an explicit action when it is not. **Features 43–48 should apply this rule rather than assuming Feature 38's generate-on-load default.**
+
+Also worth carrying forward: measured end-to-end latency was **18–19s against the 20s `AI_REQUEST_TIMEOUT_MS`**, with one observed timeout. The developer chose to keep 20s and let it fail rather than add a per-route budget; the UI's "Try again" button is the accepted mitigation. **A timed-out generation is paid for and discarded** — if this proves noisy in practice, a dedicated `AI_COMPARE_TIMEOUT_MS` around 45s is the pre-considered fix (45s clears the observed ceiling while staying under the ~60s production proxy cut).
 
 ### Phase 12 — Smart Search
 

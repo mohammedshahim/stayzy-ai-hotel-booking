@@ -461,6 +461,8 @@ Do not restate in a comment what the context files already record. Reference the
 
 `requireCronSecret.ts` is the house style: one line, above the non-obvious bit (the constant-time compare), explaining why that compare is not `===`.
 
+**Recurred 2026-07-21 in Feature 39** — 19 comment lines trimmed to 6 during `/review`, on the developer's second correction. The failure mode both times was the same: duplicating design rationale that `architecture.md` and `progress-tracker.md` already held, and narrating self-evident code. What survived was only what passes test 3 — the deliberate missing FK, the `MAX_TOKENS` floor (too low returns *empty* content, not short), the cross-app constant coupling, and the derived-not-reset state (a reader would "simplify" it back into an effect and reintroduce a lint error). **Write the code first with no comments, then add one only where a reader would be wrong without it.**
+
 **Added 2026-07-20 after Feature 37 shipped over-commented** — an 11-line docstring in `rateLimit.ts` restating design rationale already written in `progress-tracker.md` and `library-docs.md`, plus several comments narrating what the next line plainly did. Trimmed the same day. The rule above already existed and was not followed; these tests exist to make it concrete.
 
 ---

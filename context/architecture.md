@@ -646,7 +646,15 @@ returns {summary: null}, writes nothing — the frontend section hides
 
 The route is public because the hotel page is. `pnpm seed:ai-summaries` warms every published hotel up front, so the synchronous generation path is normally only reached for a new or just-edited hotel.
 
-Compare summaries follow the same path against `compare_ai_summaries`, keyed by a hash of the selected hotel ids and invalidated by TTL rather than content.
+Compare summaries follow the same path against `compare_ai_summaries`, keyed by a hash of the **sorted** selected hotel ids so `{A,B}` and `{B,A}` share one row, and invalidated by content hash exactly like the hotel summary.
+
+**Corrected 2026-07-21 (Feature 39): compare summaries are NOT TTL-based.** The original plan specified a TTL, on the reasoning that a comparison should mention price and price moves too often to hash. Feature 39 excluded price from the summary instead, and once it is out every remaining field (name, city, star rating, amenities, guest rating, cancellation terms) is stable — so exact content-hash invalidation works and an arbitrary staleness window buys nothing. `fromPrice` is deliberately not sent to the model and deliberately not hashed: hashing it would bust the cache on every rate change, and sending it without hashing it would pin a stale price forever.
+
+**Generation is triggered by an explicit user action, not on page load** — the one behavioural difference from the hotel summary. The general rule:
+
+> **Auto-generate when the cache key is enumerable and warmable. Require an explicit action when it is not.**
+
+Hotels are enumerable, so `pnpm seed:ai-summaries` can warm every one and the hotel page can afford to generate on load. Combinations of hotels are not: a user assembling a comparison passes through `{A}`, `{A,B}`, `{A,B,C}` on the way to `{A,B,C,D}`, and auto-generating would bill for every throwaway intermediate set with no way to pre-warm any of them. There is deliberately **no** `seed:compare-summaries` command for the same reason.
 
 ### Smart Search (Features 40–42, not yet built)
 
@@ -876,14 +884,20 @@ A hash miss regenerates. A new review changes the hash (`review.service.ts` reco
 
 `model_version` records which model wrote the row but is deliberately **not** compared. Comparing it would force `backend/` to know `agent/`'s configured model, duplicating config across the service boundary. A model or prompt change is rolled out with `pnpm seed:ai-summaries --force` instead.
 
-### `compare_ai_summaries` (Feature 39, not yet built)
+### `compare_ai_summaries` (Feature 39)
 
-| Column          | Type        | Notes                                       |
-| --------------- | ----------- | --------------------------------------------- |
-| id              | uuid        |                                                |
-| hotel_ids_hash  | text        | unique — hash of the sorted selected hotel ids |
-| summary         | text        |                                                |
-| generated_at    | timestamptz | TTL-based invalidation, not content-based      |
+| Column          | Type        | Notes                                                                     |
+| --------------- | ----------- | ------------------------------------------------------------------------- |
+| id              | uuid        |                                                                             |
+| hotel_ids_hash  | text        | unique — sha256 of the sorted resolved hotel ids                            |
+| content_hash    | text        | per hotel: name + city + country + star_rating + amenities + average_rating + review_count + cancellation policy. **No price** |
+| summary         | text        |                                                                             |
+| model_version   | text        | informational only — **not** part of the cache check, same as above         |
+| generated_at    | timestamptz |                                                                             |
+
+**No FK to `hotels`** — the key is a set, so there is nothing to cascade from. A deleted hotel leaves its rows behind, but they can never be served: the content hash is rebuilt from the hotels that still resolve, so it no longer matches. Rows are dead weight, never stale answers.
+
+`hotel_ids_hash` is built from the ids that actually **resolved**, not the ids requested. Asking for `{A, B, deleted-C}` therefore hits the same row as asking for `{A, B}` — the key describes what was really summarised.
 
 ### `chat_sessions` (Feature 44, not yet built)
 

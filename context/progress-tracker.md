@@ -23,17 +23,18 @@ After completing any feature:
 
 ## Current Status
 
-**Phase:** 11 — Summary Generator (AI phase)
-**Current feature:** 39 Compare Summary
-**Next up:** 39 — read **`ai-phase-plan.md`**, not `build-plan.md`. Compare chain + `compare_ai_summaries` table + down migration; unhide and wire the existing slot at `CompareTable.tsx:131-134`. Unlike Feature 38's hash-based cache, this one is **TTL-based**.
+**Phase:** 12 — Smart Search (AI phase)
+**Current feature:** 40 Query Extraction Chain
+**Next up:** 40 — read **`ai-phase-plan.md`**, not `build-plan.md`. An NL prompt maps to the exact structured filters already defined in `backend/src/types/search.schemas.ts:13-41`, and the chain must be current-date-aware so relative dates ("next weekend") resolve correctly. No UI — that is Feature 41.
 
-**Feature 38 is done and the AI phase now really spends money.** What Feature 39 inherits from it and must not rebuild:
+**Phase 11 is complete.** Features 38 and 39 both ship real, cached, metered AI. What the rest of the AI phase inherits and must not rebuild:
 
-1. **`services/ai.service.ts`, `controllers/ai.controller.ts`, `routes/ai.routes.ts` all exist** and are mounted at `/ai`. Feature 39 adds a route to the same files rather than creating a parallel set.
+1. **`services/ai.service.ts`, `controllers/ai.controller.ts`, `routes/ai.routes.ts` all exist** and are mounted at `/ai`. Add routes to the same files rather than creating a parallel set. `requestSummary(path, body, timeoutMs)` in the service is the shared `agent/` caller — error handling, timeout, and the empty-content check live there once.
 2. **`aiRateLimit` in `middlewares/rateLimit.ts` is already mounted on the whole `/ai` router**, so any route added there is covered automatically. It is **IP-keyed**, deliberately the opposite of `internalRateLimit` — see the invariant in `architecture.md`.
-3. **`agent/src/api/deps.py` exists** — `require_internal_service` / the `ActingUser` alias. Every new `agent/` route depends on it. `agent/src/chains/summary/` already holds the prompt-and-chain shape to copy.
-4. **The cost ceiling on a cached feature is the cache, not the limiter.** A hotel generates once per content change no matter the traffic. Size Feature 39's TTL with that in mind.
-5. **`pnpm seed:ai-summaries` is the warm-the-cache precedent.** It takes `--force`. A sibling for compare summaries is worth considering only if the key space is small — `compare_ai_summaries` is keyed on a *combination* of hotels, so it is not enumerable the way hotels are. Do not blindly copy it.
+3. **`agent/src/api/deps.py` exists** — `require_internal_service` / the `ActingUser` alias. Every new `agent/` route depends on it. `agent/src/chains/summary/` now holds two chains; either is the shape to copy.
+4. **The cost ceiling on a cached feature is the cache, not the limiter.**
+5. **New rule from Feature 39 — auto-generate when the cache key is enumerable and warmable; require an explicit user action when it is not.** Hotels are enumerable, so `pnpm seed:ai-summaries` warms them and the hotel page generates on load. Hotel *combinations* are not, so the compare summary sits behind a button and has no seed command. **Do not assume Feature 38's generate-on-load default for Features 43–48** — check which side of this rule the feature falls on first.
+6. **Excluding a fast-moving field can be what makes a cache work.** Feature 39 dropped price from the compare summary, which turned a planned TTL into exact content-hash invalidation. A field the model sees but the hash ignores pins a stale answer forever; a field in the hash that changes constantly destroys the cache. Both directions are bugs.
 
 **Standing rule added 2026-07-20 — applies to every remaining AI feature:** `agent/` code must stay plainly readable. The rule lives in **`code-standards.md` → Agent Conventions → "Simplicity comes first"**, sits above every other Python rule there, and wins any conflict with them (flag the conflict, do not silently resolve it). Read it before writing Python in Features 37–51, not just when something feels over-built. Feature 36's code was refactored against it the day it was written.
 
@@ -168,6 +169,36 @@ Moved from Phase 9 on 2026-07-19. Scope widened: `agent/` is a fourth deployable
 ---
 
 ## Completed Features
+
+### ✅ 39 Compare Summary — completed 2026-07-21
+
+Notes: An AI paragraph contrasting the 2–4 hotels selected on `/compare`, filling the slot that had sat `hidden` in `CompareTable.tsx:131-134` since the compare feature shipped. Second AI feature, and the first that spends money only when the user asks it to.
+
+`backend/`: `compare_ai_summaries` added to `models/ai.schema.ts` (uuid id, unique `hotel_ids_hash`, `content_hash`, `summary`, `model_version`, `generated_at`), migration `0003_add_compare_ai_summaries.sql` with its hand-written `.down.sql`, `findCompareSummary`/`upsertCompareSummary` in `ai-summaries.queries.ts`, `getCompareSummary` in `ai.service.ts`, `getCompareAiSummary` in `ai.controller.ts`, `compareSummaryQuerySchema` (2–4 uuids) in `types/compare.schemas.ts`, and `GET /ai/hotels/compare-summary?ids=` on the existing `/ai` router. No new env vars. `generateSummary` was generalised into `requestSummary(path, body, timeoutMs)` so both AI routes share one `agent/` caller.
+
+`agent/`: new `chains/summary/compare_summary_chain.py`, `COMPARE_SUMMARY_SYSTEM`/`COMPARE_SUMMARY_HOTEL` in the existing `prompts.py`, `CompareHotel`/`CompareSummaryRequest` in `schemas/summary.py`, `POST /summary/compare` in `summary_routes.py`. `MAX_TOKENS = 900` (up from the hotel chain's 600) — four hotels of facts plus the model's reasoning preamble.
+
+`frontend/`: new `useCompareSummary.ts` and `CompareSummarySection.tsx`, replacing the hidden div in `CompareTable.tsx`. Renders nothing below two hotels.
+
+Decision (confirmed with the developer during `/architect`): **price is excluded from the summary, which replaced the planned TTL with content-hash invalidation.** `ai-phase-plan.md` specified a TTL because a comparison was assumed to mention price, and `fromPrice` moves with rates and availability — hashing it would bust the cache constantly. Dropping price leaves only stable fields, at which point Feature 38's exact-invalidation mechanism ports over unchanged and a staleness window buys nothing. `architecture.md`'s "compare summaries are TTL-based" invariant was corrected. The prompt forbids mentioning price at all, verified in the browser with $145 and $320 sitting visibly in the table above.
+
+Decision (confirmed with the developer during `/architect`): **generation is behind a "Compare with AI" button, not automatic on page load** — the one behavioural break from Feature 38. Compare selections are built incrementally (`{A}` → `{A,B}` → `{A,B,C}`), so auto-generating bills for every throwaway intermediate set, and unlike hotels the key space is combinatorial and cannot be pre-warmed. Hence deliberately **no** `seed:compare-summaries`. Generalised into a rule now in `architecture.md`: auto-generate when the cache key is enumerable and warmable, require an explicit action when it is not.
+
+Decision (developer's call, after measurement): **`AI_REQUEST_TIMEOUT_MS` stays at 20s and a slow generation is allowed to fail.** Measured cold latency was 18.5s for two hotels and 19.2s for four, with one outright timeout at 20.1s — the risk flagged during `/architect` proved real, not hypothetical. Options put to the developer were a dedicated `AI_COMPARE_TIMEOUT_MS` at 45s, raising the global value, or accepting failure; they chose to accept failure, with the UI's "Try again" button as the mitigation. **A timed-out generation is paid for and discarded**, so if this proves noisy the pre-considered fix is `AI_COMPARE_TIMEOUT_MS` at 45s — above the observed ceiling, below the ~60s production proxy cut.
+
+Because failure is now a designed-for outcome rather than an edge case, the UI departs from Feature 38 in one more way: **a failed compare summary shows an inline `text-xs text-error` message and a "Try again" button** instead of hiding the section. Hiding is right on the hotel page, where nobody asked for the summary; here the user pressed a button and silence would read as a broken button.
+
+The `hotel_ids_hash` is built from the ids that actually **resolved**, not the ids requested, so `{A, B, deleted-C}` shares a row with `{A, B}`. There is no FK to `hotels` — the key is a set, so nothing cascades; rows for deleted hotels become unreachable dead weight rather than stale answers, because the content hash is rebuilt from whatever still resolves.
+
+Verified against both real running apps and the real seeded database, not by reading code: `agent/`'s route 401s with no secret and with a wrong secret and returns a real comparison with the right one; through `backend/`, a cold generation took 18.5s and the immediate reload returned in **0.042s with no LLM call**; requesting the same pair in **reversed order returned in 0.033s and the table still held exactly one row**, proving the sorted-id key; editing a hotel's `cancellation_policy` changed `content_hash` (`6541608e78` → `1afc8e6590`) and the served text changed with it; **restoring the original content reproduced the original hash exactly**; with `agent/` stopped an uncached pair returned `200 {"summary":null}`, no 500, **and wrote no row**; 1 id and 5 ids both 400 from zod. Real headless-browser pass (Playwright, **zero console errors**): the card renders below the table, the button generates, the skeleton shows during the wait, the summary and disclaimer render, and a single-hotel selection renders no section at all. Quality check — the model correctly contrasted five vs four stars, gym/spa vs neither, and the two cancellation policies, said "no guest reviews" for two hotels with `review_count = 0`, and **never mentioned price**. `pnpm build` clean (backend), `tsc --noEmit` + `eslint` clean (frontend), `ruff check` + `ruff format --check` clean (agent). Migration rolled back and re-applied cleanly. The edited hotel was restored and verified; no test data left behind.
+
+`/review` caught two things, both fixed the same day. **The feature shipped over-commented for the second feature running — 19 comment lines down to 6** (see `code-standards.md` → Comments, which now records the recurrence). And the number 2 was encoded in three independent places: the zod schema, a `MIN_COMPARE_SUMMARY_HOTELS` in `ai.service.ts` that was exported and never imported, and a `MIN_HOTELS` in the component. Collapsed to one constant per app — `MIN_COMPARE_SUMMARY_HOTELS`/`MAX_COMPARE_SUMMARY_HOTELS` in `compare.schemas.ts` (the schema and the service both use them) and `MIN_COMPARE_HOTELS` alongside the existing `MAX_COMPARE_HOTELS` in `CompareProvider.tsx`. A `hashOf` helper replaced the repeated `createHash(...).update(...).digest(...)` chain; hash values are unchanged, verified by the existing cache rows still hitting.
+
+**An `AbortController` was added to `useCompareSummary` and then deliberately reverted.** `useCompareHotels` aborts because its fetch runs in an effect that re-fires on `idsKey` change, so a slow stale response can overwrite a fresh one. `useCompareSummary` has no such race — generation is user-initiated and the `forKey` guard already discards any response that does not match the current selection. The abort added a ref and a cleanup effect to solve a problem this hook does not have. **Copy a sibling's pattern only after checking the pattern's reason still applies.**
+
+`/imprint` caught one drift: the button used `bg-surface` where the locked Secondary Button specifies `bg-elevated`. Both resolve to `#ffffff` and there is no dark theme, so it was invisible — fixed precisely for that reason, since it would only surface as a bug long after anyone was looking at this component. New **AI Compare Card** entry in `ui-registry.md`.
+
+Not a bug, worth not re-diagnosing: during verification the free Nemotron model's upstream provider returned `ResourceExhausted: Worker local total request limit reached (33/32)` (HTTP 502) twice. Transient provider capacity, not our code — it resolved on retry. It does confirm the failure path works end to end.
 
 ### ✅ 38 Hotel Detail Summary — completed 2026-07-20
 

@@ -716,3 +716,27 @@ Disclaimer: mt-3 text-xs text-text-muted
 **First component in the app to show a skeleton for a non-instant network wait rather than rendering nothing.** Sibling sections (`SimilarHotelsSection`) return `null` while loading because their data arrives in milliseconds; a cache-miss summary can take 10s+, and a block of text appearing that late with no warning reads as a glitch. The skeleton follows the standard Loading Skeleton recipe above (`bg-subtle animate-pulse`, `rounded-xl` text bars inside a `rounded-2xl` card shell). On failure the whole section returns `null` — no error state, matching the sibling sections' habit, since a missing summary is not something a visitor can act on.
 
 **Caught by `/imprint` and fixed:** this card originally used `mt-3` between the heading and body where every sibling section uses `mt-4`. A three-pixel drift, invisible in isolation and obvious once five cards stack in one column — the reason the Section Card entry above now exists.
+
+### AI Compare Card ("Compare with AI")
+
+```
+Shell:      [Section Card, above — unchanged]
+Heading:    flex items-center gap-2 text-lg font-semibold text-text-primary
+AI icon:    SparklesIcon h-4 w-4 text-accent-text strokeWidth={1.5}
+Body:       mt-4 text-sm text-text-secondary
+Disclaimer: mt-3 text-xs text-text-muted
+Error:      mt-3 text-xs text-error
+Button:     [Secondary Button, above — unchanged] + mt-4 font-medium
+Skeleton:   mt-4 flex flex-col gap-2
+            three bars: h-3 animate-pulse rounded-xl bg-subtle, widths w-full / w-11/12 / w-2/3
+```
+
+**Text-skeleton recipe, now used identically twice** (here and in `HotelSummarySection`): three `h-3` bars at `w-full` / `w-11/12` / `w-2/3`. The descending widths read as a paragraph rather than a block; **any future generated-text placeholder copies these three widths** rather than picking new ones.
+
+**This card skeletons only the body; Feature 38's also skeletons its heading** (`h-4 w-28`). Deliberate, not drift — the "At a glance" card materialises on page load, so nothing is on screen yet and a placeholder heading is honest. Here the card is already visible and the user has just clicked a button inside it, so replacing the real heading with a grey bar would be a flicker backwards. **Rule: skeleton the heading only when the whole card is arriving; keep it when the card is already on screen.**
+
+`frontend/features/compare/components/CompareSummarySection.tsx` (Feature 39). Reuses the AI Summary Card treatment above verbatim — same shell, same sparkle icon, same disclaimer line — so the two AI surfaces read as one family. Renders nothing below two hotels.
+
+**The one real difference from the "At a glance" card: this one has an idle state with a button, and it has an error state.** Both follow from the same decision — compare summaries are generated on demand, not on page load, because compare selections are built one hotel at a time and every intermediate set is a distinct uncacheable generation (see `architecture.md`). Because the user pressed a button, silence on failure is not acceptable the way it is on the hotel page: they asked for something and deserve to be told it did not work. Hence `text-xs text-error` plus a "Try again" button, the same inline-error tone Checkout uses. **Any future AI surface that spends money on an explicit user action inherits this pair — a button to start and a visible failure state.**
+
+**Caught by `/imprint` and fixed:** the button was written with `bg-surface` instead of the locked Secondary Button's `bg-elevated`. Both resolve to `#ffffff` today and there is no dark theme, so it was invisible — which is exactly why it was worth fixing. The moment a dark theme lands or the two tokens diverge, an un-caught deviation like this becomes a visible bug in a component nobody is looking at any more.
