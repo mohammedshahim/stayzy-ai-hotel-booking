@@ -253,8 +253,14 @@ Also worth carrying forward: measured end-to-end latency was **18–19s against 
 
 ### Phase 12 — Smart Search
 
-**40. Query extraction chain** — NL prompt → the exact structured filters in `backend/src/types/search.schemas.ts:13-41`, current-date-aware for relative dates.
-*Test:* a representative prompt set extracts correct filters.
+**40. Query extraction chain** — ✅ **shipped 2026-07-22.** NL prompt → the exact structured filters in `backend/src/types/search.schemas.ts:13-41`, current-date-aware for relative dates.
+*Test:* a representative prompt set extracts correct filters. — passed; see `progress-tracker.md` for the run.
+
+Three things this sketch did not anticipate, all now settled:
+
+- **The filter params are uuid arrays, so "prompt → filters" is really "prompt → names → ids".** `backend/` sends the amenity / room-feature / meal-plan names as a closed vocabulary and resolves the reply; the model never sees a uuid.
+- **The output is a partial of `searchQuerySchema`, never a defaulted `SearchQuery`** — otherwise Feature 41's chips cannot tell an inferred filter from a schema default.
+- **There is no cache and no table**, deliberately. A free-text prompt is not enumerable, so the rule from Feature 39 lands the opposite way here. Every smart search therefore pays 6–14.5s of generation, with no warm path — Feature 41's UI must assume that.
 
 **41. Smart search UI** — **build the box** in `FilterSidebar.tsx`; inferred filters render as editable chips.
 *Test:* a bad extraction is correctable, not a dead end.

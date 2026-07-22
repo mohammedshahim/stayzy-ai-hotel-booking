@@ -322,7 +322,7 @@ api/ (routes) → graphs/ or chains/ → clients/ → backend/
 ```
 
 - `api/` — FastAPI routers. Request/response shaping and dependency injection only. No prompts, no LLM calls, no business logic
-- `chains/` — stateless single-shot LLM flows. No graph, no checkpointer, no conversation state
+- `chains/` — stateless single-shot LLM flows. No graph, no checkpointer, no conversation state. **One folder per feature area, with its own `prompts.py` beside the chains that use it** — `chains/summary/` holds both summary chains and their shared prompts; `chains/smart_search/` holds the extraction chain and its own. A second chain in an existing area joins that folder rather than starting a new one
 - `graphs/` — stateful multi-turn LangGraph agents. Owns conversation execution state through the checkpointer and nothing else
 - `clients/` — the only place outbound HTTP happens. **A tool function never calls `httpx` directly**; it goes through `backend_client.py`
 - `schemas/` — pydantic request/response models, one module per route. A model used by exactly one route and small enough to read at a glance may live in that route module instead — a separate file per two-field model is indirection without benefit (see Simplicity)
@@ -483,6 +483,6 @@ Approved dependencies:
 
 **frontend-admin/** — `react`, `vite`, `@reduxjs/toolkit`, `react-redux` (required peer for using the store from components), `react-router-dom`, `tailwindcss`, `shadcn/ui` components, `lucide-react`, `react-map-gl` + `mapbox-gl` (draggable location pin on the hotel edit form, added for the manual-coordinate-override feature — same versions and usage pattern as `frontend/`'s `LocationMapPanel`/`MapView`, no new abstraction)
 
-**agent/** (AI phase, not yet installed) — `fastapi`, `uvicorn`, `langgraph`, `langchain-core`, `langchain-openai` (OpenRouter speaks the OpenAI protocol, so this is the client — no OpenRouter-specific package), `langgraph-checkpoint-postgres`, `pydantic` + `pydantic-settings`, `httpx`, `psycopg` (the checkpointer's driver — never queried directly). Dev only: `pytest`, `ruff`.
+**agent/** (installed since Feature 36; unchanged through Feature 40) — `fastapi`, `uvicorn`, `langgraph`, `langchain-core`, `langchain-openai` (OpenRouter speaks the OpenAI protocol, so this is the client — no OpenRouter-specific package), `langgraph-checkpoint-postgres`, `pydantic` + `pydantic-settings`, `httpx`, `psycopg` (the checkpointer's driver — never queried directly). Dev only: `pytest`, `ruff`.
 
 Do not install any other packages without updating this list first.

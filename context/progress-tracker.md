@@ -24,8 +24,10 @@ After completing any feature:
 ## Current Status
 
 **Phase:** 12 — Smart Search (AI phase)
-**Current feature:** 40 Query Extraction Chain
-**Next up:** 40 — read **`ai-phase-plan.md`**, not `build-plan.md`. An NL prompt maps to the exact structured filters already defined in `backend/src/types/search.schemas.ts:13-41`, and the chain must be current-date-aware so relative dates ("next weekend") resolve correctly. No UI — that is Feature 41.
+**Current feature:** 41 Smart Search UI
+**Next up:** 41 — read **`ai-phase-plan.md`**, not `build-plan.md`. Build the natural-language box in `FilterSidebar.tsx`; inferred filters render as **editable** chips so a bad extraction is correctable rather than a dead end. Feature 40 already returns everything it needs: `POST /ai/search/extract` gives `{ filters, unmapped }`, where `filters` is a *partial* of `searchQuerySchema` (an absent key means the prompt never mentioned it — that is what makes the chips honest) and `unmapped` lists the phrases that became no filter, which the UI should show rather than swallow.
+
+**Two things Feature 41 must design around, both measured in Feature 40:** extraction takes **6–14.5s and can hit the 20s timeout**, and unlike Features 38–39 there is **no cache** — every smart search pays full generation cost, every time. A visible in-flight state and a retry affordance are both required, not optional; the upstream free-tier 502 recurs often enough that a search will sometimes just fail. If 20s proves too tight, the pre-designed fix is a dedicated timeout override (~45s), same shape as the one considered for compare.
 
 **Phase 11 is complete.** Features 38 and 39 both ship real, cached, metered AI. What the rest of the AI phase inherits and must not rebuild:
 
@@ -34,7 +36,9 @@ After completing any feature:
 3. **`agent/src/api/deps.py` exists** — `require_internal_service` / the `ActingUser` alias. Every new `agent/` route depends on it. `agent/src/chains/summary/` now holds two chains; either is the shape to copy.
 4. **The cost ceiling on a cached feature is the cache, not the limiter.**
 5. **New rule from Feature 39 — auto-generate when the cache key is enumerable and warmable; require an explicit user action when it is not.** Hotels are enumerable, so `pnpm seed:ai-summaries` warms them and the hotel page generates on load. Hotel *combinations* are not, so the compare summary sits behind a button and has no seed command. **Do not assume Feature 38's generate-on-load default for Features 43–48** — check which side of this rule the feature falls on first.
-6. **Excluding a fast-moving field can be what makes a cache work.** Feature 39 dropped price from the compare summary, which turned a planned TTL into exact content-hash invalidation. A field the model sees but the hash ignores pins a stale answer forever; a field in the hash that changes constantly destroys the cache. Both directions are bugs.
+6. **New rule from Feature 40 — an LLM never emits a uuid.** Where a filter, tool argument or id must be one, `backend/` sends the *names* as a closed vocabulary and maps the reply back to ids itself. Features 45–46's tools face exactly this and should copy `services/search-extraction.service.ts` rather than trusting a model with a key.
+7. **Not every AI feature gets a cache.** Feature 40 has none, deliberately — free-text prompts are not enumerable, so the enumerable-key rule that gave 38 a seed command and 39 a button gives 40 no table at all. `aiRateLimit` is its only ceiling. Check the rule before assuming a cache table is required.
+8. **Excluding a fast-moving field can be what makes a cache work.** Feature 39 dropped price from the compare summary, which turned a planned TTL into exact content-hash invalidation. A field the model sees but the hash ignores pins a stale answer forever; a field in the hash that changes constantly destroys the cache. Both directions are bugs.
 
 **Standing rule added 2026-07-20 — applies to every remaining AI feature:** `agent/` code must stay plainly readable. The rule lives in **`code-standards.md` → Agent Conventions → "Simplicity comes first"**, sits above every other Python rule there, and wins any conflict with them (flag the conflict, do not silently resolve it). Read it before writing Python in Features 37–51, not just when something feels over-built. Feature 36's code was refactored against it the day it was written.
 
@@ -129,11 +133,11 @@ Planned in `ai-phase-plan.md`. Read that file, not `build-plan.md`, for every fe
 ### Phase 11 — Summary Generator
 
 - [x] 38 Hotel detail summary
-- [ ] 39 Compare summary
+- [x] 39 Compare summary
 
 ### Phase 12 — Smart Search
 
-- [ ] 40 Query extraction chain
+- [x] 40 Query extraction chain
 - [ ] 41 Smart search UI
 - [ ] 42 Nearby search
 
@@ -169,6 +173,34 @@ Moved from Phase 9 on 2026-07-19. Scope widened: `agent/` is a fourth deployable
 ---
 
 ## Completed Features
+
+### ✅ 40 Query Extraction Chain — completed 2026-07-22
+
+Notes: A natural-language prompt becomes the structured filters `searchQuerySchema` already defines, plus the phrases that became no filter at all. Third AI feature, and the first with **no cache and no new table**. No UI — that is Feature 41.
+
+`backend/`: new `types/search-extraction.schemas.ts` (`searchExtractionBodySchema`, the all-optional `extractedFiltersSchema`, `agentExtractionSchema`, `MAX_EXTRACTION_PROMPT_LENGTH = 500`), new `services/search-extraction.service.ts`, `extractSearchQuery` in `ai.controller.ts`, `POST /ai/search/extract` on the existing `/ai` router. Two small refactors: `requestSummary`'s fetch/envelope half was split out as an exported `postToAgent<T>` in `ai.service.ts` so both features share one caller, and `SEARCH_SORT_OPTIONS` is now exported from `search.schemas.ts` rather than the sort list living inline. No new env vars, no migration.
+
+`agent/`: new `chains/smart_search/` (`query_extraction_chain.py`, `prompts.py`), `schemas/smart_search.py`, `api/smart_search_routes.py` mounting `POST /smart-search/extract`. `MAX_TOKENS = 1200`, `temperature=0`.
+
+Decision: **the model never sees or emits a uuid.** `backend/` reads the three taxonomy tables, sends the *names* as a closed vocabulary, and maps the reply back to ids. The alternatives were fuzzy-matching free text (silently mismatches "spa" against "Spa & Wellness") or letting `agent/` fetch the taxonomy itself (puts business-data lookup in the wrong service and adds a hop). The database stays the single authority on what filters exist.
+
+Decision: **the output is a partial, not a defaulted `SearchQuery`.** Feature 41 renders inferred filters as editable chips, so it has to tell "the user asked for 2 adults" from "the schema defaults to 2". Passing the output through `searchQuerySchema` would destroy that distinction.
+
+Decision: **no cache table.** This is a deliberate break from Features 38–39 and it is the enumerable-key rule pointing the other way — a free-text prompt cannot be enumerated, cannot be warmed by a seed command, and repeats too rarely to earn a table. `aiRateLimit` on the `/ai` router is the cost ceiling. The rationale is in `architecture.md` so nobody "fixes" the inconsistency later.
+
+Decision: **unmatched terms are returned in `unmapped`, not dropped** — including a taxonomy name the model invented rather than copying. Feature 41 can say what was ignored; Feature 42 consumes the same list directly ("near the Eiffel Tower" is exactly its input).
+
+Decision: **a misparsed date or price pair is dropped, not fatal.** A check-out on or before check-in, a date in the past, or `minPrice > maxPrice` clears just that pair and keeps the rest of the extraction. One bad field should not discard a good prompt.
+
+Decision: **`sort: "distance"` is withheld** from the vocabulary offered to the model. It orders by an anchor point only Feature 42 supplies, so extracting it today would sort by nothing.
+
+Decision: **prompt-and-parse rather than LangChain structured output.** The chain asks for bare JSON and takes the outermost `{...}` from the reply, because a reasoning model likes to wrap its answer in a fence or a sentence, and tool-calling support on the free OpenRouter tier is not guaranteed. A reply with no parsable object returns `None`, the route raises 502, and `postToAgent` turns that into a null — never a half-extraction. This also honours the `agent/` "simplicity comes first" rule; it is the same plain `ainvoke` shape as both summary chains.
+
+Verified against both real running apps and the real seeded database: `agent/`'s route 401s with no secret and with a wrong secret. Real extractions — "5 star hotel in Paris with a spa and a pool for 2 adults next weekend, under 300 a night" → destination Paris, `starRatings [5]`, `adults 2`, `maxPrice 300`, real Spa + Swimming Pool uuids, dates resolved to concrete future days, **and no defaulted fields**; a family prompt correctly split `adults 2` / `kids 3` and resolved Breakfast Included + `freeCancellationOnly`; "jacuzzi, helipad and rooftop cinema" (none of which exist) returned `destination: Rome` with all three in `unmapped` rather than inventing amenities; "a romantic quiet place near the Eiffel Tower with a balcony" resolved Balcony, left `destination` **out** (a landmark is not a city) and put all three phrases in `unmapped`; gibberish returned `{}` filters; **dates in 2020 were dropped while `destination: Lisbon` survived**, proving the pair guard; a prompt naming all three vocabularies at once resolved Free Wi-Fi + Parking, Sea View and Half Board together. Validation: empty prompt, missing key and 501 characters all 400. With `agent/` stopped: `200 {"data":null}`, no 500. The `/ai` limiter is inherited by the new route (`RateLimit-Limit: 20` on its response headers). `pnpm build` clean for `backend`, `ruff check` + `ruff format --check` clean for `agent`.
+
+Worth knowing for Feature 41: **latency measured 6–14.5s, and one prompt hit the 20s `AI_REQUEST_TIMEOUT_MS` outright.** There is no cache to hide behind here — unlike Features 38–39, *every* smart search pays full generation cost. Feature 41's UI must assume a multi-second wait is the normal case, and the pre-designed 45s timeout override is now more likely to be needed than it was for compare. The upstream free-tier `ResourceExhausted: Worker local total request limit reached (32/32)` 502 also recurred repeatedly during verification (transient, resolves on retry, same as Feature 39) — a retry affordance in Feature 41 is not optional.
+
+Prompt-adherence note: the prompt originally asserted `"highly rated" is minGuestRating`, and the model instead put "highly rated" in `unmapped` rather than inventing a numeric threshold. The model's behaviour is the better one — guessing `minGuestRating: 8` from a vague phrase is a fabricated filter — so **the prompt was corrected to match the model**, not the other way round.
 
 ### ✅ 39 Compare Summary — completed 2026-07-21
 

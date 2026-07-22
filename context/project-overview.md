@@ -80,7 +80,7 @@ Once Feature 44 ships, a floating AI widget trigger sits at `bottom-6 right-6`, 
 ### Search Hotels (`/search`)
 
 - Sticky sidebar filters: price range, star rating, guest rating, amenities/facilities, room features, meals included, free cancellation, landmarks/points of interest, "things to do nearby"
-- Smart/free-text search box in the filter sidebar — **not built.** No such input exists in `FilterSidebar.tsx` today; there is no keyword-match placeholder either. Feature 41 builds it as the AI query-extraction surface.
+- Smart/free-text search box in the filter sidebar — **not built.** No such input exists in `FilterSidebar.tsx` today; there is no keyword-match placeholder either. Feature 41 builds it as the AI query-extraction surface. The backend it will call already exists: `POST /ai/search/extract`, shipped in Feature 40.
 - Sort control (separate from filters): Recommended (default), Price low to high, Price high to low, Guest rating, Star rating, Distance from city center
 - Active filters shown as removable chips above the results
 - List / Grid / Map view toggle — Map view splits the screen into a scrollable results list and an interactive map with a pin per hotel; hovering or selecting a card highlights its pin and vice versa
@@ -180,13 +180,13 @@ Once Feature 44 ships, a floating AI widget trigger sits at `bottom-6 right-6`, 
 
 ---
 
-## AI Phase (Features 36–51 — planned, not built)
+## AI Phase (Features 36–51 — in progress; 36–40 built)
 
-Deferred out of the core build, now fully planned in `ai-phase-plan.md`:
+Deferred out of the core build, fully planned in `ai-phase-plan.md`, and now partly shipped:
 
 - **AI chat widget** — a read-only *navigator*, not just Q&A. It answers about the current page, and can propose filtered `/search` URLs and toggle compare selections as clickable action chips. One rolling session per user, following them across the site. It can never mutate server data.
-- **AI-generated hotel and compare summaries** — cached server-side, regenerated only when the underlying content changes.
-- **Smart search** — a natural-language box that extracts structured filters into the existing URL-driven search pipeline.
+- **AI-generated hotel and compare summaries** — ✅ built (Features 38–39). Cached server-side, regenerated only when the underlying content changes.
+- **Smart search** — a natural-language box that extracts structured filters into the existing URL-driven search pipeline. The extraction half is ✅ built (Feature 40, `POST /ai/search/extract`); the box itself is Feature 41.
 - **Nearby search** — PostGIS `ST_DWithin` radius filtering, reachable from natural language ("hotels near Hotel Marais Charme under ₹5000").
 - **`/assistant` chatbot** — the full tool suite, including booking, cancel, favorite, and review, each gated behind an explicit confirmation card.
 

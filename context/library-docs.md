@@ -558,7 +558,7 @@ export const createBookingSchema = z.object({
 
 ---
 
-# AI Phase Libraries (Features 36+, not yet installed)
+# AI Phase Libraries (Features 36+ — installed and in use since Feature 36)
 
 > **Do not write LangGraph or FastAPI code from training knowledge.** LangGraph's API — `StateGraph`, checkpointer packages, `interrupt()`/`Command` resume semantics, and `astream` modes — has changed repeatedly and across major versions. Check for an installed skill or MCP server first, then read the installed package's own docs, before writing a single node. The sections below are **project rules only**, deliberately not API tutorials.
 
@@ -614,19 +614,39 @@ Accessed through `langchain-openai` — OpenRouter speaks the OpenAI protocol, s
 **Rules:**
 
 - Model choice is per use case, in config, never hardcoded at a call site: a cheap fast model for summaries and query extraction, a stronger one for the chatbot's tool loop
+- **Temperature is per use case too, and it is set at the call site, not in config.** Prose wants a little variation and extraction wants none: the summary chains take the `get_fast_llm()` default of 0.2, the query extraction chain passes `temperature=0`. Anything whose output is parsed rather than read should be at 0
 - `OPENROUTER_API_KEY` lives only in `agent/`'s environment. It never reaches `backend/` and never reaches a browser
 - This is the project's first genuinely metered dependency. Per-user rate limiting ships in Feature 37, **before** the first billable feature in Feature 38
 - Summaries are cached server-side and regenerate only on a content-hash miss. A cache hit must make no LLM call at all — that is the acceptance test for Feature 38 (verified: 0.09s cached vs 13.8s on a miss)
+- **This is not a blanket "cache every AI call" rule.** Feature 40's query extraction has no cache and no table, deliberately: a free-text prompt is not an enumerable key, so it cannot be warmed and repeats too rarely to earn a lookup. Cache when the key is enumerable; otherwise let the rate limiter be the ceiling. See `architecture.md` for the full rule
 
 **Reasoning models need token headroom — learned the hard way in Feature 38.**
 
 The configured model (`nvidia/nemotron-3-ultra-550b-a55b:free`) thinks before it answers. OpenRouter returns that thinking in a **separate** `reasoning` field, and `response.content` holds the clean answer — so the split is handled for you. The trap is the token ceiling:
 
 - With `max_tokens` set too low, the model is cut off **mid-reasoning** and `content` comes back **empty**, not merely short. The first smoke test with `max_tokens=20` returned pure chain-of-thought and no answer
-- Budget for reasoning **plus** output. A 2–3 sentence summary needs ~600, not ~150, because ~100 tokens go to thinking before a word is written
+- Budget for reasoning **plus** output. A 2–3 sentence summary needs ~600, not ~150, because ~100 tokens go to thinking before a word is written. **Structured output needs roughly double prose**: the query extraction chain runs at 1200 for a JSON object far shorter than a summary, because the model reasons through each candidate field before emitting any of them
 - **Always treat empty content as a failure**, never as a valid short answer, and never cache it. `services/ai.service.ts` does this explicitly
 - Check `usage.completion_tokens_details.reasoning_tokens` when a response looks wrong — if it equals `completion_tokens`, the budget was spent entirely on thinking
 
+**Getting structured output: ask for bare JSON and parse it. Do not reach for `with_structured_output`.** Established in Feature 40.
+
+The obvious move for "return me an object" is LangChain's `with_structured_output(Model)`. It was deliberately not used, for two reasons that both still hold:
+
+- It relies on provider tool-calling or JSON-mode support, and the configured free OpenRouter tier does not guarantee either. A feature that works today would break on a model swap
+- A reasoning model does not reliably emit *only* the object. It wraps the answer in a markdown fence, or prefixes it with a sentence, even when told not to
+
+The shape that works, in `chains/smart_search/query_extraction_chain.py`:
+
+1. Ask for one JSON object and nothing else, in the system prompt
+2. Regex the **outermost** `{...}` out of the reply (`re.compile(r"\{.*\}", re.DOTALL)`) rather than trusting the whole string to parse
+3. Validate with `Model.model_validate(json.loads(...))`
+4. Return `None` on any parse or validation failure — the route turns that into a 502 and `backend/`'s `postToAgent` into a null
+
+**A half-parsed object is never returned.** The same rule as empty content: a malformed reply is a failure, not a partial success. This is also the simpler construction, which the `agent/` "simplicity comes first" rule prefers — it is the same plain `ainvoke` call the summary chains make.
+
 **Latency is high and variable.** The same prompt measured 4.2s calling `agent/` directly and 13.8s through the full `backend/` path. Assume 4–15s per call. Anything user-facing needs a warm cache (`pnpm seed:ai-summaries`) or a design that does not block on the model.
+
+**A feature with no cache pays that latency every single time.** Feature 40 measured 6–14.5s per extraction and hit the 20s `AI_REQUEST_TIMEOUT_MS` outright on one prompt, with no warm path to fall back on. Budget the timeout against the *uncached* case whenever there is no cache.
 
 **Verify a model slug before trusting it.** `GET https://openrouter.ai/api/v1/models` lists every id; a wrong slug fails only at the first real call. The configured slug was confirmed present in the catalog during Feature 38.

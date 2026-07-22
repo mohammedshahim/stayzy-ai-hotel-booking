@@ -656,14 +656,19 @@ Compare summaries follow the same path against `compare_ai_summaries`, keyed by 
 
 Hotels are enumerable, so `pnpm seed:ai-summaries` can warm every one and the hotel page can afford to generate on load. Combinations of hotels are not: a user assembling a comparison passes through `{A}`, `{A,B}`, `{A,B,C}` on the way to `{A,B,C,D}`, and auto-generating would bill for every throwaway intermediate set with no way to pre-warm any of them. There is deliberately **no** `seed:compare-summaries` command for the same reason.
 
-### Smart Search (Features 40–42, not yet built)
+### Smart Search (Feature 40 built 2026-07-22; Features 41–42 not yet built)
 
 ```
 User types a natural-language query in the search sidebar
         ↓
-POST /ai/search/extract (backend) → agent/ query-extraction chain
+POST /ai/search/extract (backend)
         ↓
-Chain returns structured filters matching search.schemas.ts's existing params
+backend loads the amenity / room-feature / meal-plan tables and sends agent/
+the prompt, today's date, and those names as a closed vocabulary
+        ↓
+agent/ query-extraction chain returns a PARTIAL filter object, in names
+        ↓
+backend maps names back to uuids and returns { filters, unmapped }
         ↓
 frontend renders them as editable chips and writes them into the URL
         ↓
@@ -671,6 +676,16 @@ Normal search runs — the existing URL-driven pipeline, unchanged
 ```
 
 The AI never queries hotels itself. It produces filters; the existing search path does the rest. A "near this hotel/place" query resolves to a reference point and hits `GET /hotels/nearby` (`ST_DWithin`) instead of a city match.
+
+Three invariants this path establishes:
+
+- **The model never sees or emits a uuid.** `searchQuerySchema` takes uuid arrays for `amenities`, `roomFeatures` and `mealPlans`, and an LLM cannot be trusted to produce one. `backend/` sends the names it read from those tables and resolves the reply back to ids, so the database stays the only authority on which filters exist and a hallucinated filter cannot reach a query.
+- **The extraction is a partial, never a defaulted `SearchQuery`.** An absent field means the prompt did not mention it. Running the output through `searchQuerySchema` would fill in `adults: 2`, `sort: "recommended"` and the rest, and Feature 41's editable chips would then be unable to distinguish what the user asked for from what the schema invented.
+- **Anything that did not become a filter is returned in `unmapped`, not dropped.** That includes a name the model made up rather than copying from the vocabulary. Feature 41 can tell the user what was ignored, and Feature 42 consumes the same list — "near the Eiffel Tower" is exactly its input.
+
+**Extractions are deliberately NOT cached** — the one AI feature so far with no cache table. This is the enumerable-key rule pointing the other way: a free-text prompt is not enumerable, cannot be warmed by a seed command, and repeats too rarely for a hash lookup to pay for the table. The cost ceiling here is `aiRateLimit`, which the `/ai` router already applies. Do not "fix" the inconsistency with Features 38–39 by adding a cache.
+
+`agent/` reads no clock: `backend/` passes today's date on every call, so replaying a prompt extracts the same dates. `sort: "distance"` is withheld from the vocabulary offered to the model until Feature 42 supplies a real anchor point.
 
 ### Chat (Features 43–48, not yet built)
 
