@@ -10,6 +10,15 @@ function csvList<T extends z.ZodTypeAny>(itemSchema: T) {
     .pipe(z.array(itemSchema));
 }
 
+export const SEARCH_SORT_OPTIONS = [
+  "recommended",
+  "price_asc",
+  "price_desc",
+  "guest_rating",
+  "star_rating",
+  "distance",
+] as const;
+
 export const searchQuerySchema = z
   .object({
     destination: z.string().default(""),
@@ -29,9 +38,7 @@ export const searchQuerySchema = z
       .enum(["true", "false"])
       .optional()
       .transform((value) => value === "true"),
-    sort: z
-      .enum(["recommended", "price_asc", "price_desc", "guest_rating", "star_rating", "distance"])
-      .default("recommended"),
+    sort: z.enum(SEARCH_SORT_OPTIONS).default("recommended"),
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(100).default(9),
   })
