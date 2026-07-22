@@ -16,7 +16,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | `context/library-docs.md` | Project-specific rules for each third-party library |
 | `context/ui-rules.md` / `ui-tokens.md` / `ui-registry.md` | Design system rules, CSS variable tokens, and one entry per built component |
 
-Three standing rules from those files worth repeating here: **scope is sacred** (build only what the current feature requires), **verify against the real running app** rather than by reading code alone, and **comments are the exception, not the habit** — the default is no comment, and anything needing a paragraph is design rationale that belongs in `context/`, not in the code. See `code-standards.md` → Comments.
+## Do not comment the code
+
+**Write zero comments by default.** This has been corrected on three separate features and is the single most repeated piece of feedback on this project. It applies to all four apps, every feature, every file.
+
+- Put the intent in the **name**, not in a comment above it
+- **Never** write a multi-line comment. If it needs a paragraph, it is design rationale — it belongs in `context/architecture.md` or `context/progress-tracker.md`, never in the code. A second copy in the code drifts and is the one nobody updates
+- Before writing a comment, all three must hold: better naming cannot remove it, it survives the code changing, and a competent reader would be **wrong** without it — not merely "helped"
+- `backend/src/middlewares/requireCronSecret.ts` is the house style
+- Short Python docstrings in `agent/` are the existing convention and are fine — this rule is about comments
+
+Full rule: `code-standards.md` → Comments.
+
+Two other standing rules worth repeating here: **scope is sacred** (build only what the current feature requires), and **verify against the real running app** rather than by reading code alone.
 
 ## Project
 
