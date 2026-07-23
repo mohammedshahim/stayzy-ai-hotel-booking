@@ -1,68 +1,69 @@
-# Memory — Feature 41 shipped, Feature 42 architected (not built)
+# Memory — Feature 42 Nearby Search built and verified, uncommitted
 
 Last updated: 2026-07-23
 
 ## What was built
 
-**No new code this session.** Feature 41 Smart Search UI had been fully built and verified in the *previous* session but was left uncommitted in the working tree. This session verified it still builds, committed it, and then ran `/architect` for Feature 42 up to the point of needing developer confirmation.
+**Feature 42 Nearby Search, complete and verified.** Phase 12 Smart Search is now done (40, 41, 42). A search can be anchored to a point: `near` (free text) + `radiusKm` filter via `ST_DWithin` in SQL, results carry a real `distanceKm`, and `sort: "distance"` finally measures from something.
 
-Feature 41's files (written last session, committed this one):
-- `frontend/features/search/components/SmartSearchBox.tsx`, `hooks/useSmartSearch.ts`, `lib/extraction.ts` (all new)
-- `frontend/features/search/types.ts` — gained `ExtractedSearchFilters` / `SearchFilterExtraction`
-- `FilterSidebar.tsx` — new `onSmartSearch` prop; `SearchPageContent.tsx` — wires it to `update(partial, { history: "push" })`
-- `backend/src/config/env.ts` + `.env.example` — `AI_REQUEST_TIMEOUT_MS` 20s → 45s
-- Six `context/` files updated
+New files:
+- `backend/src/services/search-anchor.service.ts` — resolves `near` to one lat/long
+- `frontend/features/search/lib/anchor.ts` — `clearAnchor(state)`
 
-**Committed as three commits, not one** (see Decisions):
-- `cfa1097` chore(backend): raise AI_REQUEST_TIMEOUT_MS from 20s to 45s
-- `366e57d` feat(frontend): add the smart search box to the search sidebar
-- `6a899ff` docs(context): log Feature 41 and record its two UI deviations
+Modified — `agent/` (2): `chains/smart_search/prompts.py` (landmarks now route to `near`, not `unmapped`), `schemas/smart_search.py` (`near` on `ExtractedFilters`).
 
-Working tree is clean. `origin/main` is still at `b2ec04b` — **all three commits are local and unpushed.**
+Modified — backend (10): `types/search.schemas.ts` (`near`, `radiusKm`, `DEFAULT_SEARCH_RADIUS_KM`/`MAX_SEARCH_RADIUS_KM`), `types/search-extraction.schemas.ts`, `services/search-extraction.service.ts` (new `pickSort`; stopped withholding `"distance"` from the model), `queries/search.queries.ts` (`ST_DWithin` + `ST_Distance/1000` in the select), `services/search.service.ts` (haversine/centroid deleted, `anchor` on the response), `controllers/search.controller.ts`, `queries/hotels.queries.ts` (new `findHotelLocationByName`; `findSimilarHotels` city equality → `ST_DWithin` 25km), `services/hotel.service.ts`, `services/geocoding/{geocoding,mapbox}.provider.ts` (new `geocodePlace`).
+
+Modified — frontend (8): `types.ts`, `hooks/useSearchState.ts`, `hooks/useSearchResults.ts` (surfaces `anchor`), `lib/extraction.ts`, `components/{ActiveFilterChips,HotelCard,SortDropdown,SearchPageContent}.tsx`.
+
+Modified — `context/` (4): `progress-tracker.md`, `ai-phase-plan.md`, `architecture.md`, `ui-registry.md`.
+
+**No migration, no new table, no new dependency.**
 
 ## Decisions made
 
-- **One commit per concern, never one commit per feature.** The developer corrected a squashed Feature 41 commit mid-session. Split along app/concern lines — backend, frontend, `docs(context)` — matching the rhythm already in the log across Features 39–40. Stage by path; do not `git add -A` a whole feature. Also saved to Claude's cross-session memory.
-- Feature 41's own decisions (merge-not-stage, no clear-all, global rather than per-call timeout) are already written up in `context/progress-tracker.md`'s Completed Features entry — not duplicated here.
+Each of these is written up in full in `context/progress-tracker.md`'s Feature 42 entry — recorded here only as pointers, not duplicated.
+
+- **Anchor resolution: own `hotels` table first (name `ilike`, shortest match wins), geocoder only on a miss.** Hotel names never touch Mapbox.
+- **`near` resolves server-side per request**, not client-side coordinates in the URL. Search paginates in JS *after* building the full result set, so every page click re-resolves — absorbed by a module-level phrase→anchor `Map` that caches misses too and clears past 200 entries. **In-process map, not a table; Feature 39's no-cache-table rule is intact.**
+- **The centroid haversine is deleted, not repaired.** No anchor → `sort: "distance"` falls back to `recommended` *and* the Distance option is disabled in `SortDropdown`.
+- **A real `near` field in the extraction chain — a deviation from `ai-phase-plan.md:274`**, which expected a heuristic over `unmapped`. That line is now marked superseded in the plan itself. `pickSort` keeps the backend authoritative: a `near` forces `sort: "distance"`; a `distance` without a `near` is dropped.
+- **Both radii 25 km** (search default, cap 100; similar-hotels rail fixed). Seed-driven, not guessed — see Problems solved.
+- **`distanceKm` returned and rendered on the card** — an agreed scope addition beyond the plan's wording.
+- **An unresolvable `near` degrades, never 400s** — response carries `anchor: null` and the UI says so.
 
 ## Problems solved
 
-- Nothing broke this session. `npx tsc --noEmit` (frontend), `pnpm lint` (frontend) and `pnpm build` (backend) were all clean before committing.
-- **The squashed-commit mistake and its recovery:** because the commit was still local (`origin/main` was behind), `git reset --soft` to the last pushed commit and re-committing in pieces was safe. Check `git log origin/main -1` before assuming a commit can be rewritten.
+- **The Mapbox token has no POI data — the landmark path was silently anchoring on the wrong continent.** First run put `near=Eiffel Tower` in *the Philippines* and geocoded a garbage phrase "successfully" to California. Root cause is not a low score: "Eiffel Tower" matches a street named **Eiffel Tower Street** at relevance **1.0**, so no threshold catches it. Probing both the v5 and v6 APIs showed `types=poi` returns **nothing at all**. Fix: a separate `geocodePlace(query)` that excludes street/address types and requires relevance ≥ 0.8, leaving `geocode(address)` untouched for admin hotel create, which genuinely needs street matching. **Do not collapse the two methods.** Net effect: POI landmarks resolve to no anchor and say so; cities/neighbourhoods/districts work correctly. A POI-enabled token would light up the landmark path with zero code change.
+- **The radius could not be guessed from intuition.** Measured against the real seed: the two Paris hotels are **2.4 km** apart, the two Tokyo hotels **10.5 km**. A 5 km default passes the Paris acceptance test but makes "near Shibuya Sky Hotel" return only itself; 10 km fails Tokyo by half a kilometre. Hence 25 km. **It is wide for a real city and only defensible because the seed is sparse.**
+- **Playwright is not a project dependency** even though earlier features used it — browsers are cached under `~/Library/Caches/ms-playwright` but the package is absent. Install it `--no-save` into a scratch dir rather than adding it to `frontend/package.json`.
 
 ## Current state
 
-- **Features 36–41 are complete.** Phase 12 Smart Search is 2 of 3 done.
-- **Feature 42 Nearby Search is designed but NOT built and NOT confirmed.** Zero lines of Feature 42 code exist. The `/architect` session reached a 6-decision list and stopped for developer sign-off.
-- Feature 41 was verified end-to-end in a real browser *last* session (14/14 checks, documented in `progress-tracker.md`). This session re-verified only typecheck/lint/build — no browser pass, none needed.
-- No dev servers were left running this session.
+- **Features 36–42 complete. Phase 12 is done.** Next phase is 13 (Chat Widget).
+- Verified end-to-end in a real headless browser against the real seeded database: **15/15 checks, zero console errors.** Covers anchored ordering, distances on cards, the Near chip and its removal cascading to sort, the disabled Distance option, the honest unresolvable-landmark notice, a city anchor, and the similar-hotels rail.
+- Backend `pnpm build`, frontend `tsc --noEmit` + `pnpm lint` + `pnpm build`, agent `ruff check` + `ruff format --check` — all clean.
+- **All 26 changed files are uncommitted.** Working tree is dirty; `origin/main` and local `main` are both at `2716570`. Nothing was pushed.
+- No dev servers left running. No test data created — this feature writes no rows.
 
 ## Next session starts with
 
-**Get the developer's answers to the six Feature 42 decisions below, then build it.** The reading is already done — these are the relevant files and what each needs:
+**Commit Feature 42, then start Feature 43.**
 
-- `backend/src/queries/hotels.queries.ts:136-174` — `findSimilarHotels`, currently `city = ? AND country = ?`, ordered by `ST_Distance` from the hotel's own point, limit 6. Generalize to `ST_DWithin`.
-- `backend/src/services/search.service.ts:57-97` — the haversine + `sortResults`. The `"distance"` case sorts against the **centroid of the result set**, which is meaningless. Replace with a real anchor.
-- `backend/src/queries/search.queries.ts:29-73` — `findCandidateHotels`. The radius filter belongs here in SQL so it prunes early, not in JS afterwards.
-- `backend/src/types/search.schemas.ts` — `searchQuerySchema` needs the new `near` / `radiusKm` params; `SEARCH_SORT_OPTIONS` already contains `"distance"`.
-- `backend/src/services/search-extraction.service.ts:78-79` — the line that **withholds** `"distance"` from the model's vocabulary. Feature 42 is what supplies the anchor, so this filter comes off here.
-- `agent/src/chains/smart_search/prompts.py` — currently instructs the model to put landmarks in `unmapped` and explicitly says "A mood or a landmark never goes in destination." Needs a `near` key instead.
-- `agent/src/schemas/smart_search.py` — `ExtractedFilters` needs the matching field.
-- `backend/src/services/geocoding/` — `geocodingProvider.geocode(address)` → `{latitude, longitude}` via Mapbox, already used by admin hotel create. This is the landmark resolver. Needs `MAPBOX_ACCESS_TOKEN` set (it was working as of Feature 07).
+Commit in four parts per the standing one-commit-per-concern rule — do not squash, stage by path:
+1. `agent/` — the `near` extraction field and prompt rules
+2. backend — anchor resolution, `ST_DWithin`, the `geocodePlace` split
+3. frontend — `near` in URL state, the chip, card distance, sort rule
+4. `docs(context)` — the four context files
+
+Then **Feature 43 Widget graph** — read `context/ai-phase-plan.md`, not `build-plan.md`. First feature of Phase 13 and the first to use LangGraph rather than a single-shot chain.
 
 ## Open questions
 
-**The six Feature 42 decisions awaiting developer sign-off** (recommendation given for each; #2 is the one that cannot be sensibly guessed):
-
-1. **Anchor resolution order** — try a hotel-name lookup against our own DB first (free, exact, and the acceptance test names a hotel), fall back to Mapbox geocoding otherwise. No cache table: a free-text phrase is not enumerable, so Feature 39's rule lands the same way it did for Feature 40.
-2. **URL shape — the blocking one.** Recommended: `near=Eiffel Tower` as text plus optional `radiusKm`, resolved server-side per request; keeps the URL shareable and geocoding behind the backend per Feature 07's precedent. Cost: a Mapbox call per search *including every pagination click* — a module-level phrase→coords `Map` would blunt it. The alternative (resolve client-side, put coordinates in the URL) changes `searchQuerySchema`, frontend `SearchState` and the chip, so guessing wrong means rework across all three.
-3. **`sort: "distance"` with no anchor** — fall back to `recommended` and delete the haversine entirely. Auto-apply `sort: "distance"` when the extraction returns a `near`. Open sub-question: whether the sort dropdown should hide/disable "Distance" when no anchor is set, rather than silently doing something else.
-4. **Extraction path** — a real `near` field in the chain, *not* a heuristic over `unmapped`. Distinguishing "romantic" from "the Eiffel Tower" is exactly the judgment the model should make. Note this reads as a deviation from `progress-tracker.md`'s "42 consumes the `unmapped` list rather than building a new extraction path" — the intent there was avoiding a second round-trip, which a `near` field also avoids, but confirm the developer agrees.
-5. **Radii** — 5 km default for search (50 km cap), 25 km for the similar-hotels rail. Both are guesses; sanity-check against the seeded data (5 hotels across 3 cities), since a 25 km radius roughly preserves today's same-city behaviour but no longer breaks on a differing suburb string.
-6. **Scope addition, needs an explicit yes/no** — return `distanceKm` per result and render it on the hotel card. Nearly free (`ST_Distance` is already computed) and a distance-ordered list without distances is unreadable, but it is beyond the plan's literal wording.
-
-**Carried over, unrelated to 42:** `trust proxy` must be settled at deployment or the IP-keyed `aiRateLimit` is effectively disabled in production. S3 credentials are still blank in this dev environment (open Known Issue since Feature 07).
+- **Should the 25 km default be revisited before production?** It is a sparse-seed artefact. Real inventory would want something tighter, and the number lives in one constant (`DEFAULT_SEARCH_RADIUS_KM` in `search.schemas.ts`, plus `SIMILAR_HOTELS_RADIUS_KM` in `hotels.queries.ts`).
+- **Is a POI-enabled Mapbox plan worth buying?** The landmark half of nearby search is written and correct but inert with the current token — "hotels near the Eiffel Tower" honestly reports that it could not place the landmark. No code change needed if the token gains POI access.
+- **Carried over, unrelated to 42:** `trust proxy` must be settled at deployment or the IP-keyed `aiRateLimit` is effectively disabled in production. S3 credentials are still blank in this dev environment (open Known Issue since Feature 07).
 
 ## Note on secrets
 
-No credentials, tokens or keys are recorded in this file. `MAPBOX_ACCESS_TOKEN`, `S3_*` and `RESEND_API_KEY` are referred to by name only.
+No credentials, tokens or keys are recorded in this file. `MAPBOX_ACCESS_TOKEN`, `DATABASE_URL`, `S3_*` and `RESEND_API_KEY` are referred to by name only.
