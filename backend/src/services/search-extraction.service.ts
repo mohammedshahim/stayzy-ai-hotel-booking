@@ -1,7 +1,5 @@
 import { env } from "../config/env";
-import { listAmenities } from "../queries/amenities.queries";
-import { listMealPlans } from "../queries/meal-plans.queries";
-import { listRoomFeatures } from "../queries/room-features.queries";
+import { loadFilterVocabulary, resolveNames } from "./filter-vocabulary.service";
 import { postToAgent } from "./ai.service";
 import { SEARCH_SORT_OPTIONS } from "../types/search.schemas";
 import {
@@ -9,30 +7,6 @@ import {
   type ExtractedSearchFilters,
   type SearchFilterExtraction,
 } from "../types/search-extraction.schemas";
-
-interface NamedRow {
-  id: string;
-  name: string;
-}
-
-interface Resolved {
-  ids: string[];
-  unresolved: string[];
-}
-
-function resolveNames(names: string[] | undefined, vocabulary: NamedRow[]): Resolved {
-  const idsByName = new Map(vocabulary.map((row) => [row.name.toLowerCase(), row.id]));
-  const ids: string[] = [];
-  const unresolved: string[] = [];
-
-  for (const name of names ?? []) {
-    const id = idsByName.get(name.trim().toLowerCase());
-    if (id) ids.push(id);
-    else unresolved.push(name);
-  }
-
-  return { ids, unresolved };
-}
 
 function optional(ids: string[]): string[] | undefined {
   return ids.length > 0 ? ids : undefined;
@@ -65,11 +39,7 @@ export async function extractSearchFilters(
   prompt: string,
   timeoutMs: number = env.AI_REQUEST_TIMEOUT_MS,
 ): Promise<SearchFilterExtraction | null> {
-  const [amenities, roomFeatures, mealPlans] = await Promise.all([
-    listAmenities(),
-    listRoomFeatures(),
-    listMealPlans(),
-  ]);
+  const { amenities, roomFeatures, mealPlans } = await loadFilterVocabulary();
 
   const today = new Date().toISOString().slice(0, 10);
 

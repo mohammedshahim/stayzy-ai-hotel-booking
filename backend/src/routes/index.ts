@@ -19,6 +19,7 @@ import adminMealPlansRoutes from "./admin/meal-plans.routes";
 import adminBookingsRoutes from "./admin/bookings.routes";
 import adminDashboardRoutes from "./admin/dashboard.routes";
 import internalBookingsRoutes from "./internal/bookings.routes";
+import internalSearchRoutes from "./internal/search.routes";
 import aiRoutes from "./ai.routes";
 
 const router = Router();
@@ -42,6 +43,7 @@ router.use("/admin/meal-plans", adminMealPlansRoutes);
 router.use("/admin/bookings", adminBookingsRoutes);
 router.use("/admin/dashboard", adminDashboardRoutes);
 router.use("/internal/bookings", internalBookingsRoutes);
+router.use("/internal/search", internalSearchRoutes);
 router.use("/ai", aiRoutes);
 
 export default router;

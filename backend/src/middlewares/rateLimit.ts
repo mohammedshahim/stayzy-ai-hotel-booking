@@ -14,6 +14,18 @@ export const internalRateLimit = rateLimit({
   },
 });
 
+// Keyed on the user: chat is authenticated, so it cannot ride the IP-keyed limiter below.
+export const chatRateLimit = rateLimit({
+  windowMs: env.CHAT_RATE_LIMIT_WINDOW_MS,
+  limit: env.CHAT_RATE_LIMIT_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.id ?? "chat:anonymous",
+  handler: (_req, res) => {
+    res.status(429).json({ success: false, error: "Rate limit exceeded" });
+  },
+});
+
 // Keyed on IP (the library default), the opposite of internalRateLimit above and
 // deliberately so: these are real browsers on a public route, with no user to key
 // on. Behind a production proxy this needs `trust proxy` or every visitor collapses

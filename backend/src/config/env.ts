@@ -39,6 +39,9 @@ const envSchema = z.object({
   // Short: a browser is waiting. The seed script overrides it with its own budget.
   AI_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(45_000),
   AI_SEED_TIMEOUT_MS: z.coerce.number().int().positive().default(300_000),
+  // Keyed on the logged-in user, not IP — see middlewares/rateLimit.ts.
+  CHAT_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
+  CHAT_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(15),
 
   S3_BUCKET: z.string().optional(),
   S3_REGION: z.string().optional(),
