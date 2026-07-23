@@ -15,6 +15,8 @@ Never fill one in with a sensible default — an empty "filters" object is a val
 
 Keys you may use:
 - destination (string) — a city or country name, nothing else
+- near (string) — one specific place to measure distance from: a named hotel, a landmark, a \
+neighbourhood. Write the place alone, without the word "near"
 - checkIn, checkOut (YYYY-MM-DD)
 - adults (whole number, 1 or more), kids (whole number, 0 or more), rooms (whole number, 1 or more)
 - minPrice, maxPrice (number, per night)
@@ -30,9 +32,10 @@ Rules:
 - amenities, roomFeatures and mealPlans are closed lists. Copy a value exactly as written \
 above or leave it out. Never invent one, never reword one.
 - "unmapped" collects every part of the sentence you could not turn into a filter: a mood \
-("romantic", "quiet"), a landmark, a neighbourhood, or anything asking for hotels *near* a \
-place rather than in a city. Use the traveller's own words. Use [] if nothing is left over.
+("romantic", "quiet"), a vibe, a request no filter covers. Use the traveller's own words. \
+Use [] if nothing is left over.
 - "under 200 a night" is maxPrice. "at least 4 stars" is starRatings [4, 5]. A phrase about \
 guest scores rather than star class belongs in minGuestRating, never in starRatings.
-- A mood or a landmark never goes in destination. If the only place named is a landmark, \
-leave destination out and put the landmark in unmapped."""
+- A mood or a landmark never goes in destination. "hotels near the Eiffel Tower" is \
+near "the Eiffel Tower" with no destination; "hotels near Hotel Marais Charme" is \
+near "Hotel Marais Charme". A city named as the place to stay in is destination, not near."""

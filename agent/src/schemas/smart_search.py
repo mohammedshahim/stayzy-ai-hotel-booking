@@ -24,6 +24,7 @@ class ExtractedFilters(BaseModel):
     """A partial search query. An unset field means the prompt never mentioned it."""
 
     destination: str | None = None
+    near: str | None = None
     check_in: str | None = Field(default=None, alias="checkIn")
     check_out: str | None = Field(default=None, alias="checkOut")
     adults: int | None = None
