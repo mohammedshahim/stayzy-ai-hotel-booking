@@ -1,69 +1,82 @@
-# Memory — Feature 42 Nearby Search built and verified, uncommitted
+# Memory — Feature 43 Widget Graph built and verified, uncommitted
 
-Last updated: 2026-07-23
+Last updated: 2026-07-23 14:30
 
 ## What was built
 
-**Feature 42 Nearby Search, complete and verified.** Phase 12 Smart Search is now done (40, 41, 42). A search can be anchored to a point: `near` (free text) + `radiusKm` filter via `ST_DWithin` in SQL, results carry a real `distanceKm`, and `sort: "distance"` finally measures from something.
+**Feature 43 Widget graph, complete and verified.** The first LangGraph agent in the project and the first streaming route. Agent-side brain plus the `backend/` pipe that carries it. **No UI, no tables, no migration, no new dependency** — Feature 44 owns `chat_sessions`/`chat_messages` and every component.
 
-New files:
-- `backend/src/services/search-anchor.service.ts` — resolves `near` to one lat/long
-- `frontend/features/search/lib/anchor.ts` — `clearAnchor(state)`
+New — `agent/` (10 files): `streaming/events.py` (SSE vocabulary, defined once), `schemas/chat.py`, `api/chat_widget_routes.py`, and `graphs/chat_widget/` holding `state.py`, `prompts.py`, `nodes.py`, `graph.py`, `tools/search_tools.py` plus the package `__init__.py` files. Modified: `api/router.py`.
 
-Modified — `agent/` (2): `chains/smart_search/prompts.py` (landmarks now route to `near`, not `unmapped`), `schemas/smart_search.py` (`near` on `ExtractedFilters`).
+New — backend (6): `services/filter-vocabulary.service.ts`, `services/internal-search.service.ts`, `controllers/internal/search.controller.ts`, `routes/internal/search.routes.ts`, `types/chat.schemas.ts`, `types/internal-search.schemas.ts`.
 
-Modified — backend (10): `types/search.schemas.ts` (`near`, `radiusKm`, `DEFAULT_SEARCH_RADIUS_KM`/`MAX_SEARCH_RADIUS_KM`), `types/search-extraction.schemas.ts`, `services/search-extraction.service.ts` (new `pickSort`; stopped withholding `"distance"` from the model), `queries/search.queries.ts` (`ST_DWithin` + `ST_Distance/1000` in the select), `services/search.service.ts` (haversine/centroid deleted, `anchor` on the response), `controllers/search.controller.ts`, `queries/hotels.queries.ts` (new `findHotelLocationByName`; `findSimilarHotels` city equality → `ST_DWithin` 25km), `services/hotel.service.ts`, `services/geocoding/{geocoding,mapbox}.provider.ts` (new `geocodePlace`).
+Modified — backend (8): `config/env.ts`, `.env.example`, `middlewares/rateLimit.ts` (new `chatRateLimit`), `services/ai.service.ts` (new `streamFromAgent`), `controllers/ai.controller.ts` (new `streamWidgetChat`), `routes/ai.routes.ts` (rewired), `routes/index.ts`, `services/search-extraction.service.ts` (`resolveNames` lifted out).
 
-Modified — frontend (8): `types.ts`, `hooks/useSearchState.ts`, `hooks/useSearchResults.ts` (surfaces `anchor`), `lib/extraction.ts`, `components/{ActiveFilterChips,HotelCard,SortDropdown,SearchPageContent}.tsx`.
+Modified — `context/` (5): `progress-tracker.md`, `architecture.md`, `ai-phase-plan.md`, `library-docs.md`, `code-standards.md`.
 
-Modified — `context/` (4): `progress-tracker.md`, `ai-phase-plan.md`, `architecture.md`, `ui-registry.md`.
-
-**No migration, no new table, no new dependency.**
+The graph is `prepare_context → agent ⇄ tools` with five tool schemas: `SearchHotels`, `GetHotelDetails`, `ProposeSearch`, `ProposeHotel`, `ProposeCompare`.
 
 ## Decisions made
 
-Each of these is written up in full in `context/progress-tracker.md`'s Feature 42 entry — recorded here only as pointers, not duplicated.
+Each is written up in full in `context/progress-tracker.md`'s Feature 43 entry — pointers only here.
 
-- **Anchor resolution: own `hotels` table first (name `ilike`, shortest match wins), geocoder only on a miss.** Hotel names never touch Mapbox.
-- **`near` resolves server-side per request**, not client-side coordinates in the URL. Search paginates in JS *after* building the full result set, so every page click re-resolves — absorbed by a module-level phrase→anchor `Map` that caches misses too and clears past 200 entries. **In-process map, not a table; Feature 39's no-cache-table rule is intact.**
-- **The centroid haversine is deleted, not repaired.** No anchor → `sort: "distance"` falls back to `recommended` *and* the Distance option is disabled in `SortDropdown`.
-- **A real `near` field in the extraction chain — a deviation from `ai-phase-plan.md:274`**, which expected a heuristic over `unmapped`. That line is now marked superseded in the plan itself. `pickSort` keeps the backend authoritative: a `near` forces `sort: "distance"`; a `distance` without a `near` is dropped.
-- **Both radii 25 km** (search default, cap 100; similar-hotels rail fixed). Seed-driven, not guessed — see Problems solved.
-- **`distanceKm` returned and rendered on the card** — an agreed scope addition beyond the plan's wording.
-- **An unresolvable `near` degrades, never 400s** — response carries `anchor: null` and the UI says so.
+- **`sessionId` comes from `backend/` and is used as the checkpointer `thread_id` verbatim.** `widget:{userId}` today, `chat_sessions.id` in Feature 44, **zero Python changes between them.**
+- **A hotel id never enters the model's token stream.** Tools return names, `state.hotel_ids` records the ids they saw, and the graph maps a model-chosen name back to a real id when building a chip. Keeps Feature 40's no-uuid invariant while still shipping chips that need a uuid.
+- **Chips carry filters as names, never a URL.** Supersedes `architecture.md`'s "the AI writes a URL". The frontend maps names to ids from its own catalog and pushes the URL via the existing `toSearchState`.
+- **`GET /internal/search` takes filter names**, resolves them, and delegates to an untouched `search.service.ts`. `pageSize` defaults to 5, caps at 10 — every result is spent as model context.
+- **`aiRateLimit` moved from `router.use()` to the three public `/ai` routes individually**, so chat can carry a user-keyed `chatRateLimit`. **Supersedes point 2 of the Phase 11 inheritance list** — a new `/ai` route is no longer covered automatically and must name its own limiter.
+- **Context is assembled per call and never persisted into history.** A stale block becomes structurally impossible rather than merely labelled.
+- **Tool loop capped at 4 rounds by unbinding the tools** (not by raising), with `recursion_limit: 12` behind it. Worst case is 5 model calls per user message.
 
 ## Problems solved
 
-- **The Mapbox token has no POI data — the landmark path was silently anchoring on the wrong continent.** First run put `near=Eiffel Tower` in *the Philippines* and geocoded a garbage phrase "successfully" to California. Root cause is not a low score: "Eiffel Tower" matches a street named **Eiffel Tower Street** at relevance **1.0**, so no threshold catches it. Probing both the v5 and v6 APIs showed `types=poi` returns **nothing at all**. Fix: a separate `geocodePlace(query)` that excludes street/address types and requires relevance ≥ 0.8, leaving `geocode(address)` untouched for admin hotel create, which genuinely needs street matching. **Do not collapse the two methods.** Net effect: POI landmarks resolve to no anchor and say so; cities/neighbourhoods/districts work correctly. A POI-enabled token would light up the landmark path with zero code change.
-- **The radius could not be guessed from intuition.** Measured against the real seed: the two Paris hotels are **2.4 km** apart, the two Tokyo hotels **10.5 km**. A 5 km default passes the Paris acceptance test but makes "near Shibuya Sky Hotel" return only itself; 10 km fails Tokyo by half a kilometre. Hence 25 km. **It is wide for a real city and only defensible because the seed is sparse.**
-- **Playwright is not a project dependency** even though earlier features used it — browsers are cached under `~/Library/Caches/ms-playwright` but the package is absent. Install it `--no-save` into a scratch dir rather than adding it to `frontend/package.json`.
+- **`stream_mode="messages"` emits every message a node produces, not just LLM output.** Raw tool results were streaming to the client as assistant prose. Fixed by filtering on `AIMessageChunk`. This is not documented obviously and will bite any future graph.
+- **The context block must go LAST, after the message history.** Placed right after the system prompt it gets buried by a long conversation: asked "how much is this one?" on a newly opened hotel page, the model answered about the *previous* hotel, then corrected itself. Moving it to the end fixed it immediately. **Do not tidy it back up next to the system prompt.**
+- **A ReAct model writes its answer, calls a tool, then writes the same answer again.** Prompt wording reduced it but never eliminated it. Solved structurally: `token` events carry the id of the reply they belong to and a `drop` event retracts one. **Feature 44 must group by `id` and honour `drop` or users see duplicate paragraphs.**
+- **LangGraph 1.2.9 defaults `recursion_limit` to 10007** (`langgraph/_internal/_config.py:32`), not the 25 older versions used. The framework provides no useful loop ceiling — assume none exists.
+- **The model invented a currency** (`€320` where the app renders `$320`) because the tool output carried a bare number. Fixed by putting `USD` in the tool output and a currency rule in the prompt.
+- **`AGENT_BASE_URL=... pnpm dev` does not override the value in `backend/.env`** — dotenv wins. An attempt to point the backend at a stub SSE server silently hit the real agent instead, costing two unintended paid model calls. Edit `.env` or use a different mechanism.
+- **The seed has no Swimming Pool on any hotel**, though the amenity exists in the catalog. The plan's flagship phrase "cheaper ones with a pool" returns nothing. Use Gym (4 hotels), Restaurant/Bar/Air Conditioning (3), Parking (2) or Spa (1) for demos.
+- **`ai-phase-plan.md`'s widget position cites a precedent that does not exist.** It says `fixed bottom-6 right-6`, "same as the Compare Tray", but the registry records the Tray as `fixed bottom-4 inset-x-0 mx-auto max-w-3xl` — centred, not right-aligned. They can also **overlap** around 800–900px viewport width, and both persist across pages. Recorded as a Feature 44 pre-condition.
 
 ## Current state
 
-- **Features 36–42 complete. Phase 12 is done.** Next phase is 13 (Chat Widget).
-- Verified end-to-end in a real headless browser against the real seeded database: **15/15 checks, zero console errors.** Covers anchored ordering, distances on cards, the Near chip and its removal cascading to sort, the disabled Distance option, the honest unresolvable-landmark notice, a city anchor, and the similar-hotels rail.
-- Backend `pnpm build`, frontend `tsc --noEmit` + `pnpm lint` + `pnpm build`, agent `ruff check` + `ruff format --check` — all clean.
-- **All 26 changed files are uncommitted.** Working tree is dirty; `origin/main` and local `main` are both at `2716570`. Nothing was pushed.
-- No dev servers left running. No test data created — this feature writes no rows.
+- **Features 36–43 complete. Phase 13 is in progress** — only Feature 44 remains in it.
+- Verified against the real running stack and the real seeded database: internal search (401 without secret, name-resolved amenity filtering, invented names returned in `unresolvedFilters`, anchor + distances, page-size cap), widget turns over SSE (real tool calls, multi-turn memory, context following navigation, stale reference resolved, booking/payment refused, out-of-domain refused, chips carrying ids the model never saw), and through `backend/` (logged-out 401, `RateLimit-Limit: 15` proving the user-keyed limiter, correct SSE headers, tokens arriving incrementally rather than buffered). Chip dedupe and loop termination covered by a direct no-LLM test, 5/5.
+- Backend `pnpm build` clean, agent `ruff check` + `ruff format --check` clean. `frontend/` untouched.
+- **All 21 code files plus 5 context files are uncommitted.** Working tree dirty; local `main` and `origin/main` both at `138e476`.
+- **The LLM model was changed mid-session by the developer to `qwen/qwen3.5-flash-02-23` in both slots** (fast and smart). It is a paid model. It **loops** where the previous free Nemotron did not — one message produced 51 assistant turns — which is what prompted the tool-loop cap.
+- **The tool-loop cap and chip dedupe are unit-verified but have not had one live run on qwen.** The developer asked to stop spending tokens on testing, so this is the one gap.
+- A throwaway user `widget-probe@example.com` exists in the dev database from session-cookie testing.
+- No dev servers left running; ports 4000/4100 released.
 
 ## Next session starts with
 
-**Commit Feature 42, then start Feature 43.**
+**Commit Feature 43, then start Feature 44.**
 
-Commit in four parts per the standing one-commit-per-concern rule — do not squash, stage by path:
-1. `agent/` — the `near` extraction field and prompt rules
-2. backend — anchor resolution, `ST_DWithin`, the `geocodePlace` split
-3. frontend — `near` in URL state, the chip, card distance, sort rule
-4. `docs(context)` — the four context files
+Commit in three parts per the standing one-commit-per-concern rule — stage by path, do not squash. There is **no frontend commit this time**:
 
-Then **Feature 43 Widget graph** — read `context/ai-phase-plan.md`, not `build-plan.md`. First feature of Phase 13 and the first to use LangGraph rather than a single-shot chain.
+1. `agent/` — the widget graph, tools, SSE vocabulary, chat route
+2. backend — `/internal/search`, `chatRateLimit`, `streamFromAgent`, the `ai.routes.ts` rewiring
+3. `docs(context)` — the five context files
+
+Then **Feature 44 Widget persistence + UI** — read `context/ai-phase-plan.md`, not `build-plan.md`. Four things it must honour, all listed at the top of `progress-tracker.md`:
+
+1. Group `token` frames by their `id` and honour `drop`, or the user sees duplicate prose.
+2. Chips carry filter **names**; map to ids from `useSearchCatalogs` then go through the existing `toSearchState`. `open_hotel`/`compare` chips already carry a resolved `hotelId`.
+3. Send `sessionId` as the real `chat_sessions.id` in place of `widget:{userId}`.
+4. Resolve the widget-vs-Compare-Tray position conflict before building. Follow the **Floating Compare Tray** for elevation (`shadow-elevated`), not the **Panel** entry.
+
+Worth doing early and cheaply: one live widget turn on qwen to confirm the tool-loop cap behaves as designed.
 
 ## Open questions
 
-- **Should the 25 km default be revisited before production?** It is a sparse-seed artefact. Real inventory would want something tighter, and the number lives in one constant (`DEFAULT_SEARCH_RADIUS_KM` in `search.schemas.ts`, plus `SIMILAR_HOTELS_RADIUS_KM` in `hotels.queries.ts`).
-- **Is a POI-enabled Mapbox plan worth buying?** The landmark half of nearby search is written and correct but inert with the current token — "hotels near the Eiffel Tower" honestly reports that it could not place the landmark. No code change needed if the token gains POI access.
-- **Carried over, unrelated to 42:** `trust proxy` must be settled at deployment or the IP-keyed `aiRateLimit` is effectively disabled in production. S3 credentials are still blank in this dev environment (open Known Issue since Feature 07).
+- **Does the tool-loop cap hold on qwen in practice?** Logic is unit-verified; one real turn would confirm the unbind-at-4-rounds path.
+- **Is `qwen/qwen3.5-flash-02-23` the right model for the widget?** It loops without a cap and is paid. The fast/smart split exists in `settings.py` precisely so the two can differ — currently both slots hold the same model.
+- **Widget vs Compare Tray stacking** — tray above bubble, or bubble offset upward when the tray is open?
+- **`Architecture Decisions` and `Session Notes` in `progress-tracker.md` have been dormant since 2026-07-19** — Features 36–43 all put everything in `Completed Features` instead. Revive them or mark them retired; right now they read as neglected.
+- **Carried over, unrelated to 43:** `trust proxy` must be settled at deployment or the IP-keyed `aiRateLimit` is effectively disabled in production. S3 credentials still blank in this dev environment (open since Feature 07). The Feature 16 rating-consistency question is still open.
 
 ## Note on secrets
 
-No credentials, tokens or keys are recorded in this file. `MAPBOX_ACCESS_TOKEN`, `DATABASE_URL`, `S3_*` and `RESEND_API_KEY` are referred to by name only.
+No credentials, tokens, keys, cookies or connection strings are recorded in this file. `OPENROUTER_API_KEY`, `INTERNAL_SERVICE_SECRET`, `DATABASE_URL`, `MAPBOX_ACCESS_TOKEN`, `S3_*` and the test account's password are referred to by name only, never by value.
