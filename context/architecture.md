@@ -695,7 +695,7 @@ Three invariants this path establishes:
 
 **`AI_REQUEST_TIMEOUT_MS` is one global ceiling for every AI call, raised from 20s to 45s in Feature 41.** Not a per-feature override: `postToAgent`'s `timeoutMs` parameter remains available but nothing uses it. Cached features lose nothing by waiting longer (the ceiling is only reached on a miss), while smart search has no cache and pays full generation cost on every request — a measured extraction hit 17.7s, about two seconds under the old limit. 45s sits below the ~60s cut a production proxy typically imposes; **raising it further requires checking that proxy first**, and `trust proxy` must be settled at deployment or the IP-keyed `aiRateLimit` guarding these calls is effectively disabled.
 
-### Chat (Features 43–48, not yet built)
+### Chat (Feature 43 built 2026-07-23; Features 44–48 not yet built)
 
 ```
 User sends a message
@@ -714,6 +714,17 @@ On graph completion, agent/ POSTs the finished turn to /internal/chat/messages
 Persistence is deliberately **not** coupled to the stream — if the user closes the tab mid-reply, the stream dies but the message still lands.
 
 Two stores hold the conversation, with an explicit winner: `chat_messages` is the source of truth for **display**; the checkpointer is the source of truth for **execution** (tool results, interrupt state, graph position). On load, a mismatch is logged as a warning and `chat_messages` wins — never thrown. See `ai-phase-plan.md` for why.
+
+**Added 2026-07-23 (Feature 43).** The widget graph lives in `agent/src/graphs/chat_widget/` and runs `prepare_context → agent ⇄ tools`. What the rest of Phase 13–14 inherits:
+
+- **The SSE frame shape is fixed by its consumer.** `frontend/`'s `useChatStream` splits on a blank line and `JSON.parse`s the whole frame, so every frame is `data:`-only and the event kind travels **inside** the JSON. An `event:` line would break the parse. `agent/src/streaming/events.py` is the one place this is written.
+- **`token` frames carry the id of the reply they belong to, and a `drop` frame retracts one.** A ReAct model routinely answers, calls a tool, then answers again; `drop` is what stops the user seeing the paragraph twice. A client that ignores it renders duplicates.
+- **A hotel id never enters the model's token stream.** Tools return names; `state.hotel_ids` records the ids they saw; the graph maps a model-chosen name back to a real id when it builds a chip. This is how Feature 40's no-uuid invariant survives contact with chips that need a uuid.
+- **The `thread_id` is supplied by `backend/` and used verbatim.** `agent/` never mints or interprets it, so swapping `widget:{userId}` for a real `chat_sessions.id` in Feature 44 touches no Python.
+- **Page context is assembled per call and never persisted into the history, and it goes *last*, after the messages.** Placed after the system prompt it gets buried by a long conversation and the model resolves "this one" to whatever hotel came up most recently. This was observed, not theorised — do not move it back.
+- **The tool loop is bounded by unbinding tools at 4 rounds, with `recursion_limit: 12` behind it.** LangGraph 1.2.9 defaults `recursion_limit` to **10007**, so the framework provides no useful ceiling of its own.
+
+**Superseded by Feature 43:** "the AI changes what you are looking at reduces to the AI writes a URL" is not how it shipped. The model cannot emit an amenity uuid and `backend/` may not parse the stream to insert one, so an `action` frame carries a **partial filter object with names**, in the `ExtractedSearchFilters` shape from Features 40–41. The frontend maps names to ids from the catalog it already holds and builds the URL itself through `toSearchState`. The AI still never writes search *results* — only filters.
 
 ---
 
@@ -1040,6 +1051,8 @@ Rules Claude must never violate:
 - Neither frontend ever calls `agent/` directly — every AI feature is a `backend/` route that internally calls `agent/`. `agent/` never sees a user session cookie.
 - `agent/` never writes to a product table. Every mutation goes through `backend/src/routes/internal/*`, which are thin wrappers around existing services and contain no new business logic.
 - `backend/src/routes/internal/*` is reachable only with the internal service secret. A **user-scoped** internal route additionally requires an explicit acting user id and rejects the call without one — it never infers the user from a session. Not every internal route is user-scoped (hotel summary generation is not), so `requireInternalService` enforces the secret always and the acting user never; the route owns that check. Implemented in Feature 37; `GET /internal/bookings` is the reference.
+- **`aiRateLimit` is mounted per-route on `/ai`, not on the router.** Feature 43 moved it: chat is authenticated and must key on the user, while its siblings are public and must key on IP, and a router-wide limiter cannot be both. A new `/ai` route names its own limiter — it is no longer covered automatically.
+- **A tool loop needs its own ceiling.** LangGraph 1.2.9 defaults `recursion_limit` to 10007, so a chatty model can loop until the client disconnects, billing every lap. The widget graph unbinds its tools after 4 rounds so the model must answer in words, with `recursion_limit` set explicitly behind it. Prefer unbinding to raising: an error costs the same tokens and gives the user nothing.
 - **Every inbound route that reaches `agent/` carries a rate limit.** That is the mount that bounds OpenRouter spend — `internal/*` is `agent/`→`backend/`, costs nothing, and limiting it throttles a chatbot turn's tool loop while leaving summary generation unbounded. `middlewares/rateLimit.ts` is the reusable piece; a feature that adds an AI route and no limiter has not finished.
 - **A limiter keys on the acting user when the route is authenticated, and on IP when it is public.** These are opposites and both are deliberate. `internalRateLimit` must not key on IP: all internal traffic comes from the one `agent/` process, so an IP key collapses every user into one bucket. `aiRateLimit` cannot key on a user: the hotel page is public, so there is no user to key on. Anyone reading one after the other will assume the second is a bug; it is not.
 - **`trust proxy` is unset, and that is a Phase 16 decision, not an oversight.** IP keying only works if Express sees the real client address. Behind a load balancer it does not, and every visitor shares one bucket. Setting `trust proxy` without knowing the deployment topology is strictly worse — it makes `X-Forwarded-For` forgeable and the limiter bypassable by anyone who sends a header. Revisit when the host is chosen.

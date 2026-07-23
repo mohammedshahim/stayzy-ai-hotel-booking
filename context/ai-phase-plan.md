@@ -119,6 +119,8 @@ The widget is not a Q&A box. Because it lives inside the Next.js app, its answer
 
 **Context-staleness rule.** A rolling session spanning five hotels makes "book this one" ambiguous. Current page context is injected as a fresh system message each turn, and prior context blocks are marked stale in the history. Without this, a long session gets steadily more confused — this is the main cost of rolling over per-page, and it must be handled in Feature 43, not deferred.
 
+*Built 2026-07-23 (Feature 43), with one change:* nothing is written into the history to be marked stale later. A single context block is assembled per call and names earlier pages as closed, so a stale block cannot exist rather than merely being labelled. It is appended **after** the messages — ahead of them it loses to whatever was mentioned most recently, which was observed in testing, not predicted.
+
 **The safety property holds:** the widget can propose anything and can change what you are looking at, but it can never move money or write your data. That stays exclusively at `/assistant`.
 
 ---
@@ -282,6 +284,7 @@ Three things this sketch did not anticipate, all now settled:
 
 **43. Widget graph** — read-only tools, rolling session, per-turn context injection with staleness marking, SSE out.
 *Test:* multi-turn Q&A behaves correctly; context follows navigation; a stale reference does not confuse the model.
+*Shipped 2026-07-23 as:* the above plus three chip-proposal tools (`ProposeSearch`, `ProposeHotel`, `ProposeCompare`), `GET /internal/search` taking filter **names** so the model never handles a uuid, a user-keyed `chatRateLimit`, and a tool-loop cap. Staleness is implemented by **not persisting** context into the history at all — one block, assembled per call, carrying a short trail of earlier pages — rather than by writing blocks and later marking them. The block is appended **after** the message history; placed after the system prompt the model resolves "this one" to the most recently mentioned hotel instead of the current page. `chat_sessions` stayed in Feature 44: `agent/` takes `sessionId` verbatim as the thread id, so `widget:{userId}` today becomes a real row id later with no Python change.
 
 **44. Widget persistence + UI** — `chat_sessions`/`chat_messages` + down migrations, `useChatStream`, `ChatThread`, action chips, context indicator, "New chat".
 

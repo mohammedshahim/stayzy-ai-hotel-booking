@@ -408,7 +408,8 @@ Never hardcode any key, URL, or secret anywhere in the codebase. Each app has it
 | `INTERNAL_RATE_LIMIT_WINDOW_MS` / `INTERNAL_RATE_LIMIT_MAX` | backend | `middlewares/rateLimit.ts` (Feature 37) — defaults to 120 requests per 60s per acting user |
 | `AGENT_BASE_URL`                      | backend           | `services/ai.service.ts` (Feature 38) — defaults to `http://localhost:4100` |
 | `AI_RATE_LIMIT_WINDOW_MS` / `AI_RATE_LIMIT_MAX` | backend | `middlewares/rateLimit.ts` (Feature 38) — defaults to 20 requests per 60s **per IP**, since the AI routes are public |
-| `AI_REQUEST_TIMEOUT_MS`               | backend           | `services/ai.service.ts` (Feature 38) — 20s, the browser-facing budget |
+| `CHAT_RATE_LIMIT_WINDOW_MS` / `CHAT_RATE_LIMIT_MAX` | backend | `middlewares/rateLimit.ts` (Feature 43) — defaults to 15 requests per 60s **per user**, since chat is the one authenticated AI route |
+| `AI_REQUEST_TIMEOUT_MS`               | backend           | `services/ai.service.ts` (Feature 38) — 45s since Feature 41, the browser-facing budget; not applied to streaming chat |
 | `AI_SEED_TIMEOUT_MS`                  | backend           | `config/seed-ai-summaries.ts` (Feature 38) — 300s; nothing is waiting on the CLI, so it can afford a slow model |
 | `BACKEND_INTERNAL_URL`                | agent             | `clients/backend_client.py` (Feature 36) — required, no default |
 | `OPENROUTER_API_KEY`                  | agent             | `config/llm.py` (Feature 36)                       |

@@ -23,9 +23,18 @@ After completing any feature:
 
 ## Current Status
 
-**Phase:** 12 — Smart Search (AI phase) — **complete**
-**Current feature:** none — Phase 12 is done
-**Next up:** 43 Widget graph — read **`ai-phase-plan.md`**, not `build-plan.md`. First feature of Phase 13, and the first to use LangGraph rather than a single-shot chain.
+**Phase:** 13 — Chat Widget (AI phase) — **in progress**
+**Current feature:** none — 43 is done
+**Next up:** 44 Widget persistence + UI — read **`ai-phase-plan.md`**, not `build-plan.md`. `chat_sessions`/`chat_messages` + down migrations, `useChatStream`, `ChatThread`, action chips, context indicator, "New chat".
+
+**Three things Feature 44 must honour, all established by 43 and none of them optional:**
+
+1. **Group tokens by their `id` and honour the `drop` event.** A `token` frame carries the id of the reply it belongs to; a `drop` frame retracts that whole reply. Ignore it and the user sees the same paragraph twice, because the model re-answers after a tool call.
+2. **Chips carry filter *names*, not ids and not a URL.** Map names to ids from the catalog `useSearchCatalogs` already loads, then go through the existing `toSearchState`. `open_hotel`/`compare` chips carry a real `hotelId` already resolved by `agent/`.
+3. **Send `sessionId` as the real `chat_sessions.id`** in place of today's `widget:{userId}`. `agent/` takes it verbatim as the checkpointer thread id and needs no change.
+4. **The plan's widget positioning cites a precedent that does not exist.** `ai-phase-plan.md` puts the collapsed trigger at `fixed bottom-6 right-6`, "same positioning precedent as the Compare Tray" — but `ui-registry.md` records the Tray as `fixed bottom-4 inset-x-0 mx-auto max-w-3xl`, centred and at `bottom-4`. They are different, and they can **overlap**: the Tray is centred at `max-w-3xl` while the bubble hugs the right edge, so around 800–900px wide the Tray spans nearly the full width and the bubble lands on top of it. Both persist across pages, so this is a normal state, not an edge case. Decide the stacking before building — the Tray sitting above the bubble, or the bubble offset upward when the Tray is open. For elevation, follow the **Floating Compare Tray** (`shadow-elevated`), not the **Panel** entry (no shadow): floating surfaces carry the shadow, inline panels do not.
+
+**The model was changed to `qwen/qwen3.5-flash-02-23` (both slots) during Feature 43.** It loops where the previous free Nemotron did not — one message produced 51 assistant turns — which is why the widget graph caps its tool loop. Any new graph or chain needs the same protection; do not assume a model stops on its own.
 
 **The Mapbox token in use has no POI data, and Feature 42 is shaped around that.** Verified against the live API on both the v5 and v6 endpoints: "Eiffel Tower" returns *Eiffel Tower Street, Philippines* at relevance **1.0**, "Times Square" returns a street in Australia, and `types=poi` returns nothing at all. A relevance threshold alone cannot catch this — the bad match scores perfectly. So `geocodePlace` excludes street and address types outright and additionally requires relevance ≥ 0.8. The consequence is deliberate: **a POI landmark resolves to no anchor and the UI says so, rather than silently anchoring on the wrong continent.** Cities, neighbourhoods and districts all resolve correctly ("Paris", "Shibuya", "Manhattan", "Asakusa Tokyo" verified), and hotel names never touch the geocoder. A POI-enabled token would light up the landmark path with no code change.
 
@@ -145,7 +154,7 @@ Planned in `ai-phase-plan.md`. Read that file, not `build-plan.md`, for every fe
 
 ### Phase 13 — Chat Widget
 
-- [ ] 43 Widget graph
+- [x] 43 Widget graph
 - [ ] 44 Widget persistence + UI
 
 ### Phase 14 — Chatbot
@@ -175,6 +184,32 @@ Moved from Phase 9 on 2026-07-19. Scope widened: `agent/` is a fourth deployable
 ---
 
 ## Completed Features
+
+### ✅ 43 Widget graph — completed 2026-07-23
+
+Notes: the first LangGraph agent in the project, and the first streaming route. `agent/src/graphs/chat_widget/` holds a `prepare_context → agent ⇄ tools` loop compiled against the Feature 36 checkpointer, with five tool schemas: two read-only data tools (`SearchHotels`, `GetHotelDetails`) and three chip proposals (`ProposeSearch`, `ProposeHotel`, `ProposeCompare`). `agent/src/streaming/events.py` defines the SSE vocabulary once. New `backend/` pieces: `GET /internal/search`, `chatRateLimit`, `streamFromAgent`, `streamWidgetChat`, and `types/chat.schemas.ts`. **No table, no migration, no new dependency** — Feature 44 owns `chat_sessions`/`chat_messages` and the entire UI.
+
+Decision: **`sessionId` arrives from `backend/` and is used as the checkpointer `thread_id` verbatim.** `agent/` never mints, stores, or interprets it. Feature 43's backend sends `widget:{userId}` — literally one rolling session per user; Feature 44 sends the real `chat_sessions.id` instead and **`agent/` does not change at all.**
+
+Decision: **a hotel id never enters the model's token stream.** Chips need a uuid (`/hotels/[id]`, and `CompareProvider` stores ids), but letting the model echo one back invites a one-character corruption that 404s. Tools return names only; `state.hotel_ids` records the ids they saw, and `nodes.py` maps a model-chosen name back to the real id. Feature 40's no-uuid invariant holds without giving up the chips.
+
+Decision: **chips carry filters as names, never a URL.** `architecture.md` said "the AI writes a URL", but the model cannot produce an amenity uuid, and `backend/` is forbidden from parsing the stream to fix one up. So the action payload uses the `ExtractedSearchFilters` shape from Features 40–41 with amenities as names, and the frontend maps them via the catalog it already loads and pushes the URL itself. **That line in `architecture.md` is now superseded.**
+
+Decision: **`GET /internal/search` takes filter *names*.** `resolveNames` moved out of `search-extraction.service.ts` into `services/filter-vocabulary.service.ts` and the new route resolves then delegates to an untouched `search.service.ts` — a thin wrapper with no new business logic, as the internal-routes invariant requires. Its `pageSize` defaults to 5 and caps at 10, far below the public 9/100: every result is spent as model context. Feature 45's tool suite inherits all of it.
+
+Decision: **`aiRateLimit` moved from `router.use()` onto the three public `/ai` routes individually**, so the authenticated chat route can carry a user-keyed `chatRateLimit` instead. This **supersedes point 2 of the Phase 11 inheritance list** ("any route added there is covered automatically") — that is no longer true, and a new `/ai` route must now name its own limiter. Follows the standing rule that an authenticated route keys on the user and a public one keys on IP.
+
+Decision: **the context block is assembled per call and never persisted into the message history.** Only the current page is ever live; earlier pages survive as a short `viewed` trail rendered into the same block. Simpler than writing and later rewriting stale system messages, and it makes a stale block structurally impossible rather than merely marked.
+
+Decision: **the context block goes *last*, after the history, not straight after the system prompt.** Found by testing, not by reasoning: placed up front it is buried above a long conversation and loses to whichever hotel was mentioned most recently — asked "how much is this one?" on a newly opened hotel page, the model answered about the *previous* hotel and only then corrected itself. Moved to the end it resolves correctly and immediately. **Do not "tidy" it back up next to the system prompt.**
+
+Decision: **`token` events carry the id of the reply they belong to, and a `drop` event retracts one.** A ReAct model routinely writes a full answer, calls a tool, then writes the same answer again; without this the user sees the paragraph twice. `nodes.py` emits `drop` for any assistant message that had both content and tool calls. Feature 44 must group tokens by `id` and discard a dropped bubble — this is not optional polish, it is how the stream avoids duplicate prose.
+
+Decision: **the tool loop is capped at 4 rounds by unbinding the tools, not by raising an error.** Past the cap the model is called with no tools bound, so it must answer in words and the turn ends cleanly with a real reply. `recursion_limit: 12` sits behind it as a hard backstop. Both are needed: **LangGraph 1.2.9 defaults `recursion_limit` to 10007** (`langgraph/_internal/_config.py:32`), not the 25 older versions used, so the framework's own guard is effectively off. Worst case per user message is now 5 model calls; before the cap it was unbounded. Chips are also deduped by kind + hotel id (or label), and a repeat proposal gets a corrective tool result rather than a second chip.
+
+Verified against the real running stack and the real seeded database. `GET /internal/search`: 401 without the secret, real hotels with the secret, `Swimming Pool` resolved and filtered, the invented `Helipad Lounge` returned in `unresolvedFilters` rather than silently filtering, anchor + distances on both a hotel name and a city, `pageSize=50` rejected at the cap. Widget turns over SSE: a real tool call returning real inventory, multi-turn memory answering a follow-up with no second tool call, context following a simulated navigation so "this one" resolved to the new hotel, a stale reference ("the first one I looked at") answered correctly, booking and payment refused, out-of-domain refused, and chips carrying real ids the model never saw. Through `backend/`: logged-out 401 before any agent call, `RateLimit-Limit: 15` confirming the user-keyed limiter rather than the public one, correct SSE headers, and tokens arriving incrementally over ~0.5s rather than as one buffered lump. Dedupe and loop termination covered by a direct no-LLM test — 5/5. `pnpm build` clean (backend), `ruff check` + `ruff format --check` clean (agent). `frontend/` untouched.
+
+Open: **the tool-loop cap was added after the model was switched to `qwen/qwen3.5-flash-02-23`, and the capped path has not yet had a live run.** The earlier model (`nvidia/nemotron-3-ultra-550b-a55b:free`) terminated on its own and never reached the cap; qwen looped indefinitely, 51 assistant turns inside a single request, which is what prompted the cap. The cap's logic is unit-verified but one real turn on qwen should confirm it in practice. A throwaway user `widget-probe@example.com` was created for session-cookie testing and is still in the dev database.
 
 ### ✅ 42 Nearby Search — completed 2026-07-23
 

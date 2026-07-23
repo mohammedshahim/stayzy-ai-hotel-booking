@@ -570,7 +570,9 @@ export const createBookingSchema = z.object({
 
 - The checkpointer is `PostgresSaver` in **every** environment, including local dev. `InMemorySaver` is for tests only. Developing human-in-the-loop flows on in-memory state hides a real behavioral difference — a paused `interrupt()` survives a restart in production and does not in memory
 - Checkpointer schema is created by the library's own `.setup()` call. Never Alembic, never a hand-rolled migration, never a Drizzle table
-- `thread_id` is always `chat_sessions.id`. No other identifier is ever used as a thread key
+- `thread_id` is supplied by `backend/` in the request body and used **verbatim** — `agent/` never mints, stores, or interprets it. Feature 44 onward it is `chat_sessions.id`; Feature 43 ships `widget:{userId}` because the table does not exist yet, and swapping the two changes no Python
+- **A tool loop needs an explicit ceiling.** `recursion_limit` defaults to **10007** in LangGraph 1.2.9 (`langgraph/_internal/_config.py`), not the 25 older versions used, so the library stops nothing. Bound the loop by unbinding the tools after N rounds — the model must then answer in words — and set `recursion_limit` behind it as a backstop. Raising an error instead costs the same tokens and gives the user nothing
+- **`stream_mode="messages"` emits every message a node produces, not just LLM output.** Tool results arrive on the same channel, so filter on `AIMessageChunk` before treating a chunk as assistant text
 - The checkpointer is **execution** state only. Nothing outside the graph reads it for display — `chat_messages` in `backend/`'s Postgres is the display source of truth
 - Every mutating tool is gated behind `interrupt()` before it executes. No exceptions, and none are registered on the widget graph at all
 - One ReAct agent plus a tool node. **Not** a multi-agent supervisor — the tool count does not justify one, and adding one is a decision to revisit explicitly, not to drift into
@@ -590,18 +592,22 @@ export const createBookingSchema = z.object({
 Chat replies stream; summaries and query extraction do not. The event vocabulary is defined once, in `agent/src/streaming/events.py`:
 
 ```
-{type:"token", text}          → append to the in-flight assistant message
-{type:"tool_start", name}     → render the tool-status chip
-{type:"tool_end"}             → clear the chip
-{type:"action", action}       → navigate / compare-toggle proposal (widget)
-{type:"interrupt", payload}   → render the confirmation card (chatbot)
-{type:"done", messageId}      → finalize
-{type:"error", message}       → render inline error + retry
+{type:"token", text, id}          → append to the assistant message with this id
+{type:"drop", id}                 → discard that message entirely (widget)
+{type:"tool_start", tool}         → render the tool-status chip
+{type:"tool_end", tool, summary}  → clear the chip
+{type:"action", kind, label, ...} → navigate / open_hotel / compare proposal (widget)
+{type:"interrupt", payload}       → render the confirmation card (chatbot, not yet built)
+{type:"done"}                     → finalize
+{type:"error", message}           → render inline error + retry
 ```
 
 **Rules:**
 
+- **Every frame is `data:`-only, with the kind inside the JSON.** `useChatStream` splits on a blank line and `JSON.parse`s the whole frame, so an `event:` line breaks it. One frame per event, never a multi-line `data:`
+- **A reply can be retracted.** A ReAct model routinely answers, calls a tool, then writes the same answer again, so `token` frames carry the id of the message they belong to and `drop` discards one. A client that ignores `drop` renders the paragraph twice
 - **`backend/` is a byte pipe.** It authenticates the session, opens the upstream request with the service secret, and pipes the body through with `Content-Type: text/event-stream`. It never parses, buffers, or interprets the stream
+- **No timeout on a streaming call.** `AI_REQUEST_TIMEOUT_MS` is a request/response ceiling and would cut a legitimate reply mid-sentence; a client disconnect is what ends a stream
 - **Persistence is not coupled to the stream.** `agent/` POSTs the finished turn to `/internal/chat/messages` on graph completion, so a closed tab still persists the message
 - The frontend uses `fetch` + `response.body.getReader()`, **not `EventSource`** — `EventSource` cannot POST a body
 - Streaming lives in exactly one frontend file, `useChatStream`. `lib/api-client.ts` is untouched and continues to serve every non-chat feature
