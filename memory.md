@@ -1,91 +1,68 @@
-# Memory — Feature 40 Query Extraction Chain
+# Memory — Feature 41 shipped, Feature 42 architected (not built)
 
-Last updated: 2026-07-22
+Last updated: 2026-07-23
 
 ## What was built
 
-**Feature 40 is complete and verified end-to-end.** A natural-language prompt becomes the structured filters `searchQuerySchema` already defines, plus the phrases that became no filter at all. Third AI feature, and the **first with no cache, no table and no migration**. No UI — that is Feature 41.
+**No new code this session.** Feature 41 Smart Search UI had been fully built and verified in the *previous* session but was left uncommitted in the working tree. This session verified it still builds, committed it, and then ran `/architect` for Feature 42 up to the point of needing developer confirmation.
 
-`backend/`:
-- `types/search-extraction.schemas.ts` (new) — `searchExtractionBodySchema` (prompt, capped at `MAX_EXTRACTION_PROMPT_LENGTH = 500`), the all-optional `extractedFiltersSchema`, `agentExtractionSchema`
-- `services/search-extraction.service.ts` (new) — loads the three taxonomies, calls `agent/`, resolves names → uuids, drops misparsed date/price pairs
-- `extractSearchQuery` in `ai.controller.ts`; `POST /ai/search/extract` in `ai.routes.ts`
-- Two refactors: `postToAgent<T>(path, body, timeoutMs)` split out of `requestSummary` in `ai.service.ts` (exported; the generic fetch + envelope-unwrap half, now shared by both features), and `SEARCH_SORT_OPTIONS` exported from `search.schemas.ts` instead of the sort list living inline in the zod enum
+Feature 41's files (written last session, committed this one):
+- `frontend/features/search/components/SmartSearchBox.tsx`, `hooks/useSmartSearch.ts`, `lib/extraction.ts` (all new)
+- `frontend/features/search/types.ts` — gained `ExtractedSearchFilters` / `SearchFilterExtraction`
+- `FilterSidebar.tsx` — new `onSmartSearch` prop; `SearchPageContent.tsx` — wires it to `update(partial, { history: "push" })`
+- `backend/src/config/env.ts` + `.env.example` — `AI_REQUEST_TIMEOUT_MS` 20s → 45s
+- Six `context/` files updated
 
-**No new env vars, no migration, no seed command, no new dependencies.**
+**Committed as three commits, not one** (see Decisions):
+- `cfa1097` chore(backend): raise AI_REQUEST_TIMEOUT_MS from 20s to 45s
+- `366e57d` feat(frontend): add the smart search box to the search sidebar
+- `6a899ff` docs(context): log Feature 41 and record its two UI deviations
 
-`agent/`: new `chains/smart_search/` (`query_extraction_chain.py`, `prompts.py`, `__init__.py`), `schemas/smart_search.py`, `api/smart_search_routes.py` mounting `POST /smart-search/extract`, mounted in `api/router.py`. `MAX_TOKENS = 1200`, `temperature=0`.
-
-**Context files updated:** `progress-tracker.md` (Feature 40 entry, status → 41, two new inherited rules, and **Feature 39's checkbox which last session left unticked**), `architecture.md` (smart-search flow, three invariants, no-cache rationale), `ai-phase-plan.md` (shipped + three things the sketch missed), `library-docs.md`, `code-standards.md`, `project-overview.md`. `CLAUDE.md` also changed — see Problems solved.
+Working tree is clean. `origin/main` is still at `b2ec04b` — **all three commits are local and unpushed.**
 
 ## Decisions made
 
-- **The model never sees or emits a uuid.** `searchQuerySchema` takes uuid arrays for `amenities`/`roomFeatures`/`mealPlans`. `backend/` reads those three tables, sends the **names** as a closed vocabulary, and maps the reply back to ids. Rejected: fuzzy-matching free text (silently mismatches "spa" vs "Spa & Wellness") and letting `agent/` fetch the taxonomy (business-data lookup in the wrong service, extra hop). **Features 45–46's tools face the same problem and should copy `search-extraction.service.ts` rather than trusting a model with a key.**
-- **The output is a partial of `searchQuerySchema`, never a defaulted `SearchQuery`.** An absent field means the prompt did not mention it. Running it through `searchQuerySchema` would fill in `adults: 2`, `sort: "recommended"` etc. and Feature 41's editable chips could no longer tell an inferred filter from a schema default. **This is the whole reason the chips can be honest — do not "normalise" the output later.**
-- **No cache table, deliberately** — the enumerable-key rule from Feature 39 pointing the other way. A free-text prompt cannot be enumerated, cannot be warmed by a seed command, and repeats too rarely to earn a table. `aiRateLimit` on the `/ai` router is the only ceiling. Recorded in `architecture.md` and `library-docs.md` **specifically so nobody "fixes" the inconsistency with Features 38–39 later.**
-- **Unmatched terms are returned in `unmapped`, not dropped** — including a taxonomy name the model invented rather than copying from the vocabulary. Feature 41 shows what was ignored; **Feature 42 consumes this same list directly** ("near the Eiffel Tower" is exactly its input).
-- **A misparsed date or price pair is dropped, not fatal.** Past date, `checkOut <= checkIn`, or `minPrice > maxPrice` clears just that pair. One bad field must not discard a good prompt.
-- **`sort: "distance"` is withheld** from the vocabulary offered to the model — it orders by an anchor point only Feature 42 supplies.
-- **Prompt-and-parse, not `with_structured_output`.** Ask for bare JSON, regex the outermost `{...}` (`re.compile(r"\{.*\}", re.DOTALL)`), validate with pydantic, return `None` on any failure → route raises 502 → `postToAgent` returns null. Reasons: free-tier OpenRouter tool-calling/JSON-mode support is not guaranteed, and a reasoning model wraps its answer in a fence or a sentence even when told not to. **A half-parsed object is never returned.** Now written up in `library-docs.md`.
-- **`agent/` reads no clock** — `backend/` passes today's date on every call, so replaying a prompt extracts the same dates.
+- **One commit per concern, never one commit per feature.** The developer corrected a squashed Feature 41 commit mid-session. Split along app/concern lines — backend, frontend, `docs(context)` — matching the rhythm already in the log across Features 39–40. Stage by path; do not `git add -A` a whole feature. Also saved to Claude's cross-session memory.
+- Feature 41's own decisions (merge-not-stage, no clear-all, global rather than per-call timeout) are already written up in `context/progress-tracker.md`'s Completed Features entry — not duplicated here.
 
 ## Problems solved
 
-- **Over-commenting was corrected for the third feature running, and the developer escalated it.** The rule existed in `code-standards.md` and as the tail clause of one dense paragraph in `CLAUDE.md` — which is exactly why it kept getting skimmed past. Fixed by promoting it to its own prominent **`## Do not comment the code`** section near the top of `CLAUDE.md`, and by saving it to the persistent project memory directory (`no-long-comments.md` + `MEMORY.md` index) so it loads every session independent of the repo. Feature 40's code was then cut from 9 comments (several 2–3 lines) to 5 single-line ones. **The default is zero comments; rationale belongs in `context/`, never in the code.**
-- **A real bug I wrote and caught: spreading `{}` does not remove keys.** `{...filters, ...pickDates(...)}` where `pickDates` returned `{}` on invalid input left the bad dates in place. The guards must return `{ checkIn: undefined, checkOut: undefined }` explicitly — `undefined` values vanish from `JSON.stringify`, `{}` does not overwrite. Same for `pickPrices`. **This is what the one surviving comment on `pickDates` records.**
-- **The stale-backend trap from last session recurred and was avoided.** Port 4000 held a process from a previous session. Killed and restarted before testing rather than debugging a phantom 404. **Check `lsof -ti :4000` first, always.**
-- **`agent/` must be started from `agent/`, not from `backend/`.** A `cd backend && ... & nohup uv run python -m src.main &` chain ran the agent in `backend/`'s directory, so pydantic-settings read `backend/.env` and the app refused to boot naming `backend_internal_url` / `openrouter_api_key` as missing. Not a code bug.
-- **The 20s timeout is a live risk again, and worse here than in Feature 39.** Measured 6–14.5s per extraction, with one prompt hitting `AI_REQUEST_TIMEOUT_MS` outright. **Unlike Features 38–39 there is no cache to hide behind — every smart search pays full generation cost, every time.**
-- **The upstream free-tier 502 recurred repeatedly** — `ResourceExhausted: Worker local total request limit reached (32/32)`, ~6 times during verification. Transient, resolves on retry, same as Feature 39. Verification scripts needed a retry loop. **A retry affordance in Feature 41 is not optional.**
-- **The prompt was corrected to match the model, not the reverse.** The prompt asserted `"highly rated" is minGuestRating`; the model instead put the phrase in `unmapped` rather than inventing a numeric threshold. The model's behaviour is better — guessing `minGuestRating: 8` from a vague phrase is a fabricated filter — so the prompt line was softened.
-- **ruff E501 caps lines at 100 including inside prompt strings.** Long prompt lines need a trailing `\` continuation.
+- Nothing broke this session. `npx tsc --noEmit` (frontend), `pnpm lint` (frontend) and `pnpm build` (backend) were all clean before committing.
+- **The squashed-commit mistake and its recovery:** because the commit was still local (`origin/main` was behind), `git reset --soft` to the last pushed commit and re-committing in pieces was safe. Check `git log origin/main -1` before assuming a commit can be rewritten.
 
 ## Current state
 
-Feature 40 complete and verified. `pnpm build` clean (backend), `ruff check` + `ruff format --check` clean (agent), `tsc --noEmit` clean (frontend, untouched).
-
-**Nothing is committed** — 5 modified backend/agent files, 5 new paths, 6 modified context files, plus `CLAUDE.md`, all on `main`. A sensible split mirroring Feature 39's: (a) backend types + `postToAgent` refactor, (b) backend route/controller/service, (c) agent chain + route, (d) context/doc updates + `CLAUDE.md`.
-
-Verified against both real running apps and the real seeded database:
-- `agent/`'s route: 401 with no secret, 401 with a wrong secret
-- "5 star hotel in Paris with a spa and a pool for 2 adults next weekend, under 300 a night" → Paris, `starRatings [5]`, `adults 2`, `maxPrice 300`, real Spa + Swimming Pool uuids, concrete future dates, **and no defaulted fields**
-- A family prompt split `adults 2` / `kids 3` and resolved Breakfast Included + `freeCancellationOnly`
-- "jacuzzi, helipad and rooftop cinema" (none exist) → `destination: Rome` with all three in `unmapped`, no invented amenities
-- "a romantic quiet place near the Eiffel Tower with a balcony" → resolved Balcony, left `destination` **out** (a landmark is not a city), all three phrases in `unmapped`
-- Gibberish → `{}` filters
-- **Dates in 2020 dropped while `destination: Lisbon` survived** — the pair guard works
-- One prompt naming all three vocabularies resolved Free Wi-Fi + Parking, Sea View and Half Board together
-- Validation: empty prompt, missing key, 501 chars → all 400
-- With `agent/` stopped: `200 {"data":null}`, no 500
-- The `/ai` limiter is inherited by the new route (`RateLimit-Limit: 20` in the response headers)
-
-**Environment notes:** no credential values recorded anywhere. Services left running: `backend/` :4000, `agent/` :4100. `frontend/` was **not** started this session (no UI work). No new rows written anywhere — this feature has no table. No test data created or left behind.
+- **Features 36–41 are complete.** Phase 12 Smart Search is 2 of 3 done.
+- **Feature 42 Nearby Search is designed but NOT built and NOT confirmed.** Zero lines of Feature 42 code exist. The `/architect` session reached a 6-decision list and stopped for developer sign-off.
+- Feature 41 was verified end-to-end in a real browser *last* session (14/14 checks, documented in `progress-tracker.md`). This session re-verified only typecheck/lint/build — no browser pass, none needed.
+- No dev servers were left running this session.
 
 ## Next session starts with
 
-1. **Decide whether to commit Feature 40.** All uncommitted on `main`.
-2. Then **Feature 41 — Smart search UI.** Read `ai-phase-plan.md`. Build the natural-language box in `FilterSidebar.tsx`; inferred filters render as **editable** chips so a bad extraction is correctable, not a dead end.
+**Get the developer's answers to the six Feature 42 decisions below, then build it.** The reading is already done — these are the relevant files and what each needs:
 
-What Feature 41 inherits and must not rebuild:
-
-- `POST /ai/search/extract` returns `{ filters, unmapped }`. `filters` is a **partial** of `searchQuerySchema` — an absent key means the prompt never mentioned it, which is what makes the chips honest. `unmapped` is the list of phrases that became no filter and **should be shown, not swallowed**.
-- **Design around the latency and the absence of a cache**: 6–14.5s is normal, the 20s timeout is reachable, and every search pays it. A visible in-flight state and a retry affordance are both **required**. The pre-designed fix if 20s proves too tight is a dedicated timeout override (~45s), below the ~60s production proxy cut.
-- `ui-registry.md`'s standing sparkle-icon rule (`SparklesIcon h-4 w-4 text-accent-text` marks AI-generated content) enumerates Features 39, 44, 48 and **omits 41** — the smart search box should almost certainly use it, and the rule should be updated to say so.
-- There is **no "Smart Search Box" spec in `ui-rules.md`** — Feature 41 writes it from scratch, then runs `/imprint`.
+- `backend/src/queries/hotels.queries.ts:136-174` — `findSimilarHotels`, currently `city = ? AND country = ?`, ordered by `ST_Distance` from the hotel's own point, limit 6. Generalize to `ST_DWithin`.
+- `backend/src/services/search.service.ts:57-97` — the haversine + `sortResults`. The `"distance"` case sorts against the **centroid of the result set**, which is meaningless. Replace with a real anchor.
+- `backend/src/queries/search.queries.ts:29-73` — `findCandidateHotels`. The radius filter belongs here in SQL so it prunes early, not in JS afterwards.
+- `backend/src/types/search.schemas.ts` — `searchQuerySchema` needs the new `near` / `radiusKm` params; `SEARCH_SORT_OPTIONS` already contains `"distance"`.
+- `backend/src/services/search-extraction.service.ts:78-79` — the line that **withholds** `"distance"` from the model's vocabulary. Feature 42 is what supplies the anchor, so this filter comes off here.
+- `agent/src/chains/smart_search/prompts.py` — currently instructs the model to put landmarks in `unmapped` and explicitly says "A mood or a landmark never goes in destination." Needs a `near` key instead.
+- `agent/src/schemas/smart_search.py` — `ExtractedFilters` needs the matching field.
+- `backend/src/services/geocoding/` — `geocodingProvider.geocode(address)` → `{latitude, longitude}` via Mapbox, already used by admin hotel create. This is the landmark resolver. Needs `MAPBOX_ACCESS_TOKEN` set (it was working as of Feature 07).
 
 ## Open questions
 
-- **Whether 20s proves too tight.** More pressing than it was for compare, because there is no cache. Fix is pre-designed.
-- **Three stale doc lines found this session but deliberately not fixed** (pre-existing, outside Feature 40's scope): `ui-rules.md:266` and `project-overview.md:100` and `:118` still describe the Feature 38/39 AI slots as "not built". Worth a quick cleanup pass.
-- **`backend/.env` declares `INTERNAL_SERVICE_SECRET` twice** (lines 28 and 40). Same value, so nothing is broken, but the later line silently wins and rotating only one would break internal calls confusingly. Flagged across three sessions now, still untouched.
-- **The NUL-byte separator in `buildContentHash`** — `parts.join("\0")` renders identically to a space, so string edits to that line fail to match mysteriously. Feature 38 code, harmless, invisible. Decide whether to make it explicit.
-- **A published hotel literally named "test room"** has generated summaries, as do the "Temp User 1" bookings against Hotel Marais Charme (~2026-07-13). Both leftover test data, both awaiting a decision, and **both will pollute chatbot evals in Features 45–46 and 51. Worth clearing before Feature 45.**
-- Both model slots still point at the same free Nemotron model. The fast/smart split exists in config, so raising the chatbot's model needs no call-site change.
-- The compare-tray `sm:w-fit` change from an earlier session remains an interpretation, not a confirmed diagnosis.
-- The Feature 16 rating-consistency question — carried across many sessions, mostly moot since Feature 24, never re-verified.
-- Whether to retrofit the fetch-error-state pattern onto `HotelsListPage` and other existing admin lists — flagged in `ui-registry.md`.
-- Hosting provider still undecided; not blocking since deployment moved to Phase 16. **`trust proxy` must be settled as part of that decision or the IP-keyed AI rate limiter is effectively disabled in production.**
+**The six Feature 42 decisions awaiting developer sign-off** (recommendation given for each; #2 is the one that cannot be sensibly guessed):
+
+1. **Anchor resolution order** — try a hotel-name lookup against our own DB first (free, exact, and the acceptance test names a hotel), fall back to Mapbox geocoding otherwise. No cache table: a free-text phrase is not enumerable, so Feature 39's rule lands the same way it did for Feature 40.
+2. **URL shape — the blocking one.** Recommended: `near=Eiffel Tower` as text plus optional `radiusKm`, resolved server-side per request; keeps the URL shareable and geocoding behind the backend per Feature 07's precedent. Cost: a Mapbox call per search *including every pagination click* — a module-level phrase→coords `Map` would blunt it. The alternative (resolve client-side, put coordinates in the URL) changes `searchQuerySchema`, frontend `SearchState` and the chip, so guessing wrong means rework across all three.
+3. **`sort: "distance"` with no anchor** — fall back to `recommended` and delete the haversine entirely. Auto-apply `sort: "distance"` when the extraction returns a `near`. Open sub-question: whether the sort dropdown should hide/disable "Distance" when no anchor is set, rather than silently doing something else.
+4. **Extraction path** — a real `near` field in the chain, *not* a heuristic over `unmapped`. Distinguishing "romantic" from "the Eiffel Tower" is exactly the judgment the model should make. Note this reads as a deviation from `progress-tracker.md`'s "42 consumes the `unmapped` list rather than building a new extraction path" — the intent there was avoiding a second round-trip, which a `near` field also avoids, but confirm the developer agrees.
+5. **Radii** — 5 km default for search (50 km cap), 25 km for the similar-hotels rail. Both are guesses; sanity-check against the seeded data (5 hotels across 3 cities), since a 25 km radius roughly preserves today's same-city behaviour but no longer breaks on a differing suburb string.
+6. **Scope addition, needs an explicit yes/no** — return `distanceKm` per result and render it on the hotel card. Nearly free (`ST_Distance` is already computed) and a distance-ordered list without distances is unreadable, but it is beyond the plan's literal wording.
+
+**Carried over, unrelated to 42:** `trust proxy` must be settled at deployment or the IP-keyed `aiRateLimit` is effectively disabled in production. S3 credentials are still blank in this dev environment (open Known Issue since Feature 07).
 
 ## Note on secrets
 
-No credential values are recorded in this file. `OPENROUTER_API_KEY` and `INTERNAL_SERVICE_SECRET` live only in `agent/.env` and `backend/.env` (both gitignored). A pydantic boot error did echo a truncated fragment of a `backend/.env` value to a log during the misdirected-launch incident above; that log is in the job temp directory, not the repo, and the fragment is not reproduced here. All `.env.example` templates are tracked and contain placeholders only.
+No credentials, tokens or keys are recorded in this file. `MAPBOX_ACCESS_TOKEN`, `S3_*` and `RESEND_API_KEY` are referred to by name only.
