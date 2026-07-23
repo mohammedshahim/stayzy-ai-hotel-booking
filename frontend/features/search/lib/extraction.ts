@@ -10,6 +10,7 @@ export function toSearchState(filters: ExtractedSearchFilters): Partial<SearchSt
   const partial: Partial<SearchState> = {};
 
   if (filters.destination !== undefined) partial.destination = filters.destination;
+  if (filters.near !== undefined) partial.near = filters.near;
   if (filters.checkIn !== undefined) partial.checkIn = filters.checkIn;
   if (filters.checkOut !== undefined) partial.checkOut = filters.checkOut;
   if (filters.adults !== undefined) partial.adults = filters.adults;
@@ -37,6 +38,7 @@ export function describeExtraction(
   const labels: string[] = [];
 
   if (filters.destination) labels.push(filters.destination);
+  if (filters.near) labels.push(`Near ${filters.near}`);
   if (filters.checkIn && filters.checkOut) labels.push(`${filters.checkIn} → ${filters.checkOut}`);
   if (filters.adults !== undefined) labels.push(`${filters.adults} adults`);
   if (filters.kids) labels.push(`${filters.kids} kids`);

@@ -10,6 +10,8 @@ export type ViewMode = "list" | "grid" | "map";
 
 export type SearchState = {
   destination: string;
+  near: string | null;
+  radiusKm: number | null;
   checkIn: string | null;
   checkOut: string | null;
   adults: number;
@@ -46,6 +48,14 @@ export type SearchResultHotel = {
   roomFeatures: string[];
   freeCancellation: boolean;
   pricePerNight: number;
+  distanceKm: number | null;
+};
+
+// null when `near` was set but neither a hotel name nor the geocoder could place it.
+export type SearchAnchor = {
+  label: string;
+  latitude: number;
+  longitude: number;
 };
 
 export type SearchApiResponse = {
@@ -54,6 +64,7 @@ export type SearchApiResponse = {
   page: number;
   pageSize: number;
   totalPages: number;
+  anchor: SearchAnchor | null;
 };
 
 // Lookup rows from GET /amenities, /room-features, /meal-plans, used to render filter labels.
@@ -64,6 +75,7 @@ export type CatalogOption = {
 
 export type ExtractedSearchFilters = {
   destination?: string;
+  near?: string;
   checkIn?: string;
   checkOut?: string;
   adults?: number;

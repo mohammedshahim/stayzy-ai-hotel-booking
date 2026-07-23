@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 import { apiClient } from "@/lib/api-client";
 import { serializeSearchState } from "@/features/search/hooks/useSearchState";
-import type { SearchApiResponse, SearchResultHotel, SearchState } from "@/features/search/types";
+import type { SearchAnchor, SearchApiResponse, SearchResultHotel, SearchState } from "@/features/search/types";
 
 export const RESULTS_PER_PAGE = 9;
 // Capped at 100 to match GET /search's pageSize ceiling (backend/src/types/search.schemas.ts).
@@ -16,6 +16,7 @@ export type SearchResults = {
   totalPages: number;
   currentPage: number;
   isEmpty: boolean;
+  anchor: SearchAnchor | null;
   isLoading: boolean;
 };
 
@@ -25,6 +26,7 @@ type FetchedData = {
   totalPages: number;
   currentPage: number;
   isEmpty: boolean;
+  anchor: SearchAnchor | null;
   // The query this data was fetched for — `null` until the first fetch resolves, so isLoading below reads true on mount instead of matching an accidental empty string.
   forQuery: string | null;
 };
@@ -35,6 +37,7 @@ const INITIAL_DATA: FetchedData = {
   totalPages: 1,
   currentPage: 1,
   isEmpty: true,
+  anchor: null,
   forQuery: null,
 };
 
@@ -53,23 +56,24 @@ export function useSearchResults(state: SearchState): SearchResults {
       .get<SearchApiResponse>(path, { signal: controller.signal })
       .then((response) => {
         if (!response.success) {
-          setData({ results: [], totalResults: 0, totalPages: 1, currentPage: 1, isEmpty: true, forQuery: query });
+          setData({ results: [], totalResults: 0, totalPages: 1, currentPage: 1, isEmpty: true, anchor: null, forQuery: query });
           return;
         }
-        const { items, total, totalPages, page } = response.data;
+        const { items, total, totalPages, page, anchor } = response.data;
         setData({
           results: items,
           totalResults: total,
           totalPages,
           currentPage: page,
           isEmpty: total === 0,
+          anchor,
           forQuery: query,
         });
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
         console.error("[useSearchResults]", error);
-        setData({ results: [], totalResults: 0, totalPages: 1, currentPage: 1, isEmpty: true, forQuery: query });
+        setData({ results: [], totalResults: 0, totalPages: 1, currentPage: 1, isEmpty: true, anchor: null, forQuery: query });
       });
 
     return () => controller.abort();

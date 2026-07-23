@@ -92,6 +92,9 @@ export function HotelCard({ hotel, variant, isSelected, onLocate, isFavorited, o
           <span className="text-sm text-text-secondary">
             {hotel.city}, {hotel.country}
           </span>
+          {hotel.distanceKm !== null && (
+            <span className="text-xs text-text-muted">{hotel.distanceKm} km away</span>
+          )}
           <button
             type="button"
             onClick={onLocate}

@@ -15,6 +15,7 @@ import { SearchBar } from "@/features/search/components/SearchBar";
 import { SearchResultsSkeleton } from "@/features/search/components/SearchResultsSkeleton";
 import { SortDropdown } from "@/features/search/components/SortDropdown";
 import { ViewToggle } from "@/features/search/components/ViewToggle";
+import { clearAnchor } from "@/features/search/lib/anchor";
 import { useFavoriteHotelIds } from "@/features/favorites/hooks/useFavoriteHotelIds";
 import { useSearchCatalogs } from "@/features/search/hooks/useSearchCatalogs";
 import { useSearchResults } from "@/features/search/hooks/useSearchResults";
@@ -34,7 +35,7 @@ const EMPTY_FILTERS: Partial<SearchState> = {
 
 export function SearchPageContent() {
   const { state, update } = useSearchState();
-  const { results, totalResults, totalPages, currentPage, isEmpty, isLoading } = useSearchResults(state);
+  const { results, totalResults, totalPages, currentPage, isEmpty, anchor, isLoading } = useSearchResults(state);
   const catalogs = useSearchCatalogs();
   const { favoritedIds, toggleFavorite } = useFavoriteHotelIds();
 
@@ -65,12 +66,19 @@ export function SearchPageContent() {
         <div className="flex flex-1 flex-col gap-4">
           <ActiveFilterChips state={state} onChange={update} catalogs={catalogs} />
 
+          {state.near && !anchor && !isLoading && (
+            <p className="text-sm text-text-muted">
+              We could not place &ldquo;{state.near}&rdquo;, so these results are not filtered by distance.
+            </p>
+          )}
+
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-text-secondary">
               {totalResults} {totalResults === 1 ? "hotel" : "hotels"} found
+              {anchor ? ` near ${anchor.label}` : ""}
             </p>
             <div className="flex items-center gap-3">
-              <SortDropdown value={state.sort} onChange={(sort) => update({ sort })} />
+              <SortDropdown value={state.sort} onChange={(sort) => update({ sort })} hasAnchor={anchor !== null} />
               <ViewToggle value={state.view} onChange={(view) => update({ view })} />
             </div>
           </div>
@@ -84,7 +92,7 @@ export function SearchPageContent() {
               body="Try relaxing a filter or two to see more results."
               action={
                 <Button
-                  onClick={() => update(EMPTY_FILTERS)}
+                  onClick={() => update({ ...EMPTY_FILTERS, ...clearAnchor(state) })}
                   className="h-9 rounded-xl border border-border-default bg-elevated px-4 font-medium text-text-secondary transition-colors hover:border-border-subtle hover:bg-subtle hover:text-text-primary"
                 >
                   Clear filters

@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { XIcon } from "lucide-react";
 
+import { clearAnchor } from "@/features/search/lib/anchor";
 import type { SearchCatalogs } from "@/features/search/hooks/useSearchCatalogs";
 import type { CatalogOption, SearchState } from "@/features/search/types";
 
@@ -29,6 +30,14 @@ export function ActiveFilterChips({ state, onChange, catalogs }: Props) {
   const mealPlanNames = useMemo(() => toNameMap(catalogs.mealPlans), [catalogs.mealPlans]);
 
   const chips: Chip[] = [];
+
+  if (state.near) {
+    chips.push({
+      key: "near",
+      label: `Near ${state.near}`,
+      onRemove: () => onChange(clearAnchor(state)),
+    });
+  }
 
   if (state.minPrice !== null || state.maxPrice !== null) {
     chips.push({

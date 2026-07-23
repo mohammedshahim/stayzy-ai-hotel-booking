@@ -8,6 +8,8 @@ import type { SearchState, SortOption, ViewMode } from "@/features/search/types"
 // can serialize through serializeSearchState instead of hand-rolling the same params.
 export const DEFAULT_STATE: SearchState = {
   destination: "",
+  near: null,
+  radiusKm: null,
   checkIn: null,
   checkOut: null,
   adults: 2,
@@ -40,6 +42,8 @@ const VIEW_MODES: ViewMode[] = ["list", "grid", "map"];
 // Changing any of these resets pagination to page 1; only "page" and "view" leave it untouched.
 const FILTER_KEYS: (keyof SearchState)[] = [
   "destination",
+  "near",
+  "radiusKm",
   "checkIn",
   "checkOut",
   "adults",
@@ -73,6 +77,8 @@ export function parseSearchState(params: URLSearchParams): SearchState {
 
   return {
     destination: params.get("destination") ?? DEFAULT_STATE.destination,
+    near: params.get("near"),
+    radiusKm: parseNumber(params.get("radiusKm")),
     checkIn: params.get("checkIn"),
     checkOut: params.get("checkOut"),
     adults: parseNumber(params.get("adults")) ?? DEFAULT_STATE.adults,
@@ -102,6 +108,8 @@ export function serializeSearchState(state: SearchState): string {
   const params = new URLSearchParams();
 
   if (state.destination) params.set("destination", state.destination);
+  if (state.near) params.set("near", state.near);
+  if (state.near && state.radiusKm !== null) params.set("radiusKm", String(state.radiusKm));
   // Dates go out only as a valid pair. The backend 400s ("checkOut must be after checkIn") on both
   // a lone checkIn and a same-day range — and react-day-picker's first click in range mode yields
   // {from: X, to: X}, so the same-day case is one click away. That 400 surfaced as a dead-end
