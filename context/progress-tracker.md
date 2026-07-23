@@ -24,10 +24,12 @@ After completing any feature:
 ## Current Status
 
 **Phase:** 12 — Smart Search (AI phase)
-**Current feature:** 41 Smart Search UI
-**Next up:** 41 — read **`ai-phase-plan.md`**, not `build-plan.md`. Build the natural-language box in `FilterSidebar.tsx`; inferred filters render as **editable** chips so a bad extraction is correctable rather than a dead end. Feature 40 already returns everything it needs: `POST /ai/search/extract` gives `{ filters, unmapped }`, where `filters` is a *partial* of `searchQuerySchema` (an absent key means the prompt never mentioned it — that is what makes the chips honest) and `unmapped` lists the phrases that became no filter, which the UI should show rather than swallow.
+**Current feature:** 42 Nearby Search
+**Next up:** 42 — read **`ai-phase-plan.md`**, not `build-plan.md`. Generalize `findSimilarHotels` (`backend/src/queries/hotels.queries.ts:146-174`) from exact city/country equality to `ST_DWithin`, add the "near this hotel/place" extraction path, and fix `sort: "distance"`'s centroid haversine (`search.service.ts:57-92`) to order against a real anchor in SQL. The PostGIS plumbing already exists — a `referencePoint` geography and `ST_Distance` ordering are both in place.
 
-**Two things Feature 41 must design around, both measured in Feature 40:** extraction takes **6–14.5s and can hit the 20s timeout**, and unlike Features 38–39 there is **no cache** — every smart search pays full generation cost, every time. A visible in-flight state and a retry affordance are both required, not optional; the upstream free-tier 502 recurs often enough that a search will sometimes just fail. If 20s proves too tight, the pre-designed fix is a dedicated timeout override (~45s), same shape as the one considered for compare.
+**Feature 42 inherits a ready-made input from Features 40–41.** `unmapped` already carries exactly the phrases 42 needs — "near the Eiffel Tower" lands there today, verified, because a landmark is deliberately not extracted as `destination`. `SmartSearchBox` already renders that list as its "Ignored:" line, so 42's job is to consume the list rather than build a new extraction path for it. `sort: "distance"` is still withheld from the vocabulary offered to the model (`search-extraction.service.ts`) — 42 is what supplies the anchor that makes it meaningful, so unwithholding it is part of that feature.
+
+**The 20s AI timeout is gone.** `AI_REQUEST_TIMEOUT_MS` now defaults to **45s** (`config/env.ts`, `.env.example`), raised during Feature 41 and applied to *every* AI call rather than to extraction alone — the developer's call, and the right one: summaries are cached, so a higher ceiling costs them nothing on a hit and saves a cold generation that would otherwise fail. Justified immediately — a verification extraction measured **17.7s**, roughly two seconds from failing under the old ceiling. 45s sits under the ~60s production proxy cut. **`trust proxy` still has to be settled at deployment or the IP-keyed `aiRateLimit` is effectively disabled in production.**
 
 **Phase 11 is complete.** Features 38 and 39 both ship real, cached, metered AI. What the rest of the AI phase inherits and must not rebuild:
 
@@ -138,7 +140,7 @@ Planned in `ai-phase-plan.md`. Read that file, not `build-plan.md`, for every fe
 ### Phase 12 — Smart Search
 
 - [x] 40 Query extraction chain
-- [ ] 41 Smart search UI
+- [x] 41 Smart search UI
 - [ ] 42 Nearby search
 
 ### Phase 13 — Chat Widget
@@ -173,6 +175,22 @@ Moved from Phase 9 on 2026-07-19. Scope widened: `agent/` is a fourth deployable
 ---
 
 ## Completed Features
+
+### ✅ 41 Smart Search UI — completed 2026-07-22
+
+Notes: the natural-language box on `/search`, at the top of `FilterSidebar`'s `<aside>` above "Price range". `frontend/features/search/` gained `components/SmartSearchBox.tsx`, `hooks/useSmartSearch.ts` and `lib/extraction.ts`; `types.ts` gained `ExtractedSearchFilters`/`SearchFilterExtraction` mirroring the backend schemas. `FilterSidebar` takes a new `onSmartSearch` prop, wired in `SearchPageContent` to `update(partial, { history: "push" })` so a described search is a real back-stack entry the way `SearchBar`'s submit is, rather than a replace. Backend change is two lines and unrelated to the UI: `AI_REQUEST_TIMEOUT_MS` 20s → 45s in `config/env.ts` and `.env.example`. **No new route, no cache, no table, no migration, no new dependency** — Feature 40's `POST /ai/search/extract` was already complete.
+
+Decision (confirmed with the developer during `/architect`): **the extraction applies immediately and merges; it is not staged behind an Apply button.** Only keys the extraction actually returned are written, so an absent key leaves the existing filter untouched — the partial contract from Feature 40 is enforced *by the merge itself* (`toSearchState` in `lib/extraction.ts`), not by a preview surface. This is what makes prompting read as refining rather than replacing. Editing then happens through the sidebar controls and the existing `ActiveFilterChips`, which already renders every active filter as a removable chip — so "inferred filters render as editable chips" needed **no new chip component at all**. A staging tray was rejected: it would render filters a third time and impose a second wait after a 6–17s one.
+
+Decision: **no clear-all control**, also confirmed. Merge means two prompts accumulate, and the honest consequence is that a user can over-constrain themselves. Per-chip removal already satisfies "correctable, not a dead end", and verification showed the over-constrained case lands on the existing `EmptyState` whose "Clear filters" button *is* the recovery path — so the gap is smaller than it looked at design time. Revisit only if it actually bites.
+
+Decision: **the timeout was raised globally rather than per-call.** The `/architect` plan proposed a per-call override for extraction only; the developer corrected this to one shared ceiling for every AI call. Correct — `postToAgent`'s `timeoutMs` parameter still exists as an escape hatch, but nothing needs it, and one knob beats three.
+
+**Two deliberate deviations from the AI-surface family in `ui-registry.md`, both recorded there rather than left as silent drift:** the heading is `text-sm font-medium` (sidebar scale, matching `FilterSection` titles) rather than the `text-lg font-semibold` the two AI section cards use; and the submit is the **primary** accent button rather than the locked Secondary Button those cards use, following `ReviewForm`'s form-submit precedent since this is the sidebar's main call to action. The sparkle icon, the `text-xs text-text-muted` disclaimer and the `text-xs text-error` failure line are all reused verbatim.
+
+**`/imprint` caught a real collision:** the submit button was originally labelled "Search", which is also `SearchBar`'s label — two identically-named buttons on one page, ambiguous to a screen reader and to Playwright, which is how it surfaced. Renamed to **"Search with AI"**, matching `CompareSummarySection`'s "Compare with AI" and making the AI actions a named family.
+
+Verified end-to-end against the real running apps and the real seeded database, in a real headless browser (Playwright, zero console errors) — 14/14 checks: the box renders in the sidebar; submit is disabled on an empty prompt; the in-flight state shows while extracting; **merge holds** (a manually-ticked 5-star filter survived a prompt that never mentioned stars); `destination: Rome` and `maxPrice: 200` applied from the prompt; pagination reset to page 1; `unmapped` surfaced as "Ignored: romantic, quiet" rather than swallowed; the AI disclaimer renders; an inferred chip is removable; the prompt pushed a real history entry. Backend curl: a full prompt returned the correct partial with **no defaulted keys** (no `sort`, `rooms`, `kids` or `minPrice`), empty prompt → 400, 501 chars → 400. **The retry affordance was exercised for real, not simulated** — the upstream free-tier 502 hit mid-run (1 of 3 attempts succeeded in a control test), the UI correctly showed "Try again" plus the error line instead of crashing, and clicking it recovered. `tsc --noEmit` and `pnpm lint` clean (frontend), `pnpm build` clean (backend). No test data created; this feature writes no rows.
 
 ### ✅ 40 Query Extraction Chain — completed 2026-07-22
 

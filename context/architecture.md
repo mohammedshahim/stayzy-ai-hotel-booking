@@ -656,7 +656,7 @@ Compare summaries follow the same path against `compare_ai_summaries`, keyed by 
 
 Hotels are enumerable, so `pnpm seed:ai-summaries` can warm every one and the hotel page can afford to generate on load. Combinations of hotels are not: a user assembling a comparison passes through `{A}`, `{A,B}`, `{A,B,C}` on the way to `{A,B,C,D}`, and auto-generating would bill for every throwaway intermediate set with no way to pre-warm any of them. There is deliberately **no** `seed:compare-summaries` command for the same reason.
 
-### Smart Search (Feature 40 built 2026-07-22; Features 41–42 not yet built)
+### Smart Search (Features 40–41 built 2026-07-22; Feature 42 not yet built)
 
 ```
 User types a natural-language query in the search sidebar
@@ -670,7 +670,8 @@ agent/ query-extraction chain returns a PARTIAL filter object, in names
         ↓
 backend maps names back to uuids and returns { filters, unmapped }
         ↓
-frontend renders them as editable chips and writes them into the URL
+frontend MERGES the partial into SearchState — only keys the extraction
+returned are written, so an unmentioned filter is left untouched
         ↓
 Normal search runs — the existing URL-driven pipeline, unchanged
 ```
@@ -686,6 +687,10 @@ Three invariants this path establishes:
 **Extractions are deliberately NOT cached** — the one AI feature so far with no cache table. This is the enumerable-key rule pointing the other way: a free-text prompt is not enumerable, cannot be warmed by a seed command, and repeats too rarely for a hash lookup to pay for the table. The cost ceiling here is `aiRateLimit`, which the `/ai` router already applies. Do not "fix" the inconsistency with Features 38–39 by adding a cache.
 
 `agent/` reads no clock: `backend/` passes today's date on every call, so replaying a prompt extracts the same dates. `sort: "distance"` is withheld from the vocabulary offered to the model until Feature 42 supplies a real anchor point.
+
+**Added 2026-07-22 (Feature 41): the partial contract is enforced at the point of merge.** `frontend/features/search/lib/extraction.ts` copies only keys the extraction actually returned into `Partial<SearchState>`. This is the whole reason a prompt reads as *refining* an existing search rather than replacing it, and it is why no staging/Apply step was needed — the extraction lands directly in ordinary filter state, which `ActiveFilterChips` already makes removable. **Do not "normalise" the extraction through `searchQuerySchema` at any layer, and do not reset unmentioned filters before applying** — either one silently converts "not mentioned" into "explicitly cleared".
+
+**`AI_REQUEST_TIMEOUT_MS` is one global ceiling for every AI call, raised from 20s to 45s in Feature 41.** Not a per-feature override: `postToAgent`'s `timeoutMs` parameter remains available but nothing uses it. Cached features lose nothing by waiting longer (the ceiling is only reached on a miss), while smart search has no cache and pays full generation cost on every request — a measured extraction hit 17.7s, about two seconds under the old limit. 45s sits below the ~60s cut a production proxy typically imposes; **raising it further requires checking that proxy first**, and `trust proxy` must be settled at deployment or the IP-keyed `aiRateLimit` guarding these calls is effectively disabled.
 
 ### Chat (Features 43–48, not yet built)
 

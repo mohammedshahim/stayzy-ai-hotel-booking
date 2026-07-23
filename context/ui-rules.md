@@ -256,6 +256,19 @@ bg-accent-dim text-accent-text border border-accent-border
 Remove icon (if removable): h-3 w-3 text-accent-text hover:text-text-primary cursor-pointer
 ```
 
+### Smart Search Box (search sidebar — Feature 41)
+
+```
+Shell:        form, border-b border-border-default pb-4 — first child of FilterSidebar's aside
+Heading:      mb-3 flex items-center gap-2 text-sm font-medium text-text-primary + SparklesIcon h-4 w-4 text-accent-text
+Textarea:     min-h-20 rounded-xl border-border-default bg-subtle, maxLength 500 (matches the backend cap)
+Button:       Primary Button, mt-3 h-9 w-full rounded-xl — "Search with AI" / "Reading your search…" / "Try again"
+Result strip: mt-4 rounded-xl border border-border-default bg-elevated p-3, dismissible via XIcon h-3 w-3
+              applied filters as non-removable Skill Tag chips; "Ignored: …" and the AI disclaimer both text-xs text-text-muted
+```
+
+Full spec and the two deliberate deviations from the AI card family in `ui-registry.md` → Smart Search Box. **Three rules any later AI input surface inherits:** an AI action button is named so the label says AI ("Search with AI", "Compare with AI") and never collides with a plain control on the same page; an in-flight state and a visible failure state are both mandatory whenever the action spends money on an explicit click; and anything the model could not map is **shown**, never swallowed.
+
 ### Compare Table
 
 ```
@@ -263,7 +276,7 @@ Table wrapper:  bg-surface rounded-2xl border border-border-default overflow-x-a
 First two hotels: shown inline, columns min-w-[16rem]
 Third+ hotels:    same column width, revealed via horizontal scroll — never wrap or shrink columns to fit
 Row label column: sticky left-0 bg-surface text-sm font-medium text-text-secondary
-AI summary slot:  reserved bottom section, bg-elevated rounded-2xl border border-border-default p-5 — currently `hidden` at CompareTable.tsx:131-134; Feature 39 unhides and wires it
+AI summary slot:  bottom section, bg-elevated rounded-2xl border border-border-default p-5 — built in Feature 39 as CompareSummarySection.tsx
 ```
 
 ### Table (admin — hotels list, bookings list)
@@ -430,7 +443,7 @@ Trending destinations:
 
 ```
 Content:      max-w-7xl mx-auto px-6 py-8 flex gap-6
-Sidebar:      w-72 shrink-0 (Filter Sidebar pattern)
+Sidebar:      w-72 shrink-0 (Filter Sidebar pattern) — Smart Search Box sits at the top of the aside, above Price range
 Results:      flex-1 flex flex-col gap-4
 Active chips: flex flex-wrap gap-2 mb-2
 Toolbar row:  flex items-center justify-between — result count (left), Sort dropdown + List/Grid/Map view toggle (right)

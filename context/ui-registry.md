@@ -711,7 +711,7 @@ Disclaimer: mt-3 text-xs text-text-muted
 
 `frontend/features/hotel-details/components/HotelSummarySection.tsx` (Feature 38). Takes the Section Card shell unchanged, so the AI block reads as one more section rather than a special surface.
 
-**Standing rule for the AI phase — the sparkle icon marks AI-generated content.** Confirmed with the developer 2026-07-20. This is the **only** section heading in the app that carries an icon; all ten others are plain text, so it is a deliberate exception, not drift. It exists to signal "a model wrote this" at a glance. **Features 39, 44 and 48 must reuse the same `SparklesIcon h-4 w-4 text-accent-text` treatment** for the compare summary and the chat surfaces — if they invent their own AI marker, this stops being a signal and becomes noise. Paired with it, generated text is **always** closed by a `text-xs text-text-muted` disclaimer line; the icon says it, the disclaimer proves it.
+**Standing rule for the AI phase — the sparkle icon marks AI-generated content.** Confirmed with the developer 2026-07-20. This is the **only** section heading in the app that carries an icon; all ten others are plain text, so it is a deliberate exception, not drift. It exists to signal "a model wrote this" at a glance. **Features 39, 41, 44 and 48 must reuse the same `SparklesIcon h-4 w-4 text-accent-text` treatment** for the compare summary, the smart search box and the chat surfaces — if they invent their own AI marker, this stops being a signal and becomes noise. Paired with it, generated text is **always** closed by a `text-xs text-text-muted` disclaimer line; the icon says it, the disclaimer proves it.
 
 **First component in the app to show a skeleton for a non-instant network wait rather than rendering nothing.** Sibling sections (`SimilarHotelsSection`) return `null` while loading because their data arrives in milliseconds; a cache-miss summary can take 10s+, and a block of text appearing that late with no warning reads as a glitch. The skeleton follows the standard Loading Skeleton recipe above (`bg-subtle animate-pulse`, `rounded-xl` text bars inside a `rounded-2xl` card shell). On failure the whole section returns `null` — no error state, matching the sibling sections' habit, since a missing summary is not something a visitor can act on.
 
@@ -740,3 +740,36 @@ Skeleton:   mt-4 flex flex-col gap-2
 **The one real difference from the "At a glance" card: this one has an idle state with a button, and it has an error state.** Both follow from the same decision — compare summaries are generated on demand, not on page load, because compare selections are built one hotel at a time and every intermediate set is a distinct uncacheable generation (see `architecture.md`). Because the user pressed a button, silence on failure is not acceptable the way it is on the hotel page: they asked for something and deserve to be told it did not work. Hence `text-xs text-error` plus a "Try again" button, the same inline-error tone Checkout uses. **Any future AI surface that spends money on an explicit user action inherits this pair — a button to start and a visible failure state.**
 
 **Caught by `/imprint` and fixed:** the button was written with `bg-surface` instead of the locked Secondary Button's `bg-elevated`. Both resolve to `#ffffff` today and there is no dark theme, so it was invisible — which is exactly why it was worth fixing. The moment a dark theme lands or the two tokens diverge, an un-caught deviation like this becomes a visible bug in a component nobody is looking at any more.
+
+### Smart Search Box ("Describe your stay")
+
+```
+Shell:      form, border-b border-border-default pb-4 — sits above FilterSection blocks inside FilterSidebar's aside
+Heading:    mb-3 flex items-center gap-2 text-sm font-medium text-text-primary
+AI icon:    SparklesIcon h-4 w-4 text-accent-text strokeWidth={1.5}
+Textarea:   min-h-20 rounded-xl border-border-default bg-subtle px-3 py-2.5 text-sm text-text-primary
+            placeholder:text-text-muted focus-visible:border-accent-border focus-visible:ring-accent-border
+Button:     [Primary Button] + mt-3 h-9 w-full rounded-xl
+            labels: "Search with AI" / "Reading your search…" / "Try again"
+Wait note:  mt-3 text-xs text-text-muted
+Error:      mt-3 text-xs text-error
+Result strip: mt-4 rounded-xl border border-border-default bg-elevated p-3
+  Title:      text-xs font-medium text-text-primary
+  Dismiss:    XIcon h-3 w-3 text-text-muted hover:text-text-primary
+  Applied:    mt-2 flex flex-wrap gap-1.5
+              chip: rounded-full border border-accent-border bg-accent-dim px-2 py-0.5 text-xs text-accent-text
+  Ignored:    mt-2 text-xs text-text-muted
+  Disclaimer: mt-2 text-xs text-text-muted
+```
+
+`frontend/features/search/components/SmartSearchBox.tsx` (Feature 41). The third AI surface, and the first that is **not** a Section Card — it is a form inside the filter sidebar, so it takes the sidebar's own scale rather than the content-page scale the other two share.
+
+**Two deliberate deviations from the AI Summary / AI Compare cards.** The heading is `text-sm font-medium`, matching `FilterSection`'s titles, not the `text-lg font-semibold` those cards use — a `text-lg` heading inside a 18rem sidebar would outweigh every filter section beneath it. And the button is the **Primary** accent button, not the locked Secondary the compare card uses; this is the sidebar's main call to action and the closest precedent is `ReviewForm`'s submit, not a button sitting inside a content card. **Both are recorded here so a later `/imprint` reads them as decisions, not drift.** Everything else is reused verbatim: sparkle icon, `text-xs text-text-muted` disclaimer, `text-xs text-error` failure line.
+
+**No text skeleton, deliberately** — breaking the "any future generated-text placeholder copies these three widths" rule above, because nothing text-shaped arrives in this spot. The output is *filters*, which land in the sidebar controls, the `SearchBar` and `ActiveFilterChips`. The wait is carried by the button label plus a `text-xs text-text-muted` line instead. **The three-bar recipe still applies to any surface where generated prose lands in place.**
+
+**The applied chips are labels, not controls** — same `bg-accent-dim` fill as `ActiveFilterChips` but with no `×` and no click target, because the removable copies of those same filters are already on screen beside the results. The strip answers "what did it understand"; `ActiveFilterChips` answers "what is filtering right now". The disclaimer points at the latter explicitly ("remove a chip beside the results") so the pair does not read as duplication.
+
+**This is the first AI surface whose failure the user is guaranteed to see.** It inherits the "button to start + visible failure state" pair from the compare card, but with no cache behind it every prompt is a live generation, and the upstream free-tier 502 recurs often enough that the "Try again" path is ordinary rather than exceptional. It was exercised for real during Feature 41's verification, not simulated.
+
+**Caught by `/imprint` and fixed:** the button was labelled "Search", colliding with `SearchBar`'s own "Search" button on the same page — ambiguous to assistive tech and to any test that queries by role. Now "Search with AI", matching "Compare with AI". **Any future AI action button gets a name that says AI**, so the family is legible by label as well as by icon.

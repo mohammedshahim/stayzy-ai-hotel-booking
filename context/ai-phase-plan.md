@@ -265,6 +265,14 @@ Three things this sketch did not anticipate, all now settled:
 **41. Smart search UI** — **build the box** in `FilterSidebar.tsx`; inferred filters render as editable chips.
 *Test:* a bad extraction is correctable, not a dead end.
 
+**Shipped 2026-07-22.** Three things the sketch did not anticipate:
+
+- **"Editable chips" needed no new chip component.** `ActiveFilterChips` already rendered every active filter as a removable chip. Because the extraction applies straight into `SearchState` and merges, its output *is* active filter state, so the existing chips make it editable for free. The new surface is a **result strip** whose job is the thing nothing else could show: `unmapped`.
+- **The partial contract is enforced by the merge, not by a preview.** `lib/extraction.ts` writes only keys the extraction actually returned, so an absent key leaves the existing filter alone. That single property is what makes prompting read as *refining* — and it means a staging/Apply step was unnecessary, not just expensive.
+- **The 20s timeout was not tightened per-call, it was replaced globally.** `AI_REQUEST_TIMEOUT_MS` now defaults to 45s for every AI call. A verification extraction measured 17.7s, ~2s from failing under the old ceiling.
+
+**What Feature 42 inherits:** `unmapped` already carries landmark phrases ("near the Eiffel Tower") because a landmark is deliberately not extracted as `destination`, and `SmartSearchBox` already renders that list. 42 consumes it rather than building a new path. `sort: "distance"` is still withheld from the model's vocabulary — 42 supplies the anchor that makes it meaningful, so unwithholding it belongs to that feature.
+
 **42. Nearby search** — generalize `findSimilarHotels` to `ST_DWithin`; add the "near this hotel/place" extraction path; fix `sort:"distance"`'s centroid haversine to use the real anchor.
 *Test:* "hotels near Hotel Marais Charme under ₹5000" returns correct, filtered, distance-ordered results.
 
