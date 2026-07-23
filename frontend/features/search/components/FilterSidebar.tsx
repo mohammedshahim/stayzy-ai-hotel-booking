@@ -5,12 +5,14 @@ import { StarIcon } from "lucide-react";
 
 import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
+import { SmartSearchBox } from "@/features/search/components/SmartSearchBox";
 import type { SearchCatalogs } from "@/features/search/hooks/useSearchCatalogs";
 import type { SearchState } from "@/features/search/types";
 
 type Props = {
   state: SearchState;
   onChange: (partial: Partial<SearchState>) => void;
+  onSmartSearch: (partial: Partial<SearchState>) => void;
   catalogs: SearchCatalogs;
 };
 
@@ -81,12 +83,14 @@ function PriceRangeSlider({
   );
 }
 
-export function FilterSidebar({ state, onChange, catalogs }: Props) {
+export function FilterSidebar({ state, onChange, onSmartSearch, catalogs }: Props) {
   const minPrice = state.minPrice ?? PRICE_MIN;
   const maxPrice = state.maxPrice ?? PRICE_MAX;
 
   return (
     <aside className="w-full rounded-2xl border border-border-default bg-surface p-5 lg:sticky lg:top-20 lg:h-fit lg:w-72 lg:shrink-0">
+      <SmartSearchBox onApply={onSmartSearch} catalogs={catalogs} />
+
       <FilterSection title="Price range">
         <PriceRangeSlider
           key={`${minPrice}-${maxPrice}`}

@@ -46,12 +46,21 @@ export function SearchPageContent() {
     update({ view: "map" });
   }
 
+  function handleSmartSearch(partial: Partial<SearchState>) {
+    update(partial, { history: "push" });
+  }
+
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-6 px-6 py-8">
       <SearchBar state={state} onSearch={update} />
 
       <div className="flex flex-col gap-6 lg:flex-row">
-        <FilterSidebar state={state} onChange={update} catalogs={catalogs} />
+        <FilterSidebar
+          state={state}
+          onChange={update}
+          onSmartSearch={handleSmartSearch}
+          catalogs={catalogs}
+        />
 
         <div className="flex flex-1 flex-col gap-4">
           <ActiveFilterChips state={state} onChange={update} catalogs={catalogs} />

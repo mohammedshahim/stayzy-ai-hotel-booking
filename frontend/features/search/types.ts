@@ -61,3 +61,26 @@ export type CatalogOption = {
   id: string;
   name: string;
 };
+
+export type ExtractedSearchFilters = {
+  destination?: string;
+  checkIn?: string;
+  checkOut?: string;
+  adults?: number;
+  kids?: number;
+  rooms?: number;
+  minPrice?: number;
+  maxPrice?: number;
+  starRatings?: number[];
+  minGuestRating?: number;
+  amenities?: string[];
+  roomFeatures?: string[];
+  mealPlans?: string[];
+  freeCancellationOnly?: boolean;
+  sort?: SortOption;
+};
+
+export type SearchFilterExtraction = {
+  filters: ExtractedSearchFilters;
+  unmapped: string[];
+};
