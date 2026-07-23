@@ -4,11 +4,18 @@ import { amenities, hotelAmenities, hotelImages, hotels } from "../models/hotel.
 import { rateOverrides, roomTypeFeatures, roomTypes } from "../models/room-type.schema";
 import { bookings } from "../models/booking.schema";
 
+export interface SearchAnchorPoint {
+  latitude: number;
+  longitude: number;
+  radiusKm: number;
+}
+
 export interface HotelSearchFilters {
   destination: string;
   starRatings: number[];
   minGuestRating: number | null;
   amenityIds: string[];
+  anchor: SearchAnchorPoint | null;
 }
 
 export interface CandidateHotel {
@@ -24,11 +31,16 @@ export interface CandidateHotel {
   freeCancellation: boolean;
   mainImageUrl: string | null;
   amenities: string[];
+  distanceKm: number | null;
 }
 
 export async function findCandidateHotels(filters: HotelSearchFilters): Promise<CandidateHotel[]> {
   const destination = filters.destination.trim();
   const destinationPattern = `%${destination}%`;
+  const { anchor } = filters;
+  const anchorPoint = anchor
+    ? sql`ST_SetSRID(ST_MakePoint(${anchor.longitude}, ${anchor.latitude}), 4326)::geography`
+    : null;
 
   return db
     .select({
@@ -49,6 +61,9 @@ export async function findCandidateHotels(filters: HotelSearchFilters): Promise<
       amenities: sql<
         string[]
       >`(SELECT COALESCE(array_agg(a.name ORDER BY a.name), ARRAY[]::text[]) FROM ${hotelAmenities} ha JOIN ${amenities} a ON a.id = ha.amenity_id WHERE ha.hotel_id = "hotels"."id")`,
+      distanceKm: anchorPoint
+        ? sql<number | null>`ST_Distance(${hotels.location}, ${anchorPoint}) / 1000`
+        : sql<number | null>`NULL`,
     })
     .from(hotels)
     .where(
@@ -63,6 +78,7 @@ export async function findCandidateHotels(filters: HotelSearchFilters): Promise<
               ilike(sql`${hotels.city} || ', ' || ${hotels.country}`, destinationPattern),
             )
           : undefined,
+        anchorPoint && anchor ? sql`ST_DWithin(${hotels.location}, ${anchorPoint}, ${anchor.radiusKm * 1000})` : undefined,
         filters.starRatings.length > 0 ? inArray(hotels.starRating, filters.starRatings) : undefined,
         filters.minGuestRating !== null ? gte(hotels.averageRating, filters.minGuestRating) : undefined,
         filters.amenityIds.length > 0

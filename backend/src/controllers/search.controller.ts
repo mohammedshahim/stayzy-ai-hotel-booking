@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import { searchQuerySchema } from "../types/search.schemas";
 import { searchHotels } from "../services/search.service";
+import { resolveSearchAnchor } from "../services/search-anchor.service";
 import { recordSearchIfChanged } from "../services/recent-search.service";
 import { resolveOwner } from "../utils/resolveOwner";
 import { todayIso, tomorrowIso } from "../utils/date";
@@ -23,10 +24,13 @@ export async function search(req: Request, res: Response, next: NextFunction): P
     }
 
     const owner = await resolveOwner(req, res);
+    const anchor = query.near ? await resolveSearchAnchor(query.near) : null;
 
     const [result] = await Promise.all([
       searchHotels({
         destination: query.destination,
+        anchor,
+        radiusKm: query.radiusKm,
         checkIn,
         checkOut,
         adults: query.adults,

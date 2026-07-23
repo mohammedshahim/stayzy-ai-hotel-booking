@@ -78,8 +78,6 @@ export async function getPublishedHotelDetails(id: string): Promise<HotelWithDet
 export async function getSimilarHotels(hotel: Hotel): Promise<SimilarHotel[]> {
   return findSimilarHotels({
     excludeId: hotel.id,
-    city: hotel.city,
-    country: hotel.country,
     latitude: hotel.latitude,
     longitude: hotel.longitude,
   });

@@ -47,6 +47,12 @@ function pickDates(filters: ExtractedSearchFilters, today: string) {
   return { checkIn, checkOut };
 }
 
+// "distance" measures from the `near` anchor, so it is the backend's call, never the model's.
+function pickSort(filters: ExtractedSearchFilters) {
+  if (filters.near) return { sort: "distance" as const };
+  return { sort: filters.sort === "distance" ? undefined : filters.sort };
+}
+
 function pickPrices(filters: ExtractedSearchFilters) {
   const { minPrice, maxPrice } = filters;
   if (minPrice !== undefined && maxPrice !== undefined && minPrice > maxPrice) {
@@ -75,8 +81,7 @@ export async function extractSearchFilters(
       amenities: amenities.map((row) => row.name),
       roomFeatures: roomFeatures.map((row) => row.name),
       mealPlans: mealPlans.map((row) => row.name),
-      // "distance" needs an anchor point only Feature 42 supplies.
-      sortOptions: SEARCH_SORT_OPTIONS.filter((option) => option !== "distance"),
+      sortOptions: SEARCH_SORT_OPTIONS,
     },
     timeoutMs,
   );
@@ -98,6 +103,7 @@ export async function extractSearchFilters(
       ...filters,
       ...pickDates(filters, today),
       ...pickPrices(filters),
+      ...pickSort(filters),
       amenities: optional(matchedAmenities.ids),
       roomFeatures: optional(matchedRoomFeatures.ids),
       mealPlans: optional(matchedMealPlans.ids),

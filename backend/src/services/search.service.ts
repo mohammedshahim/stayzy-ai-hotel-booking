@@ -2,12 +2,15 @@ import { findCandidateHotels } from "../queries/search.queries";
 import { findQualifyingRoomTypes, pickCheapestPerHotel } from "./availability.service";
 import { listMealPlansForPicker } from "./meal-plan.service";
 import { listRoomFeaturesForPicker } from "./room-feature.service";
+import type { SearchAnchor } from "./search-anchor.service";
 import type { SearchQuery } from "../types/search.schemas";
 
 export type SortOption = SearchQuery["sort"];
 
 export interface SearchParams {
   destination: string;
+  anchor: SearchAnchor | null;
+  radiusKm: number;
   checkIn: string;
   checkOut: string;
   adults: number;
@@ -43,6 +46,7 @@ export interface SearchResultHotel {
   roomFeatures: string[];
   freeCancellation: boolean;
   pricePerNight: number;
+  distanceKm: number | null;
 }
 
 export interface SearchResponse {
@@ -51,25 +55,15 @@ export interface SearchResponse {
   page: number;
   pageSize: number;
   totalPages: number;
+  anchor: SearchAnchor | null;
 }
 
 const DEFAULT_MEAL_PLAN_LABEL = "Room Only";
-const EARTH_RADIUS_KM = 6371;
 
-function toRadians(degrees: number): number {
-  return (degrees * Math.PI) / 180;
+function fallbackWithoutAnchor(sort: SortOption): SortOption {
+  return sort === "distance" ? "recommended" : sort;
 }
 
-function distanceKm(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }): number {
-  const dLat = toRadians(b.latitude - a.latitude);
-  const dLon = toRadians(b.longitude - a.longitude);
-  const sinLat = Math.sin(dLat / 2);
-  const sinLon = Math.sin(dLon / 2);
-  const h = sinLat ** 2 + Math.cos(toRadians(a.latitude)) * Math.cos(toRadians(b.latitude)) * sinLon ** 2;
-  return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
-}
-
-// "distance" sort has no reference point to measure from, so it sorts against the centroid of the matched result set itself (build-plan.md Feature 09).
 function sortResults(results: SearchResultHotel[], sort: SortOption): SearchResultHotel[] {
   const sorted = [...results];
 
@@ -82,14 +76,8 @@ function sortResults(results: SearchResultHotel[], sort: SortOption): SearchResu
       return sorted.sort((a, b) => b.guestRating - a.guestRating);
     case "star_rating":
       return sorted.sort((a, b) => b.starRating - a.starRating);
-    case "distance": {
-      if (sorted.length === 0) return sorted;
-      const centroid = {
-        latitude: sorted.reduce((sum, hotel) => sum + hotel.latitude, 0) / sorted.length,
-        longitude: sorted.reduce((sum, hotel) => sum + hotel.longitude, 0) / sorted.length,
-      };
-      return sorted.sort((a, b) => distanceKm(centroid, a) - distanceKm(centroid, b));
-    }
+    case "distance":
+      return sorted.sort((a, b) => (a.distanceKm ?? 0) - (b.distanceKm ?? 0));
     case "recommended":
     default:
       return sorted.sort((a, b) => b.guestRating - a.guestRating || b.reviewCount - a.reviewCount);
@@ -102,10 +90,11 @@ export async function searchHotels(params: SearchParams): Promise<SearchResponse
     starRatings: params.starRatings,
     minGuestRating: params.minGuestRating,
     amenityIds: params.amenityIds,
+    anchor: params.anchor ? { ...params.anchor, radiusKm: params.radiusKm } : null,
   });
 
   if (candidates.length === 0) {
-    return { items: [], total: 0, page: 1, pageSize: params.pageSize, totalPages: 1 };
+    return { items: [], total: 0, page: 1, pageSize: params.pageSize, totalPages: 1, anchor: params.anchor };
   }
 
   const hotelsById = new Map(candidates.map((hotel) => [hotel.id, hotel]));
@@ -154,10 +143,11 @@ export async function searchHotels(params: SearchParams): Promise<SearchResponse
         .filter((name): name is string => Boolean(name)),
       freeCancellation: roomType.freeCancellation,
       pricePerNight,
+      distanceKm: hotel.distanceKm === null ? null : Math.round(hotel.distanceKm * 10) / 10,
     });
   }
 
-  results = sortResults(results, params.sort);
+  results = sortResults(results, params.anchor ? params.sort : fallbackWithoutAnchor(params.sort));
 
   const total = results.length;
   const totalPages = Math.max(1, Math.ceil(total / params.pageSize));
@@ -170,5 +160,6 @@ export async function searchHotels(params: SearchParams): Promise<SearchResponse
     page,
     pageSize: params.pageSize,
     totalPages,
+    anchor: params.anchor,
   };
 }

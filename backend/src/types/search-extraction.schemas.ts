@@ -11,6 +11,7 @@ const extractedDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 export const extractedFiltersSchema = z.object({
   destination: z.string().trim().min(1).optional(),
+  near: z.string().trim().min(1).optional(),
   checkIn: extractedDateSchema.optional(),
   checkOut: extractedDateSchema.optional(),
   adults: z.number().int().min(1).optional(),

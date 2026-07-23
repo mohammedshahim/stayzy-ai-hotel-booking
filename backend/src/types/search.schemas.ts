@@ -19,9 +19,14 @@ export const SEARCH_SORT_OPTIONS = [
   "distance",
 ] as const;
 
+export const DEFAULT_SEARCH_RADIUS_KM = 25;
+export const MAX_SEARCH_RADIUS_KM = 100;
+
 export const searchQuerySchema = z
   .object({
     destination: z.string().default(""),
+    near: z.string().trim().min(1).optional(),
+    radiusKm: z.coerce.number().positive().max(MAX_SEARCH_RADIUS_KM).default(DEFAULT_SEARCH_RADIUS_KM),
     checkIn: dateSchema.optional(),
     checkOut: dateSchema.optional(),
     adults: z.coerce.number().int().min(1).default(2),

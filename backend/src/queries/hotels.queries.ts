@@ -133,15 +133,34 @@ export async function isSlugTaken(slug: string, excludeId?: string): Promise<boo
   return row !== undefined;
 }
 
+export interface HotelLocation {
+  name: string;
+  latitude: number;
+  longitude: number;
+}
+
+export async function findHotelLocationByName(name: string): Promise<HotelLocation | null> {
+  const [row] = await db
+    .select({
+      name: hotels.name,
+      latitude: sql<number>`ST_Y(${hotels.location}::geometry)`,
+      longitude: sql<number>`ST_X(${hotels.location}::geometry)`,
+    })
+    .from(hotels)
+    .where(and(ilike(hotels.name, `%${name}%`), eq(hotels.status, "published"), isNull(hotels.deletedAt)))
+    .orderBy(asc(sql`length(${hotels.name})`))
+    .limit(1);
+  return row ?? null;
+}
+
 export interface FindSimilarHotelsParams {
   excludeId: string;
-  city: string;
-  country: string;
   latitude: number;
   longitude: number;
 }
 
 const SIMILAR_HOTELS_LIMIT = 6;
+const SIMILAR_HOTELS_RADIUS_KM = 25;
 
 export async function findSimilarHotels(params: FindSimilarHotelsParams): Promise<SimilarHotel[]> {
   const referencePoint = sql`ST_SetSRID(ST_MakePoint(${params.longitude}, ${params.latitude}), 4326)::geography`;
@@ -162,8 +181,7 @@ export async function findSimilarHotels(params: FindSimilarHotelsParams): Promis
     .from(hotels)
     .where(
       and(
-        eq(hotels.city, params.city),
-        eq(hotels.country, params.country),
+        sql`ST_DWithin(${hotels.location}, ${referencePoint}, ${SIMILAR_HOTELS_RADIUS_KM * 1000})`,
         ne(hotels.id, params.excludeId),
         eq(hotels.status, "published"),
         isNull(hotels.deletedAt),
