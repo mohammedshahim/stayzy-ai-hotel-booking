@@ -180,7 +180,9 @@ Notes: First real usage of `components/common/` (per `architecture.md`'s folder 
 
 File: `frontend/features/search/components/HotelCard.tsx`
 App: frontend
-Last updated: 2026-07-15 (Feature 30)
+Last updated: 2026-07-23 (Feature 42)
+
+Distance line (**Feature 42**): `{distanceKm} km away` as `text-xs text-text-muted`, between the `City, Country` line and the "View on map" button, inside the same `flex-col gap-0.5` block. Rendered **only when `hotel.distanceKm !== null`** — the field is null on every unanchored search, so this is normally absent. Deliberately plain text, not a chip: it is a property of the result relative to the current query, not a filter the user picked, and chipping it would put it in the same visual family as the amenity tags below.
 
 Wrapper: Card pattern, `overflow-hidden`, no padding on the wrapper itself (image needs to bleed to the edges) — `border-accent-border` when `isSelected` (Map view pin sync), `border-border-default` otherwise. Always `flex` (`flex-col` for grid, `flex-col sm:flex-row` for list) — required so the body's `flex-1`/`mt-auto` can actually fill a CSS-Grid-stretched card and pin the price/CTA row to a shared bottom edge across a row of cards with differing content heights (missing this was a real bug — see Architecture Decisions).
 Grid variant: image `aspect-[4/3] w-full`, body below
@@ -212,9 +214,11 @@ Notes: All filters are real and client-side (confirmed with the developer during
 
 File: `frontend/features/search/components/{ActiveFilterChips,SortDropdown,ViewToggle}.tsx`
 App: frontend
-Last updated: 2026-07-07 (Feature 09)
+Last updated: 2026-07-23 (Feature 42)
 
 Active filter chip: Skill-Tag/Amenity Chip pattern exactly, trailing `XIcon` (`h-3 w-3 text-accent-text hover:text-text-primary`) — one chip per active filter *value* (each star rating, each amenity, etc.), not one chip per filter *category*
+Anchor chip (**Feature 42**): the `Near {place}` chip is the same pattern but is listed **first**, ahead of price and stars — it is the filter that reshapes the whole result set, so it reads as the heading of the chip row. Its removal goes through `lib/anchor.ts:clearAnchor` rather than an inline `onChange`, because clearing the anchor must also drop `sort` off `"distance"`; that rule has two call sites (this chip and the empty state's "Clear filters") and must not be written twice.
+Disabled sort option (**Feature 42**): `SortDropdown` takes `hasAnchor` and disables the Distance `<option>`, relabelling it `Distance — search near a place first`. **Say why an option is unavailable in the option itself** — a native `<select>` has nowhere else to put the reason, and silently reordering by something else is worse than refusing.
 Sort dropdown: plain native `<select>` styled to the Input pattern sizing from `ui-rules.md` (`h-10 rounded-xl border border-border-default bg-subtle`) — deliberately not a custom Popover-based listbox like the Date/Guests pickers, since a native select is simpler and suffices here (no multi-row content needed)
 View toggle: segmented icon-button group, `rounded-xl border border-border-default bg-subtle p-1` wrapper, active option gets `bg-elevated text-accent-text shadow-card`, inactive `text-text-muted hover:text-text-secondary`
 Amenity/room-feature/meal-plan chip labels: `ActiveFilterChips` takes the same `catalogs: SearchCatalogs` prop as `FilterSidebar` (from `SearchPageContent`, see that entry) and resolves each id to a display name via a local `useMemo`'d `Map` (falls back to the raw id if the catalog hasn't loaded yet). Do not re-introduce a component-local fetch for this — that was the exact duplication a `/review` pass caught (6 requests for 3 endpoints instead of 3).

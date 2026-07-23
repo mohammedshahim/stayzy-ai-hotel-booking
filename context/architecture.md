@@ -260,6 +260,8 @@ Response includes per-hotel lowest available price and location coordinates for 
 
 `GET /search` accepts a `sort` parameter (`price_asc`, `price_desc`, `guest_rating`, `star_rating`, `distance`) applied after filtering and before pagination. There is no landmarks table or discount column in the schema (Feature 06's mock data invented both for the UI, with no backing) — Feature 09 dropped both from the real search rather than adding schema for them, so `distance` sort has no landmark reference point to measure from. It instead sorts against the centroid (mean lat/lng) of the matched result set itself, computed in `search.service.ts` — not via `ST_Distance`/PostGIS and not via an external geocoding call per search. Every result also carries `hotels.location` so the frontend can render Map view without a second request.
 
+**Superseded by Feature 42.** `GET /search` now takes `near` (free text) and `radiusKm`. `search-anchor.service.ts` resolves `near` to one lat/long — our own `hotels` table first by name, the geocoder only on a miss — and `findCandidateHotels` filters with `ST_DWithin` and computes `ST_Distance/1000` **in SQL**, so the radius prunes before any JS runs. The centroid haversine is deleted; `distance` sort is now a numeric compare on that value and falls back to `recommended` when no anchor resolved. There is still no landmarks table: a free-text phrase is not enumerable, so it is resolved per request and cached in-process, never persisted. **`geocodingProvider` now has two methods and they are not interchangeable** — `geocode(address)` for admin hotel create, which must match streets and addresses, and `geocodePlace(query)` for search anchors, which excludes street/address types and requires high relevance precisely so a landmark can never resolve to a same-named street. Do not collapse them.
+
 `availability.service.ts`'s per-date effective-inventory/price check (`available_override ?? total_inventory`, `price ?? base_price`) is done in plain JS over `enumerateStayDates(checkIn, checkOut)`, not a SQL `generate_series`/CTE — `queries/search.queries.ts` only ever runs plain `db.select()` builder queries (a date range is always small, so per-date aggregation client-side is simpler than forcing it into one SQL statement). Any future feature needing "is this room type available for these dates" (Feature 12/13's hotel details and room selection) should reuse `findQualifyingRoomTypes`/`pickCheapestPerHotel` rather than re-deriving the math.
 
 ### Recent Searches + Search Suggestions
@@ -395,8 +397,9 @@ hotels.queries.ts's findSimilarHotels
         ↓
 findSimilarHotels builds a reference point (ST_SetSRID(ST_MakePoint(lng,
 lat), 4326)::geography) from the already-known coordinates, filters to
-published/non-deleted hotels in the same city+country excluding the
-current hotel, and orders by ST_Distance ascending — the GiST index on
+published/non-deleted hotels within ST_DWithin 25km excluding the
+current hotel (Feature 42 — was same city+country string equality, which
+broke on a differing suburb string), and orders by ST_Distance ascending — the GiST index on
 hotels.location (see PostGIS section) makes this fast — LIMIT 6, no
 rating factored into ranking (kept deliberately simple, see
 progress-tracker.md's Feature 15 Architecture Decision)
@@ -676,7 +679,7 @@ returned are written, so an unmentioned filter is left untouched
 Normal search runs — the existing URL-driven pipeline, unchanged
 ```
 
-The AI never queries hotels itself. It produces filters; the existing search path does the rest. A "near this hotel/place" query resolves to a reference point and hits `GET /hotels/nearby` (`ST_DWithin`) instead of a city match.
+The AI never queries hotels itself. It produces filters; the existing search path does the rest. A "near this hotel/place" query is extracted as a `near` filter like any other and rides the same `GET /search` pipeline, which resolves it to a reference point and applies `ST_DWithin` — **there is no separate `GET /hotels/nearby` route** (Feature 42; an extra route would have duplicated every other filter, since "near X under ₹5000 with a spa" is one query, not two).
 
 Three invariants this path establishes:
 

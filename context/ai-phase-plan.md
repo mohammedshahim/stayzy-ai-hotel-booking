@@ -273,6 +273,8 @@ Three things this sketch did not anticipate, all now settled:
 
 **What Feature 42 inherits:** `unmapped` already carries landmark phrases ("near the Eiffel Tower") because a landmark is deliberately not extracted as `destination`, and `SmartSearchBox` already renders that list. 42 consumes it rather than building a new path. `sort: "distance"` is still withheld from the model's vocabulary — 42 supplies the anchor that makes it meaningful, so unwithholding it belongs to that feature.
 
+**Superseded 2026-07-23 (Feature 42): a real `near` field was added to the extraction chain instead.** The paragraph above expected 42 to run a heuristic over `unmapped`. The intent was avoiding a second round-trip, which a `near` field also avoids — and separating "romantic" from "the Eiffel Tower" is the judgment the model should be making, not something a string heuristic guesses after the fact. `unmapped` keeps its original job: the phrases that became no filter at all. Full rationale in `progress-tracker.md`.
+
 **42. Nearby search** — generalize `findSimilarHotels` to `ST_DWithin`; add the "near this hotel/place" extraction path; fix `sort:"distance"`'s centroid haversine to use the real anchor.
 *Test:* "hotels near Hotel Marais Charme under ₹5000" returns correct, filtered, distance-ordered results.
 

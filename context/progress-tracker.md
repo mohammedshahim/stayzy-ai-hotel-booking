@@ -23,11 +23,11 @@ After completing any feature:
 
 ## Current Status
 
-**Phase:** 12 — Smart Search (AI phase)
-**Current feature:** 42 Nearby Search
-**Next up:** 42 — read **`ai-phase-plan.md`**, not `build-plan.md`. Generalize `findSimilarHotels` (`backend/src/queries/hotels.queries.ts:146-174`) from exact city/country equality to `ST_DWithin`, add the "near this hotel/place" extraction path, and fix `sort: "distance"`'s centroid haversine (`search.service.ts:57-92`) to order against a real anchor in SQL. The PostGIS plumbing already exists — a `referencePoint` geography and `ST_Distance` ordering are both in place.
+**Phase:** 12 — Smart Search (AI phase) — **complete**
+**Current feature:** none — Phase 12 is done
+**Next up:** 43 Widget graph — read **`ai-phase-plan.md`**, not `build-plan.md`. First feature of Phase 13, and the first to use LangGraph rather than a single-shot chain.
 
-**Feature 42 inherits a ready-made input from Features 40–41.** `unmapped` already carries exactly the phrases 42 needs — "near the Eiffel Tower" lands there today, verified, because a landmark is deliberately not extracted as `destination`. `SmartSearchBox` already renders that list as its "Ignored:" line, so 42's job is to consume the list rather than build a new extraction path for it. `sort: "distance"` is still withheld from the vocabulary offered to the model (`search-extraction.service.ts`) — 42 is what supplies the anchor that makes it meaningful, so unwithholding it is part of that feature.
+**The Mapbox token in use has no POI data, and Feature 42 is shaped around that.** Verified against the live API on both the v5 and v6 endpoints: "Eiffel Tower" returns *Eiffel Tower Street, Philippines* at relevance **1.0**, "Times Square" returns a street in Australia, and `types=poi` returns nothing at all. A relevance threshold alone cannot catch this — the bad match scores perfectly. So `geocodePlace` excludes street and address types outright and additionally requires relevance ≥ 0.8. The consequence is deliberate: **a POI landmark resolves to no anchor and the UI says so, rather than silently anchoring on the wrong continent.** Cities, neighbourhoods and districts all resolve correctly ("Paris", "Shibuya", "Manhattan", "Asakusa Tokyo" verified), and hotel names never touch the geocoder. A POI-enabled token would light up the landmark path with no code change.
 
 **The 20s AI timeout is gone.** `AI_REQUEST_TIMEOUT_MS` now defaults to **45s** (`config/env.ts`, `.env.example`), raised during Feature 41 and applied to *every* AI call rather than to extraction alone — the developer's call, and the right one: summaries are cached, so a higher ceiling costs them nothing on a hit and saves a cold generation that would otherwise fail. Justified immediately — a verification extraction measured **17.7s**, roughly two seconds from failing under the old ceiling. 45s sits under the ~60s production proxy cut. **`trust proxy` still has to be settled at deployment or the IP-keyed `aiRateLimit` is effectively disabled in production.**
 
@@ -141,7 +141,7 @@ Planned in `ai-phase-plan.md`. Read that file, not `build-plan.md`, for every fe
 
 - [x] 40 Query extraction chain
 - [x] 41 Smart search UI
-- [ ] 42 Nearby search
+- [x] 42 Nearby search
 
 ### Phase 13 — Chat Widget
 
@@ -175,6 +175,26 @@ Moved from Phase 9 on 2026-07-19. Scope widened: `agent/` is a fourth deployable
 ---
 
 ## Completed Features
+
+### ✅ 42 Nearby Search — completed 2026-07-23
+
+Notes: a search can now be anchored to a point. `near` (free text) and `radiusKm` join `searchQuerySchema`; the controller resolves `near` to a lat/long and `findCandidateHotels` filters with `ST_DWithin` and selects `ST_Distance/1000` **in SQL**, so the radius prunes before any JS runs. New `services/search-anchor.service.ts` and `queries/hotels.queries.ts:findHotelLocationByName`. `GET /search` gained `anchor` on the response and `distanceKm` on every item. Frontend: `near`/`radiusKm` in `SearchState` and the URL, a removable "Near X" chip, `km away` on `HotelCard`, and `lib/anchor.ts:clearAnchor`. **No migration, no new table, no new dependency** — the GiST index and `ST_Distance` plumbing were already there from Feature 15.
+
+Decision: **anchor resolution tries our own hotels table first, the geocoder second.** A hotel-name `ilike` is free, exact, and is what the acceptance test names; only a miss spends a Mapbox call. Shortest matching name wins so "Shibuya" resolves to *Shibuya Sky Hotel* rather than an arbitrary row.
+
+Decision: **`near` is resolved server-side per request, not client-side into coordinates in the URL.** Keeps the URL shareable and human-readable and the Mapbox token behind the backend, per Feature 07. The cost is real — `searchHotels` paginates in JS *after* building the whole result set, so every pagination click re-resolves — and is absorbed by a module-level phrase→anchor `Map` in the resolver that caches misses as well as hits and clears wholesale past 200 entries, since free-text keys are unbounded. **An in-process map, not a table: Feature 39's no-cache-table rule is intact.**
+
+Decision: **the centroid haversine is deleted, not repaired.** `sortResults`' distance case sorted against the centroid of the matched set, which measured from nothing. It is now a numeric compare on the SQL-computed `distanceKm`, and `toRadians`/`EARTH_RADIUS_KM` are gone. With no anchor, `sort: "distance"` falls back to `recommended` **and the Distance option in `SortDropdown` is disabled** — a control that silently does something else is worse than one that says why it is unavailable.
+
+Decision: **a real `near` field in the extraction chain — a recorded deviation from `ai-phase-plan.md`**, which said 42 would consume `unmapped` rather than build a new extraction path. The intent there was avoiding a second round-trip, which a `near` field also avoids. Telling "romantic" from "the Eiffel Tower" is model judgment, not something a string heuristic should guess after the fact. Verified: "romantic hotels near the Eiffel Tower with a spa" → `near: "the Eiffel Tower"`, `unmapped: ["romantic"]`, spa resolved to an amenity id. `"distance"` is no longer withheld from the model's vocabulary, but the backend stays authoritative via `pickSort` — a `near` forces `sort: "distance"`, and a `distance` with no `near` is dropped.
+
+Decision: **both radii are 25 km (search default, cap 100; similar-hotels rail fixed).** Measured against the real seed rather than guessed: the two Paris hotels are **2.4 km** apart, the two Tokyo hotels **10.5 km**. A 5 km default satisfies the Paris acceptance test but makes "near Shibuya Sky Hotel" return only itself; 10 km fails Tokyo by half a kilometre. 25 km is the smallest round number that holds both pairs while coming nowhere near bridging cities. **This is a sparse-seed-driven number — real inventory would want it tighter.**
+
+Decision: **`distanceKm` is returned and rendered on the card** — a deliberate scope addition beyond the plan's wording, agreed during `/architect`. `ST_Distance` was already being computed, and a distance-ordered list without distances is unreadable.
+
+Decision: **an unresolvable `near` degrades, it never 400s.** The response carries `anchor: null`, the search runs unanchored, and the UI says so. See the Mapbox POI finding in Current Status for why this path matters far more than expected — it is the *normal* outcome for a landmark with this token, not an edge case. `geocodePlace` was added alongside `geocode` rather than replacing it, so admin hotel create keeps the address-matching behaviour it needs.
+
+Verified end-to-end against the real running apps and the real seeded database, in a real headless browser (Playwright, zero console errors) — **15/15 checks**: the count line names the anchor; two Paris hotels returned distance-ordered nearest-first with `0 km away` / `2.4 km away` rendered; the "Near X" chip renders and its removal clears `near` from the URL, drops sort back to `recommended`, disables the Distance option and removes every distance line; an unresolvable landmark shows the honest notice and still returns all 6 hotels; a city anchor resolves; the similar-hotels rail still renders. Backend curl covered the acceptance prompt, the Tokyo pair at 25 km (2 results) versus 5 km (1), `sort=distance` with no anchor, `radiusKm=500` → 400 at the cap, pagination under an anchor holding the anchor across pages, and cache-warm requests at ~6 ms against a ~300 ms cold geocode. `pnpm build` clean (backend), `tsc --noEmit` + `pnpm lint` + `pnpm build` clean (frontend), `ruff check` + `ruff format --check` clean (agent). No test data created; this feature writes no rows.
 
 ### ✅ 41 Smart Search UI — completed 2026-07-22
 
