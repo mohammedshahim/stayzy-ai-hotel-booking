@@ -37,7 +37,7 @@ const envSchema = z.object({
   AI_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   AI_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(20),
   // Short: a browser is waiting. The seed script overrides it with its own budget.
-  AI_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
+  AI_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(45_000),
   AI_SEED_TIMEOUT_MS: z.coerce.number().int().positive().default(300_000),
 
   S3_BUCKET: z.string().optional(),
