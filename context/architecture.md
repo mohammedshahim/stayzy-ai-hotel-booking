@@ -205,6 +205,8 @@ agent/
 │   ├── config/                  → settings, OpenRouter LLM factory, PostgresSaver checkpointer
 │   ├── api/                     → routers + deps.py (validates the internal service secret)
 │   ├── graphs/                  → stateful multi-turn LangGraph agents (chatbot, chat_widget)
+│   │                              each owning `tools/` for the tools only that surface binds
+│   ├── tools/                   → read-only tools EVERY surface binds, plus ToolOutcome
 │   ├── chains/                  → stateless single-shot LLM flows (summaries, query extraction)
 │   ├── clients/backend_client.py → internal-only httpx client back into backend/
 │   ├── schemas/                 → pydantic request/response models
@@ -719,10 +721,11 @@ Two stores hold the conversation, with an explicit winner: `chat_messages` is th
 
 - **The SSE frame shape is fixed by its consumer.** `frontend/`'s `useChatStream` splits on a blank line and `JSON.parse`s the whole frame, so every frame is `data:`-only and the event kind travels **inside** the JSON. An `event:` line would break the parse. `agent/src/streaming/events.py` is the one place this is written.
 - **`token` frames carry the id of the reply they belong to, and a `drop` frame retracts one.** A ReAct model routinely answers, calls a tool, then answers again; `drop` is what stops the user seeing the paragraph twice. A client that ignores it renders duplicates.
-- **A hotel id never enters the model's token stream.** Tools return names; `state.hotel_ids` records the ids they saw; the graph maps a model-chosen name back to a real id when it builds a chip. This is how Feature 40's no-uuid invariant survives contact with chips that need a uuid.
+- **A hotel id never enters the model's token stream.** Tools return names; `state.hotel_ids` records the ids they saw; the graph maps a model-chosen name back to a real id when it builds a chip. This is how Feature 40's no-uuid invariant survives contact with chips that need a uuid. **Extended in Feature 45 to every entity, not just hotels:** `ToolOutcome` carries `hotel_ids`, `room_type_ids`, and `booking_ids`, because Feature 46's mutating tools need a room type and a booking the model likewise must never name by id. A booking's key is `"{hotel name} checking in {check-in date}"`, with a `(booking 2)` suffix on collision — one user holding several bookings at one hotel on one date is real, and an unsuffixed key silently collapses them.
 - **The `thread_id` is supplied by `backend/` and used verbatim.** `agent/` never mints or interprets it, so swapping `widget:{userId}` for a real `chat_sessions.id` in Feature 44 touches no Python.
 - **Page context is assembled per call and never persisted into the history, and it goes *last*, after the messages.** Placed after the system prompt it gets buried by a long conversation and the model resolves "this one" to whatever hotel came up most recently. This was observed, not theorised — do not move it back.
 - **The tool loop is bounded by unbinding tools at 4 rounds, with `recursion_limit: 12` behind it.** LangGraph 1.2.9 defaults `recursion_limit` to **10007**, so the framework provides no useful ceiling of its own.
+- **A tool lives in `agent/src/tools/` only if *both* surfaces bind it; otherwise it belongs to its own feature's `graphs/<feature>/tools/`** (added Feature 45). Today that means `SearchHotels` and `GetHotelDetails` are shared and everything else is chatbot-only. This is what keeps the widget's safety property structural rather than a matter of discipline: no booking, cancel, favorite, or review tool is even importable from where the widget builds its `TOOL_SCHEMAS`. Verified live — asked "what are my bookings?", the widget calls no tool and says it cannot see them.
 
 **Superseded by Feature 43:** "the AI changes what you are looking at reduces to the AI writes a URL" is not how it shipped. The model cannot emit an amenity uuid and `backend/` may not parse the stream to insert one, so an `action` frame carries a **partial filter object with names**, in the `ExtractedSearchFilters` shape from Features 40–41. The frontend maps names to ids from the catalog it already holds and builds the URL itself through `toSearchState`. The AI still never writes search *results* — only filters.
 

@@ -318,12 +318,13 @@ When a rule elsewhere in this file conflicts with this section, this section win
 `agent/` mirrors the backend's discipline of one responsibility per layer:
 
 ```
-api/ (routes) → graphs/ or chains/ → clients/ → backend/
+api/ (routes) → graphs/ or chains/ → tools/ → clients/ → backend/
 ```
 
 - `api/` — FastAPI routers. Request/response shaping and dependency injection only. No prompts, no LLM calls, no business logic
 - `chains/` — stateless single-shot LLM flows. No graph, no checkpointer, no conversation state. **One folder per feature area, with its own `prompts.py` beside the chains that use it** — `chains/summary/` holds both summary chains and their shared prompts; `chains/smart_search/` holds the extraction chain and its own. A second chain in an existing area joins that folder rather than starting a new one
-- `graphs/` — stateful multi-turn LangGraph agents. Owns conversation execution state through the checkpointer and nothing else
+- `graphs/` — stateful multi-turn LangGraph agents. Owns conversation execution state through the checkpointer and nothing else. A graph also owns `tools/` for the tools only that surface binds
+- `tools/` — tool schemas and their runners. **Top-level `src/tools/` is for tools *every* surface binds; a tool only one feature uses lives in that feature's `graphs/<feature>/tools/`.** A tool returns a `ToolOutcome` — text for the model, id maps for the graph — and never touches `httpx` itself
 - `clients/` — the only place outbound HTTP happens. **A tool function never calls `httpx` directly**; it goes through `backend_client.py`
 - `schemas/` — pydantic request/response models, one module per route. A model used by exactly one route and small enough to read at a glance may live in that route module instead — a separate file per two-field model is indirection without benefit (see Simplicity)
 
@@ -337,8 +338,9 @@ api/ (routes) → graphs/ or chains/ → clients/ → backend/
 
 - One tool does one thing, with a docstring the model actually reads — the docstring is the tool's interface, so write it for the model, not for a human skimming code
 - A tool never invents data. Prices, availability, and hotel facts always come from a real `backend/` call
-- Mutating tools are only ever registered on the chatbot graph — never the widget graph
+- Mutating tools are only ever registered on the chatbot graph — never the widget graph. **Placement enforces this, not discipline:** a tool one surface must never reach lives in the other's `graphs/<feature>/tools/`, so it is not importable from where the restricted graph builds its `TOOL_SCHEMAS`
 - Every mutating tool is gated behind `interrupt()` before it executes
+- **An id never reaches the model.** A tool takes names and returns names; the ids it saw travel back on `ToolOutcome` (`hotel_ids`, `room_type_ids`, `booking_ids`) for the graph to resolve against later. Where a natural key can collide — two bookings at one hotel on one date — the tool disambiguates it and prints the disambiguated key, or the map silently drops rows
 
 ### Error handling
 

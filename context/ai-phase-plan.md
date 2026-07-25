@@ -149,7 +149,8 @@ No booking, cancel, favorite, or review tool is ever wired into the widget, so a
 
 - `routes/ai.routes.ts` → `controllers/ai.controller.ts` → `services/ai.service.ts` — public-facing, session-authed like any other user route: summaries, chat widget, chatbot, smart search.
 - `routes/internal/*.routes.ts`, guarded by a new `middlewares/requireInternalService.ts` — only `agent/` calls these. Thin wrappers around *existing* services (booking, favorite, review, search) plus chat-message persistence. **No new business logic.**
-- `GET /hotels/nearby?refHotelId=|lat&lng=&radiusKm=&maxPrice=&amenities=&checkIn=&checkOut=` — extends `search.service.ts`'s filter pipeline with a distance-from-point clause instead of a city match. Reused by AI tools and, optionally, the existing Similar Hotels section.
+- ~~`GET /hotels/nearby?refHotelId=|lat&lng=&radiusKm=...`~~ — **not built (Feature 45).** `GET /internal/search`'s `near` parameter already resolves an anchor via `search-anchor.service.ts` and returns distance-ordered results with `distanceKm`; a separate route would have duplicated it.
+- `GET /internal/favorites` — added in Feature 45, the only new route the read-only tool suite needed. `GET /favorites` resolves its owner from cookies, which `agent/` cannot send; details, room types, compare, and hotel reviews are public reads that `agent/` calls directly.
 
 **Tables** (each with a hand-written `.down.sql`)
 
@@ -197,7 +198,11 @@ agent/
 │   │       ├── nodes.py
 │   │       ├── prompts.py
 │   │       └── tools/
-│   │           └── search_tools.py  → read-only subset, shared with the chatbot
+│   │           └── widget_tools.py  → chip proposals + the subset the widget binds
+│   ├── tools/                       → read-only tools BOTH surfaces bind
+│   │   ├── search_tools.py          → SearchHotels, GetHotelDetails
+│   │   ├── describe.py              → phrasing shared by hotel descriptions
+│   │   └── outcome.py               → ToolOutcome
 │   ├── chains/                      → stateless, single-shot LLM flows (no graph needed)
 │   │   ├── summary/
 │   │   │   ├── hotel_summary_chain.py
@@ -305,6 +310,8 @@ UI, reusing existing patterns:
 ### Phase 14 — Chatbot
 
 **45. Read-only tool suite** — search, hotel details, compare, my bookings, favorites, reviews, nearby.
+
+*Built 2026-07-25 (Feature 45), with four changes:* **"nearby" is not a tool** — `near` on `GET /internal/search` already anchors on a hotel/city/district and returns distance-ordered results, so the sketched `GET /hotels/nearby` route was not built. **Room types became their own tool** (`GetRoomTypes`), separate from hotel details, since room data is dates-and-party dependent and only worth fetching once the conversation turns to booking. **"reviews" means a hotel's guest reviews**, not the user's own written ones. **The shared-tool location is inverted from the folder sketch above** (now corrected there) — `src/tools/` holds only what *both* surfaces bind, and a tool one feature owns lives in that feature's `graphs/<feature>/tools/`. See the Feature 45 entry in `progress-tracker.md`. Only `/internal/favorites` was added to `backend/`; everything else reuses existing routes.
 
 **46. Mutating tools** — booking, cancel, favorite, review, each gated by `interrupt()`-based confirmation before execution.
 

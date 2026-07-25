@@ -564,7 +564,7 @@ export const createBookingSchema = z.object({
 
 ## LangGraph
 
-**Where things live** — see `code-standards.md`'s Agent Conventions. In short: `graphs/` for stateful multi-turn agents, `chains/` for stateless single-shot flows. If it does not need conversation state, it is not a graph.
+**Where things live** — see `code-standards.md`'s Agent Conventions. In short: `graphs/` for stateful multi-turn agents, `chains/` for stateless single-shot flows, `tools/` for tools every surface binds (a tool only one surface binds lives in that graph's own `tools/`). If it does not need conversation state, it is not a graph.
 
 **Rules:**
 
