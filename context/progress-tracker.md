@@ -24,8 +24,13 @@ After completing any feature:
 ## Current Status
 
 **Phase:** 14 — Chatbot (AI phase) — in progress
-**Current feature:** none — 45 is done, every tool verified against the real running backend and seeded DB
-**Next up:** 46 Mutating tools (booking, cancel, favorite, review, each `interrupt()`-gated) — read **`ai-phase-plan.md`**. It inherits Feature 45's id maps: `room_type_ids` from `GetRoomTypes` and `booking_ids` from `ListMyBookings`, keyed `"{hotel name} checking in {check-in date}"` with a `(booking 2)` suffix on collision. **Booking never takes payment in chat** — `createBookingForUser` creates a `pending_payment` row that holds inventory, and a booking only ever reaches `confirmed` via the Stripe webhook, so the tool hands off a checkout link. The confirmation-card UI for the `interrupt()` pause is Feature 48, not 46. Still worth clearing the leftover "Temp User 1" test bookings (see the open Feature 27 note below) — 45's verification confirmed they are still there and they will pollute any eval that reads real bookings.
+**Current feature:** none — 46 is done, all four mutating tools verified through a real `interrupt()` pause and resume against the real backend
+**Next up:** 47 Agent assembly (single ReAct agent + tool node + guardrail system prompt) — read **`ai-phase-plan.md`**. **Two obligations 46 hands it, both of which are correctness bugs if missed:**
+
+1. **The chatbot's `/ai` route must reject an unverified email.** `POST /bookings` checks `user.emailVerified` in its controller; `requireAuth` does not, and the `/internal` guard only receives a user id. Nothing is exposed today because no chatbot route exists yet — the moment 47 adds one, `BookRoom` becomes a way around that check unless the route gates on it the way `createBooking` does. Deliberately not solved inside `/internal/bookings`: the acting user is trusted there by design, and adding a user lookup would have made a thin wrapper into business logic.
+2. **The tool node must dispatch at most one mutating tool call per node execution.** `interrupt()` resumes by **re-running its node from the start**, so if the node runs two tool calls and the second pauses, the first re-executes on resume — an already-committed booking would be made twice. Every 46 runner is safe to re-run *up to* its own pause (they only read before it), but that guarantee does not extend across sibling tool calls in the same node.
+
+Also still open: clear the leftover "Temp User 1" test bookings (see the Feature 27 note below) — 18 of them, still there, and `ListMyBookings` reads them verbatim into any eval.
 
 **Feature 44 shipped the widget persistence layer and the whole widget UI.** The four build-time constraints it had to honour — group tokens by `id` and honour `drop`, chips carry filter *names* not ids/URLs, send `sessionId` as the real `chat_sessions.id`, and resolve the widget/Compare-Tray stacking — are all satisfied; see the Completed Features entry for how, and for the deviations and review-pass additions (`actions_json`, split write ownership, cancel-on-disconnect, `react-markdown`, the `.shimmer` thinking indicator, shadcn `scroll-fade`, and the tray-level positioning).
 
@@ -155,7 +160,7 @@ Planned in `ai-phase-plan.md`. Read that file, not `build-plan.md`, for every fe
 ### Phase 14 — Chatbot
 
 - [x] 45 Read-only tool suite
-- [ ] 46 Mutating tools
+- [x] 46 Mutating tools
 - [ ] 47 Agent assembly
 - [ ] 48 Chatbot UI (`/assistant`)
 
@@ -179,6 +184,28 @@ Moved from Phase 9 on 2026-07-19. Scope widened: `agent/` is a fourth deployable
 ---
 
 ## Completed Features
+
+### ✅ 46 Mutating tools — completed 2026-07-25
+
+Notes: the four tools that write on the user's behalf — `BookRoom`, `CancelBooking`, `AddFavorite`, `WriteReview` — each pausing at `interrupt()` before it touches anything. **No graph, no prompt, no UI.** New backend pieces: `POST /internal/bookings`, `POST /internal/bookings/:id/cancel`, `POST /internal/bookings/:id/review`, `POST /internal/favorites`, all thin wrappers over services that already existed. New agent files: `graphs/chatbot/tools/booking_tools.py` and `graphs/chatbot/tools/confirm.py`. No table, no migration, no new dependency, no new env var.
+
+Decision: **`interrupt()` lives inside the tool runner, not in the graph** — `_preview` (reads only) → `confirm(...)` → commit. The gate is structural, so Feature 47 cannot assemble the agent and forget to wire it, and the widget still cannot reach any of it. The alternative — pure `preview_*`/`commit_*` functions with the pause in 47's tool node — was rejected for making the single most important safety property depend on a later feature remembering it.
+
+Decision: **mutating tools re-fetch to resolve a name; they never trust an id map from an earlier turn.** `BookRoom` re-reads `/hotels/:id/room-types` for the exact dates being booked, and `CancelBooking`/`WriteReview` re-read `/internal/bookings` and rebuild the key map with Feature 45's `unique_booking_key`. This is what routes around a real bug in 45's `room_type_ids`, which is keyed by **bare room name** (`{room["name"]: room["id"]}`) — "Deluxe King Room" exists at more than one hotel, so browsing two hotels collapses the map exactly the way `booking_ids` collapsed before the `(booking 2)` suffix. **The map is left as-is and simply not used for booking**, because re-fetching is needed anyway to price the stay and check inventory at the moment of confirmation rather than at whenever `GetRoomTypes` last ran. A tool that resolves by re-reading also works on the first turn of a conversation, before any read tool has run.
+
+Decision: **one generic `interrupt()` envelope for all four actions** — `{action, title, lines: [{label, value}], confirm_label}` — so Feature 48 builds one confirmation card instead of four. The resume value is `{"approved": bool}`; a bare boolean is accepted too, and **anything else counts as a refusal**. `confirm.py` owns both halves plus the shared `DECLINED` outcome, whose text tells the model not to re-propose the action.
+
+Decision: **the checkout link rides on `ToolOutcome.action`, never in model-facing text**, as `{"kind": "checkout", "label": ..., "path": "/checkout/<id>"}`. This is the one place a booking uuid appears, and it is written by the tool and read by the UI — the model is told only that the payment link is already on screen. It keeps "an LLM never emits a uuid" structural rather than hoped-for. `ToolOutcome` grew one optional field, `action`, which the widget never sets. **The path is relative**, so `agent/` needs no `FRONTEND_URL`: Feature 48 runs in the frontend and knows its own origin.
+
+Decision: **all four stay gated, including favorites.** `code-standards.md` and `library-docs.md` both say no exceptions, and a blanket rule has no edge cases to argue about later. Favoriting an already-saved hotel short-circuits to a plain message without pausing, which is the only concession. No `RemoveFavorite`, no review edit or delete — scope is sacred.
+
+Deviation — **the tools went where their domain lives, not all into `booking_tools.py`** as the Feature 45 hand-off note suggested. `AddFavorite` sits in `account_tools.py` beside `ListMyFavorites`, `WriteReview` in `review_tools.py` beside `GetHotelReviews`, and only booking and cancel are in the new file. The point of that note was *never `src/tools/`*, which still holds absolutely. `find_booking_by_name` and `unknown_booking` live in `account_tools.py` next to `unique_booking_key`, shared by cancel and review.
+
+**`interrupt()` re-runs its whole node from the start on resume** — read out of the installed package, not assumed. Everything a runner does before its pause is therefore a repeatable read, by construction. The consequence Feature 47 inherits is recorded in Current Status above: two mutating tool calls in one node execution would re-commit the first one.
+
+Verified with a throwaway one-node graph over the **real `PostgresSaver`** (scratch file inside `agent/`, deleted after), driving every runner against the real backend and seeded DB. Each of the four: paused with the right card, resumed `approved: false` → returned `DECLINED` and wrote nothing, then paused again and resumed `approved: true` → committed, confirmed by direct SQL. Every rejection refuses **before** pausing: unknown room name (lists what the hotel does offer), check-out before check-in, unknown booking name, cancelling a `cancelled` and a `pending_payment` booking, reviewing a `confirmed` stay, rating 9, blank description, and reviewing the same stay twice. `BookRoom`'s previewed total (USD 960) matched the committed total exactly, so the nightly×nights×rooms formula mirrored from `createBookingForUser` is right. Zero uuids in any model-facing text, regex-checked on every path; the only uuid is inside `action.path`. The widget's bound surface was re-checked and is unchanged at five read-only/proposal tools, with no import from `graphs/chatbot/` anywhere in it. `ruff check` + `ruff format --check` clean (agent), `pnpm build` clean (backend).
+
+**Verification data was restored afterwards, in one transaction**, so Feature 51's eval set still runs: the published review deleted and `Shibuya Sky Hotel` put back to `review_count`/`average_rating` `0|0` (its pre-test baseline, matching every other hotel — see the seed bug below), the cancelled booking set back to `confirmed`, the two `pending_payment` bookings the test created deleted, the saved favorite removed, and the harness's seven `verify46-*` checkpointer threads cleared. Confirmed back to 9 bookings (3 confirmed, 1 completed, 5 cancelled), 0 reviews, 2 favorites. **The dev account has exactly one completed unreviewed booking**, so the `WriteReview` happy path is a single shot that has to be restored each time it is exercised.
 
 ### ✅ 45 Read-only tool suite — completed 2026-07-25
 

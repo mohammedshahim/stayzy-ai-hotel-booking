@@ -339,8 +339,9 @@ api/ (routes) → graphs/ or chains/ → tools/ → clients/ → backend/
 - One tool does one thing, with a docstring the model actually reads — the docstring is the tool's interface, so write it for the model, not for a human skimming code
 - A tool never invents data. Prices, availability, and hotel facts always come from a real `backend/` call
 - Mutating tools are only ever registered on the chatbot graph — never the widget graph. **Placement enforces this, not discipline:** a tool one surface must never reach lives in the other's `graphs/<feature>/tools/`, so it is not importable from where the restricted graph builds its `TOOL_SCHEMAS`
-- Every mutating tool is gated behind `interrupt()` before it executes
-- **An id never reaches the model.** A tool takes names and returns names; the ids it saw travel back on `ToolOutcome` (`hotel_ids`, `room_type_ids`, `booking_ids`) for the graph to resolve against later. Where a natural key can collide — two bookings at one hotel on one date — the tool disambiguates it and prints the disambiguated key, or the map silently drops rows
+- Every mutating tool is gated behind `interrupt()` before it executes, and **the `interrupt()` call sits inside the runner**, not in the node that dispatches it — so rewiring a graph cannot drop the gate. Everything before the pause must be a repeatable read, because resuming re-runs the whole node
+- **A mutating tool resolves a name by re-fetching, not from an id map.** The map is a turn-old snapshot; a booking or a room has to be re-read at the moment of confirmation anyway, so the price, availability, and status on the confirmation card are the ones that actually apply. It also means the tool works before any read tool has run
+- **An id never reaches the model.** A tool takes names and returns names; the ids it saw travel back on `ToolOutcome` (`hotel_ids`, `room_type_ids`, `booking_ids`) for the graph to resolve against later. Where a natural key can collide — two bookings at one hotel on one date — the tool disambiguates it and prints the disambiguated key, or the map silently drops rows. Where the **UI** needs an id the model must not write — a checkout link — it rides on `ToolOutcome.action`, never in the text
 
 ### Error handling
 

@@ -386,6 +386,14 @@ rounded-2xl border border-border-default bg-elevated p-5 shadow-card
 
 Rendered as its own full-width card, **never nested inside a `ChatBubble`** — that would violate the never-put-a-card-inside-a-card rule, and a confirmation is a distinct, higher-stakes moment. Shows the action's real details (hotel, room, dates, total) plus Confirm (Primary) / Cancel (Secondary). The composer is disabled until one is chosen.
 
+**The payload is one shape for all four actions** (shipped in Feature 46), so this is a single component, not one per action:
+
+```
+{action, title, lines: [{label, value}], confirm_label}
+```
+
+`title` is the heading, `lines` render as label/value rows in order, `confirm_label` is the Primary button's text. Confirm resumes the graph with `{"approved": true}` and Cancel with `{"approved": false}` — **the card must always send one or the other**, since the tool is parked mid-execution until it does. A completed `BookRoom` additionally returns a `{kind: "checkout", label, path}` action carrying a relative `/checkout/<id>` path; render it as a button and resolve it against the app's own origin.
+
 **Rules**
 
 - The chat empty state is **not** the locked `EmptyState` component — that is for "no data"; this is "no conversation started." Use a short welcome line plus 2–3 suggested-prompt chips in the Skill-Tag pattern, clickable to send.

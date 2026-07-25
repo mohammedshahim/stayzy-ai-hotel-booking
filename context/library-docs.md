@@ -574,7 +574,9 @@ export const createBookingSchema = z.object({
 - **A tool loop needs an explicit ceiling.** `recursion_limit` defaults to **10007** in LangGraph 1.2.9 (`langgraph/_internal/_config.py`), not the 25 older versions used, so the library stops nothing. Bound the loop by unbinding the tools after N rounds — the model must then answer in words — and set `recursion_limit` behind it as a backstop. Raising an error instead costs the same tokens and gives the user nothing
 - **`stream_mode="messages"` emits every message a node produces, not just LLM output.** Tool results arrive on the same channel, so filter on `AIMessageChunk` before treating a chunk as assistant text
 - The checkpointer is **execution** state only. Nothing outside the graph reads it for display — `chat_messages` in `backend/`'s Postgres is the display source of truth
-- Every mutating tool is gated behind `interrupt()` before it executes. No exceptions, and none are registered on the widget graph at all
+- Every mutating tool is gated behind `interrupt()` before it executes. No exceptions, and none are registered on the widget graph at all. **The `interrupt()` call belongs inside the tool runner** (Feature 46), not in the node that dispatches it, so the gate cannot be lost when a graph is rewired
+- **`interrupt()` resumes by re-running its whole node from the start**, verified against the installed package. Two consequences, both load-bearing: everything a runner does before its pause must be a repeatable read, and **a node must dispatch at most one mutating tool call**, or an already-committed sibling call re-commits on resume
+- **One confirmation envelope for every mutating tool** — `{action, title, lines: [{label, value}], confirm_label}`, resumed with `{"approved": bool}`, built by `graphs/chatbot/tools/confirm.py`. Anything that is not an explicit approval is a refusal. One shape means one confirmation card, not one per action
 - One ReAct agent plus a tool node. **Not** a multi-agent supervisor — the tool count does not justify one, and adding one is a decision to revisit explicitly, not to drift into
 - Tool docstrings are the model's interface to the tool. Write them for the model
 
@@ -597,7 +599,7 @@ Chat replies stream; summaries and query extraction do not. The event vocabulary
 {type:"tool_start", tool}         → render the tool-status chip
 {type:"tool_end", tool, summary}  → clear the chip
 {type:"action", kind, label, ...} → navigate / open_hotel / compare proposal (widget)
-{type:"interrupt", payload}       → render the confirmation card (chatbot, not yet built)
+{type:"interrupt", payload}       → render the confirmation card (chatbot; payload shape shipped in Feature 46, not yet emitted)
 {type:"done"}                     → finalize
 {type:"error", message}           → render inline error + retry
 ```
