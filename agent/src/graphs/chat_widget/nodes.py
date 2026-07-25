@@ -10,13 +10,9 @@ from src.clients.backend_client import BackendError
 from src.config.llm import get_smart_llm
 from src.graphs.chat_widget.prompts import CONTEXT_CURRENT, CONTEXT_EARLIER, WIDGET_SYSTEM
 from src.graphs.chat_widget.state import WidgetState
-from src.graphs.chat_widget.tools.search_tools import (
-    TOOL_SCHEMAS,
-    ToolOutcome,
-    run_get_hotel_details,
-    run_search_hotels,
-    to_chip_filters,
-)
+from src.graphs.chat_widget.tools.widget_tools import TOOL_SCHEMAS, to_chip_filters
+from src.tools.outcome import ToolOutcome
+from src.tools.search_tools import run_get_hotel_details, run_search_hotels
 
 logger = logging.getLogger(__name__)
 

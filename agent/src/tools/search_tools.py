@@ -1,14 +1,14 @@
-"""The widget's read-only tools, and the chip proposals it may offer.
+"""Hotel search tools every chat surface shares.
 
-Each schema's docstring is the interface the model reads. No schema takes a hotel
-id: the model works in names, and `nodes.py` maps one back to an id it saw.
+Each schema's docstring is the interface the model reads. No schema takes an id: the
+model works in names, and the calling graph maps one back to an id it has seen.
 """
-
-from typing import NamedTuple
 
 from pydantic import BaseModel, Field
 
 from src.clients import backend_client
+from src.tools.describe import amenity_line, rating_phrase
+from src.tools.outcome import ToolOutcome
 
 
 class SearchHotels(BaseModel):
@@ -52,64 +52,16 @@ class SearchHotels(BaseModel):
 
 
 class GetHotelDetails(BaseModel):
-    """Get the full description, policies, and room types for one hotel the user is
+    """Get the full description, policies, and amenities for one hotel the user is
     looking at or that a previous search returned. Give the hotel's exact name.
     """
 
     hotel_name: str = Field(description="Exact hotel name as it appeared earlier.")
 
 
-class ProposeSearch(BaseModel):
-    """Offer the user a clickable chip that opens a filtered search page.
+SEARCH_TOOL_SCHEMAS = [SearchHotels, GetHotelDetails]
 
-    Use this whenever you suggest a different set of hotels — it lets them see the
-    results in the full search UI. It only offers; nothing moves until they click.
-    Fill in the same filters you would pass to SearchHotels.
-    """
-
-    label: str = Field(description="Short chip text, e.g. 'Cheaper hotels near the Louvre'.")
-    destination: str | None = None
-    near: str | None = None
-    check_in: str | None = None
-    check_out: str | None = None
-    adults: int | None = None
-    kids: int | None = None
-    rooms: int | None = None
-    min_price: float | None = None
-    max_price: float | None = None
-    star_ratings: list[int] | None = None
-    min_guest_rating: float | None = None
-    amenities: list[str] | None = None
-    free_cancellation_only: bool | None = None
-
-
-class ProposeHotel(BaseModel):
-    """Offer a chip that opens one hotel's own page. Only for a hotel that appeared
-    in a tool result or that the user is currently viewing.
-    """
-
-    label: str = Field(description="Short chip text, e.g. 'View Hotel Marais Charme'.")
-    hotel_name: str = Field(description="Exact hotel name as it appeared earlier.")
-
-
-class ProposeCompare(BaseModel):
-    """Offer a chip that adds a hotel to the user's comparison tray, which holds up
-    to four hotels side by side. Only for a hotel that appeared in a tool result.
-    """
-
-    label: str = Field(description="Short chip text, e.g. 'Compare Le Louvre Riverside'.")
-    hotel_name: str = Field(description="Exact hotel name as it appeared earlier.")
-
-
-TOOL_SCHEMAS = [
-    SearchHotels,
-    GetHotelDetails,
-    ProposeSearch,
-    ProposeHotel,
-    ProposeCompare,
-]
-
-_SEARCH_PARAM_NAMES = {
+SEARCH_PARAM_NAMES = {
     "destination": "destination",
     "near": "near",
     "check_in": "checkIn",
@@ -123,18 +75,11 @@ _SEARCH_PARAM_NAMES = {
 }
 
 
-class ToolOutcome(NamedTuple):
-    """What a tool run gives back: text for the model, ids for the graph."""
-
-    text: str
-    hotel_ids: dict[str, str]
-
-
 def to_search_params(args: dict[str, object]) -> dict[str, str]:
     """Turn tool arguments into `/internal/search` query params, filters as names."""
     params: dict[str, str] = {}
 
-    for field, param in _SEARCH_PARAM_NAMES.items():
+    for field, param in SEARCH_PARAM_NAMES.items():
         value = args.get(field)
         if value is not None:
             params[param] = str(value)
@@ -152,51 +97,21 @@ def to_search_params(args: dict[str, object]) -> dict[str, str]:
     return params
 
 
-def to_chip_filters(args: dict[str, object]) -> dict[str, object]:
-    """Turn a chip proposal into the `ExtractedSearchFilters` shape `frontend/` merges.
-
-    Amenities stay as names; the frontend maps them to ids from its own catalog.
-    """
-    filters: dict[str, object] = {}
-
-    for field, key in _SEARCH_PARAM_NAMES.items():
-        value = args.get(field)
-        if value is not None:
-            filters[key] = value
-
-    for field, key in (("star_ratings", "starRatings"), ("amenities", "amenities")):
-        values = args.get(field)
-        if isinstance(values, list) and values:
-            filters[key] = values
-
-    if args.get("free_cancellation_only"):
-        filters["freeCancellationOnly"] = True
-    if args.get("near"):
-        filters["sort"] = "distance"
-
-    return filters
-
-
 def _describe(hotel: dict[str, object]) -> str:
     parts = [
         f"{hotel['name']} — {hotel['city']}, {hotel['country']}",
         f"{hotel['starRating']}-star",
+        rating_phrase(hotel.get("guestRating"), hotel.get("reviewCount")),
         f"USD {hotel['pricePerNight']} per night in a {hotel['roomType']}",
         f"meal plan: {hotel['mealPlan']}",
     ]
-    if hotel.get("reviewCount"):
-        parts.insert(
-            2, f"guest rating {hotel['guestRating']}/10 from {hotel['reviewCount']} reviews"
-        )
-    else:
-        parts.insert(2, "no guest reviews yet")
     if hotel.get("distanceKm") is not None:
         parts.append(f"{hotel['distanceKm']} km away")
     if hotel.get("freeCancellation"):
         parts.append("free cancellation")
-    amenities = hotel.get("amenities")
-    if isinstance(amenities, list) and amenities:
-        parts.append(f"amenities: {', '.join(str(a) for a in amenities)}")
+    amenities = amenity_line(hotel)
+    if amenities:
+        parts.append(amenities)
     return "; ".join(parts)
 
 
@@ -208,7 +123,7 @@ async def run_search_hotels(args: dict[str, object], user_id: str | None) -> Too
 
     items = data.get("items", [])
     if not items:
-        return ToolOutcome("No hotels matched those filters.", {})
+        return ToolOutcome("No hotels matched those filters.")
 
     lines = [_describe(hotel) for hotel in items]
     anchor = data.get("anchor")
@@ -229,14 +144,10 @@ async def run_get_hotel_details(hotel_id: str, user_id: str | None) -> ToolOutco
     hotel = await backend_client.get(f"/hotels/{hotel_id}", user_id=user_id)
 
     amenities = [amenity["name"] for amenity in hotel.get("amenities", [])]
-    reviews = (
-        f"guest rating {hotel['averageRating']}/10 from {hotel['reviewCount']} reviews"
-        if hotel.get("reviewCount")
-        else "no guest reviews yet"
-    )
     lines = [
         f"{hotel['name']} — {hotel['city']}, {hotel['country']}",
-        f"{hotel['starRating']}-star, {reviews}",
+        f"{hotel['starRating']}-star, "
+        f"{rating_phrase(hotel.get('averageRating'), hotel.get('reviewCount'))}",
         f"Address: {hotel['addressLine1']}",
         f"Check-in {hotel['checkInTime']}, check-out {hotel['checkOutTime']}",
         f"Description: {hotel['description']}",
