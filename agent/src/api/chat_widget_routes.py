@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessageChunk, HumanMessage
 
 from src.api.deps import ActingUser
+from src.clients import backend_client
 from src.graphs.chat_widget.graph import build_widget_graph
 from src.schemas.chat import ChatWidgetRequest
 from src.streaming import events
@@ -22,6 +23,21 @@ SUMMARY_LENGTH = 120
 RECURSION_LIMIT = 12
 
 
+async def _save_reply(session_id: str, user_id: str | None, text: str, actions: list[dict]) -> None:
+    """Write the surviving reply to `backend/`, which cannot read this stream itself."""
+    if not user_id or not text:
+        return
+
+    try:
+        await backend_client.post(
+            "/internal/chat/messages",
+            user_id=user_id,
+            json={"sessionId": session_id, "content": text, "actions": actions},
+        )
+    except backend_client.BackendError:
+        logger.exception("[api/chat_widget] could not persist reply for thread %s", session_id)
+
+
 async def _run_turn(body: ChatWidgetRequest, user_id: str | None) -> AsyncIterator[str]:
     graph = build_widget_graph()
     config = {
@@ -33,7 +49,11 @@ async def _run_turn(body: ChatWidgetRequest, user_id: str | None) -> AsyncIterat
         "context": body.context.model_dump() if body.context else None,
     }
 
+    replies: dict[str, list[str]] = {}
+    actions: list[dict] = []
     sent_actions = 0
+    failed = False
+
     try:
         async for mode, payload in graph.astream(
             inputs, config, stream_mode=["messages", "updates"]
@@ -43,6 +63,7 @@ async def _run_turn(body: ChatWidgetRequest, user_id: str | None) -> AsyncIterat
                 # Tool results travel this channel too, and are not assistant text.
                 if isinstance(chunk, AIMessageChunk) and isinstance(chunk.content, str):
                     if chunk.content:
+                        replies.setdefault(str(chunk.id), []).append(chunk.content)
                         yield events.token(chunk.content, str(chunk.id))
                 continue
 
@@ -50,6 +71,7 @@ async def _run_turn(body: ChatWidgetRequest, user_id: str | None) -> AsyncIterat
                 if node == "agent":
                     message = update["messages"][-1]
                     if message.tool_calls and message.content:
+                        replies.pop(str(message.id), None)
                         yield events.drop(str(message.id))
                     for call in message.tool_calls:
                         yield events.tool_start(call["name"])
@@ -61,8 +83,13 @@ async def _run_turn(body: ChatWidgetRequest, user_id: str | None) -> AsyncIterat
                         yield events.action(action)
                     sent_actions = len(actions)
     except Exception as exc:
+        failed = True
         logger.exception("[api/chat_widget] turn failed for thread %s: %s", body.session_id, exc)
         yield events.error("Something went wrong. Please try again.")
+
+    if not failed:
+        text = "\n\n".join("".join(parts) for parts in replies.values()).strip()
+        await _save_reply(body.session_id, user_id, text, actions)
 
     yield events.done()
 
