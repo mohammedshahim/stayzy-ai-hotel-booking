@@ -15,3 +15,28 @@ export const chatWidgetBodySchema = z.object({
 });
 
 export type ChatWidgetBody = z.infer<typeof chatWidgetBodySchema>;
+
+const hotelActionSchema = z.object({
+  label: z.string().min(1),
+  hotelId: z.string().uuid(),
+  hotelName: z.string().min(1),
+});
+
+export const chatActionSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("navigate"),
+    label: z.string().min(1),
+    filters: z.record(z.unknown()),
+  }),
+  hotelActionSchema.extend({ kind: z.literal("open_hotel") }),
+  hotelActionSchema.extend({ kind: z.literal("compare") }),
+]);
+
+export const assistantMessageBodySchema = z.object({
+  sessionId: z.string().uuid(),
+  content: z.string().trim().min(1),
+  actions: z.array(chatActionSchema).optional(),
+});
+
+export type ChatAction = z.infer<typeof chatActionSchema>;
+export type AssistantMessageBody = z.infer<typeof assistantMessageBodySchema>;

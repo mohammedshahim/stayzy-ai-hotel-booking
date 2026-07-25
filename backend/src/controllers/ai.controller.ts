@@ -2,6 +2,12 @@ import { Readable } from "stream";
 import type { NextFunction, Request, Response } from "express";
 import { getCompareSummary, getHotelSummary, streamFromAgent } from "../services/ai.service";
 import { extractSearchFilters } from "../services/search-extraction.service";
+import {
+  endWidgetSession,
+  getWidgetThread,
+  recordUserMessage,
+  startWidgetSession,
+} from "../services/chat-session.service";
 import { compareSummaryQuerySchema } from "../types/compare.schemas";
 import { searchExtractionBodySchema } from "../types/search-extraction.schemas";
 import { chatWidgetBodySchema } from "../types/chat.schemas";
@@ -32,11 +38,6 @@ export async function getCompareAiSummary(req: Request, res: Response, next: Nex
   }
 }
 
-// Feature 44 replaces this with the chat_sessions row id; agent/ takes either verbatim.
-function widgetThreadId(userId: string): string {
-  return `widget:${userId}`;
-}
-
 export async function streamWidgetChat(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const parsed = chatWidgetBodySchema.safeParse(req.body);
@@ -49,9 +50,10 @@ export async function streamWidgetChat(req: Request, res: Response, next: NextFu
     const upstream = new AbortController();
     req.on("close", () => upstream.abort());
 
+    const sessionId = await startWidgetSession(userId, parsed.data.message);
     const stream = await streamFromAgent(
       "/chat/widget",
-      { sessionId: widgetThreadId(userId), message: parsed.data.message, context: parsed.data.context },
+      { sessionId, message: parsed.data.message, context: parsed.data.context },
       userId,
       upstream.signal,
     );
@@ -61,6 +63,9 @@ export async function streamWidgetChat(req: Request, res: Response, next: NextFu
       return;
     }
 
+    // Recorded only once the agent has the turn, so a 502 leaves no unanswerable question in history.
+    await recordUserMessage(sessionId, parsed.data.message);
+
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache, no-transform");
     res.setHeader("Connection", "keep-alive");
@@ -69,6 +74,24 @@ export async function streamWidgetChat(req: Request, res: Response, next: NextFu
 
     // Piped through untouched — backend never parses or buffers the stream.
     Readable.fromWeb(stream).pipe(res);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getWidgetSession(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const messages = await getWidgetThread(req.user!.id);
+    res.json({ success: true, data: { messages } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function endWidgetChat(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    await endWidgetSession(req.user!.id);
+    res.json({ success: true, data: { ended: true } });
   } catch (error) {
     next(error);
   }

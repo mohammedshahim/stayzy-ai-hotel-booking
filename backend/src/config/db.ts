@@ -5,6 +5,7 @@ import * as adminAuthSchema from "../models/admin-auth.schema";
 import * as aiSchema from "../models/ai.schema";
 import * as authSchema from "../models/auth.schema";
 import * as bookingSchema from "../models/booking.schema";
+import * as chatSchema from "../models/chat.schema";
 import * as favoriteSchema from "../models/favorite.schema";
 import * as hotelSchema from "../models/hotel.schema";
 import * as roomTypeSchema from "../models/room-type.schema";
@@ -17,6 +18,7 @@ export const schema = {
   ...bookingSchema,
   ...favoriteSchema,
   ...aiSchema,
+  ...chatSchema,
   ...authSchema,
   ...adminAuthSchema,
 };
