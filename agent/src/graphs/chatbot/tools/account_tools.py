@@ -3,9 +3,10 @@
 The widget never binds these — it must not read or act on the user's own data.
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.clients import backend_client
+from src.graphs.chatbot.tools.confirm import DECLINED, confirm
 from src.tools.describe import count_phrase, rating_phrase
 from src.tools.outcome import ToolOutcome
 
@@ -23,7 +24,15 @@ class ListMyFavorites(BaseModel):
     """
 
 
-ACCOUNT_TOOL_SCHEMAS = [ListMyBookings, ListMyFavorites]
+class AddFavorite(BaseModel):
+    """Save a hotel to the signed-in user's favorites. The user is asked to confirm
+    before it is saved.
+    """
+
+    hotel_name: str = Field(description="Exact hotel name as it appeared earlier.")
+
+
+ACCOUNT_TOOL_SCHEMAS = [ListMyBookings, ListMyFavorites, AddFavorite]
 
 
 def booking_key(booking: dict[str, object]) -> str:
@@ -111,3 +120,49 @@ async def run_list_my_favorites(user_id: str | None) -> ToolOutcome:
         "\n".join(_describe_favorite(favorite) for favorite in favorites),
         {favorite["name"]: favorite["id"] for favorite in favorites},
     )
+
+
+async def find_booking_by_name(name: str, user_id: str | None) -> tuple[str, dict] | None:
+    """Resolve the name the model used against a fresh read of the user's bookings.
+
+    Re-read rather than trusting an earlier turn's map: the mutating tools resolve the
+    same key even when `ListMyBookings` never ran in this conversation.
+    """
+    bookings = await backend_client.get("/internal/bookings", user_id=user_id)
+
+    keyed: dict[str, dict] = {}
+    for booking in bookings or []:
+        keyed[unique_booking_key(booking, keyed)] = booking
+
+    wanted = name.strip().lower()
+    for key, booking in keyed.items():
+        if key.lower() == wanted:
+            return key, booking
+    return None
+
+
+def unknown_booking(name: str) -> ToolOutcome:
+    return ToolOutcome(
+        f"No booking of the user's is named '{name}'. Call `ListMyBookings` and use one "
+        "of the names it reports, exactly."
+    )
+
+
+async def run_add_favorite(hotel_id: str, hotel_name: str, user_id: str | None) -> ToolOutcome:
+    """Confirm with the user, then save the hotel."""
+    favorites = await backend_client.get("/internal/favorites", user_id=user_id)
+    if any(favorite["id"] == hotel_id for favorite in favorites or []):
+        return ToolOutcome(f"{hotel_name} is already in the user's favorites.")
+
+    approved = confirm(
+        "add_favorite",
+        "Save to favorites?",
+        [("Hotel", hotel_name)],
+        "Save hotel",
+    )
+    if not approved:
+        return DECLINED
+
+    await backend_client.post("/internal/favorites", user_id=user_id, json={"hotelId": hotel_id})
+
+    return ToolOutcome(f"Saved — {hotel_name} is now in the user's favorites.")
