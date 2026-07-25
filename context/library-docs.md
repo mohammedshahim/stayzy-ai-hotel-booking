@@ -656,3 +656,15 @@ The shape that works, in `chains/smart_search/query_extraction_chain.py`:
 **A feature with no cache pays that latency every single time.** Feature 40 measured 6–14.5s per extraction and hit the 20s `AI_REQUEST_TIMEOUT_MS` outright on one prompt, with no warm path to fall back on. Budget the timeout against the *uncached* case whenever there is no cache.
 
 **Verify a model slug before trusting it.** `GET https://openrouter.ai/api/v1/models` lists every id; a wrong slug fails only at the first real call. The configured slug was confirmed present in the catalog during Feature 38.
+
+---
+
+## react-markdown (`frontend/`)
+
+Added in Feature 44 to render assistant chat replies. The widget model emits `**bold**` and the occasional list on its own, so a raw string showed literal markdown markers.
+
+- **One shared component: `frontend/features/chat/components/ChatMarkdown.tsx`.** Feature 48's chatbot mounts the same renderer — do not write a second one. Build it here, reuse it there.
+- **Commonmark only — no plugins.** No `remark-gfm`, no `rehype-*`. The model uses bold, links, short lists, and inline code; commonmark covers all of it, and every plugin is attack surface plus bundle weight on a client component. Add one only when a real reply needs a feature commonmark lacks.
+- **Every element maps to a design token**, never a default browser style: `strong` → `font-semibold`, `a` → `text-accent-text underline`, inline `code` → `bg-subtle font-mono text-xs`, list/paragraph spacing via `mb-2 last:mb-0`. A bare `<ReactMarkdown>` with no `components` overrides is drift — it renders blue underlined links and serif code that belong to no other surface.
+- **Assistant messages only.** User bubbles stay plain `whitespace-pre-wrap` text — a user's literal `*` is not markup. The assistant bubble drops `whitespace-pre-wrap` because the renderer owns paragraph spacing; keeping both double-spaces every reply.
+- **Streaming is fine.** `ChatMarkdown` re-parses on each token as `reply` grows; a momentarily-unbalanced `**` mid-stream resolves the instant its closer arrives. No special handling needed for partial markdown.

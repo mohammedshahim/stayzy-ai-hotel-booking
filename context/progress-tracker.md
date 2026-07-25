@@ -23,16 +23,11 @@ After completing any feature:
 
 ## Current Status
 
-**Phase:** 13 — Chat Widget (AI phase) — **in progress**
-**Current feature:** none — 43 is done
-**Next up:** 44 Widget persistence + UI — read **`ai-phase-plan.md`**, not `build-plan.md`. `chat_sessions`/`chat_messages` + down migrations, `useChatStream`, `ChatThread`, action chips, context indicator, "New chat".
+**Phase:** 13 — Chat Widget (AI phase) — **complete**
+**Current feature:** none — 44 is done, verified end-to-end against the real running stack
+**Next up:** 45 Read-only tool suite (Phase 14 — Chatbot) — read **`ai-phase-plan.md`**. Copies `services/search-extraction.service.ts`'s name→id pattern for its tools (the no-uuid invariant), and inherits `GET /internal/search` and the shared `ChatThread`/`ChatMarkdown` UI from Feature 44. Clear the leftover "Temp User 1" test bookings first (see the open Feature 27 note below) — they will pollute any chatbot eval that reads real bookings.
 
-**Three things Feature 44 must honour, all established by 43 and none of them optional:**
-
-1. **Group tokens by their `id` and honour the `drop` event.** A `token` frame carries the id of the reply it belongs to; a `drop` frame retracts that whole reply. Ignore it and the user sees the same paragraph twice, because the model re-answers after a tool call.
-2. **Chips carry filter *names*, not ids and not a URL.** Map names to ids from the catalog `useSearchCatalogs` already loads, then go through the existing `toSearchState`. `open_hotel`/`compare` chips carry a real `hotelId` already resolved by `agent/`.
-3. **Send `sessionId` as the real `chat_sessions.id`** in place of today's `widget:{userId}`. `agent/` takes it verbatim as the checkpointer thread id and needs no change.
-4. **The plan's widget positioning cites a precedent that does not exist.** `ai-phase-plan.md` puts the collapsed trigger at `fixed bottom-6 right-6`, "same positioning precedent as the Compare Tray" — but `ui-registry.md` records the Tray as `fixed bottom-4 inset-x-0 mx-auto max-w-3xl`, centred and at `bottom-4`. They are different, and they can **overlap**: the Tray is centred at `max-w-3xl` while the bubble hugs the right edge, so around 800–900px wide the Tray spans nearly the full width and the bubble lands on top of it. Both persist across pages, so this is a normal state, not an edge case. Decide the stacking before building — the Tray sitting above the bubble, or the bubble offset upward when the Tray is open. For elevation, follow the **Floating Compare Tray** (`shadow-elevated`), not the **Panel** entry (no shadow): floating surfaces carry the shadow, inline panels do not.
+**Feature 44 shipped the widget persistence layer and the whole widget UI.** The four build-time constraints it had to honour — group tokens by `id` and honour `drop`, chips carry filter *names* not ids/URLs, send `sessionId` as the real `chat_sessions.id`, and resolve the widget/Compare-Tray stacking — are all satisfied; see the Completed Features entry for how, and for the deviations and review-pass additions (`actions_json`, split write ownership, cancel-on-disconnect, `react-markdown`, the `.shimmer` thinking indicator, shadcn `scroll-fade`, and the tray-level positioning).
 
 **The model was changed to `qwen/qwen3.5-flash-02-23` (both slots) during Feature 43.** It loops where the previous free Nemotron did not — one message produced 51 assistant turns — which is why the widget graph caps its tool loop. Any new graph or chain needs the same protection; do not assume a model stops on its own.
 
@@ -72,7 +67,7 @@ Still unresolved from Feature 27: the dev database has leftover test data (a "Te
 
 **Hosting provider still undecided** ("will do later") — no longer blocking anything, since deployment moved to Phase 16.
 
-**Latest completed addition:** Feature 36 Agent Service Scaffold — 2026-07-20.
+**Latest completed addition:** Feature 44 Widget persistence + UI — 2026-07-25. Phase 13 complete.
 
 ---
 
@@ -155,7 +150,7 @@ Planned in `ai-phase-plan.md`. Read that file, not `build-plan.md`, for every fe
 ### Phase 13 — Chat Widget
 
 - [x] 43 Widget graph
-- [ ] 44 Widget persistence + UI
+- [x] 44 Widget persistence + UI
 
 ### Phase 14 — Chatbot
 
@@ -184,6 +179,30 @@ Moved from Phase 9 on 2026-07-19. Scope widened: `agent/` is a fourth deployable
 ---
 
 ## Completed Features
+
+### ✅ 44 Widget persistence + UI — completed 2026-07-25
+
+Notes: the persistence layer plus the entire widget UI. New tables `chat_sessions`/`chat_messages` (migration `0004` + hand-written `.down.sql`), a `queries/` → `chat-session.service.ts` split, an internal `POST /internal/chat/messages` write route, `GET`/`POST` widget-session routes on `/ai`, and the `agent/` reply-save call. Frontend: `features/chat/` — `useChatStream`, `ChatThread`/`ChatBubble`/`ChatMarkdown`/`ChatActionChip`/`ChatComposer`/`ChatPanel`/`ChatWidget`, `usePageContext`, `chipToSearchHref`. `ChatWidget` is server-gated in `app/layout.tsx` so logged-out users download none of it.
+
+Decision — **two stores, split ownership.** The LangGraph checkpointer (agent schema) is the model's memory; `chat_messages` is a separate read model for display and `backend/` never reads the checkpointer. `backend/` writes the **user** message at turn start (only once the stream is confirmed open, so a 502 leaves no unanswerable question in history); `agent/` writes the **assistant** reply at turn end via `POST /internal/chat/messages`, because only it knows which reply survived a `drop` and which chips were final.
+
+Decision — **resolve-or-create the active session per turn; the frontend never handles a session id.** One active widget session per `(user, feature)` is enforced by a partial unique index `WHERE ended_at IS NULL`; the resolver catches the insert conflict and re-reads, so a double-open races safely. `sessionId` is sent to `agent/` as the checkpointer `thread_id` verbatim — `widget:{userId}` from Feature 43 became a real row id with **zero** Python change, exactly as designed.
+
+Decision — **widget/chatbot histories share the tables, separated by a `feature` text column** (`'widget'|'chatbot'`), one WHERE clause rather than two table sets. Confirmed with the developer as the MVP-with-scalability shape: what a user asks in the widget never appears in chatbot history and vice-versa, without a second schema.
+
+Deviation — **the column is `actions_json` (jsonb), not the plan's `tool_calls_json`.** It stores only the *final* action chips on a reply (`navigate`/`open_hotel`/`compare` with resolved ids or filter names), never progress chips or intermediate tool calls. `architecture.md`'s table was corrected to match; `ai-phase-plan.md` keeps the original name as the plan of record.
+
+Deviation — **cancel-on-disconnect changes the plan's closed-tab test.** Closing the tab mid-reply cancels the turn (`req.on("close")` → `upstream.abort()`), so only the **user's** message persists, not the in-flight reply. `ai-phase-plan.md`'s test wording was corrected accordingly. This was confirmed live during verification (a premature-reload test script accidentally exercised exactly this path and degraded cleanly — the user message persisted, no crash).
+
+**Review-pass changes (2026-07-25, four points raised on the built feature):**
+- **Assistant replies are rendered markdown.** The qwen model emits `**bold**`/lists on its own, which showed as literal markers. Added `react-markdown` via a shared `ChatMarkdown` component (commonmark only, mapped to design tokens) — the same renderer Feature 48's chatbot will mount. User bubbles stay plain. See `library-docs.md` → react-markdown.
+- **The thinking indicator is now a `.shimmer` "Thinking…" text**, not the three-dot pulse. `.shimmer` is the first motion primitive beyond `animate-pulse`/`animate-spin`; it honours `prefers-reduced-motion`. `ui-rules.md`'s motion section and `ui-registry.md` were updated so it reads as a decision, not drift.
+- **Thread scroll uses shadcn's `scroll-fade`/`scrollbar-none` utilities** (from `shadcn/tailwind.css`), which fade the edges dynamically with scroll position — a hand-rolled version was written and then removed once the shadcn utility was found. Rule recorded: check `shadcn/tailwind.css` before writing a custom utility.
+- **The widget now sits level with the Compare Tray.** Both the collapsed trigger and the open panel use `sm:bottom-6` (level with the tray's `bottom-4`, no horizontal overlap since the tray is a centred `sm:w-fit` pill and the widget hugs the right edge). Only the *mobile* trigger keeps a lift (`bottom-32`) because the tray is full-width below `sm:`. The earlier `sm:bottom-24` lift — which the plan's "same precedent as the Compare Tray" note had prompted — read as misalignment and was removed; the now-unused `isTrayShowing` prop was dropped from `ChatPanel`.
+
+Verified end-to-end against the real running stack (backend :4000, agent :4100, frontend :3000) and the real seeded DB, in a real headless browser. Backend/service checks from the build pass: internal write route auth (401 no/bad secret), body validation (400), ownership-checked append (404 cross-user), title truncation, thread render. Live app, on a freshly-restarted clean stack: logged-out shows no widget; empty state + suggestions + context indicator that follows navigation; one live turn = exactly **one** `POST /ai/chat/widget` (no double-submit), correct reply + chips; persistence across a cold reload in a fresh browser context; `open_hotel` chip → `/hotels/{id}`; `navigate` chip → `/search?destination=Paris&amenities={uuid}` with the amenity **name** resolved to a catalog uuid client-side (the Feature 40 no-uuid invariant); New chat clears and stays cleared after reload; mid-stream disconnect persists only the user message; **the qwen loop cap ran live and terminated cleanly (~10s)** — closing Feature 43's open "capped path never run live on qwen" item. Review-pass checks: markdown renders `<strong>` with no literal `**`; `.shimmer` "Thinking…" shows during streaming; `scroll-fade` `--scroll-fade-t` grows `0px → min(12%, 40px)` on scroll; widget level with the tray with no overlap; zero console errors. `pnpm build` + `tsc --noEmit` + `pnpm lint` clean (frontend), `pnpm build` clean (backend), `ruff` clean (agent).
+
+Open: leftover widget test data — a demo thread for the storage-state test user remains in `chat_sessions`/`chat_messages` (the four earlier test sessions were wiped mid-verification). Test users `widget44-*`/`widget44b-*`/`widget-probe@example.com` are still in the dev `user` table. Both should be cleared before Feature 45's eval work. Not yet committed — the four-part commit (`feat(backend)`, `feat(agent)`, `feat(frontend)`, `docs(context)`) is pending the developer's go-ahead.
 
 ### ✅ 43 Widget graph — completed 2026-07-23
 

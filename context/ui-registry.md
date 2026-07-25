@@ -777,3 +777,48 @@ Result strip: mt-4 rounded-xl border border-border-default bg-elevated p-3
 **This is the first AI surface whose failure the user is guaranteed to see.** It inherits the "button to start + visible failure state" pair from the compare card, but with no cache behind it every prompt is a live generation, and the upstream free-tier 502 recurs often enough that the "Try again" path is ordinary rather than exceptional. It was exercised for real during Feature 41's verification, not simulated.
 
 **Caught by `/imprint` and fixed:** the button was labelled "Search", colliding with `SearchBar`'s own "Search" button on the same page — ambiguous to assistive tech and to any test that queries by role. Now "Search with AI", matching "Compare with AI". **Any future AI action button gets a name that says AI**, so the family is legible by label as well as by icon.
+
+### Chat Widget (ChatWidget / ChatPanel / ChatThread / ChatBubble / ChatMarkdown / ChatActionChip / ChatComposer)
+
+File: `frontend/features/chat/components/*.tsx` (Feature 44)
+Last updated: 2026-07-25
+
+```
+Collapsed trigger: fixed right-6 z-40 h-12 w-12 rounded-full bg-accent-primary text-white shadow-elevated
+                   transition-colors hover:bg-accent-hover
+                   bottom-6 at rest; bottom-32 sm:bottom-6 while the Compare Tray shows
+Panel shell:       fixed inset-0 z-40 flex flex-col bg-surface (mobile full-screen takeover)
+                   sm:inset-auto sm:right-6 sm:bottom-6 sm:h-[70vh] sm:w-96 sm:rounded-2xl sm:border
+                   sm:border-border-default sm:shadow-elevated
+Panel header:      border-b border-border-default px-4 py-3; SparklesIcon in bg-accent-dim text-accent-text
+                   h-6 w-6 rounded-full avatar; "Assistant" text-sm font-medium + "Looking at {label}"
+                   truncate text-xs text-text-muted; New-chat (PlusIcon) + close (XIcon) ghost icon buttons
+User bubble:       max-w-[85%] rounded-2xl bg-accent-primary px-3.5 py-2.5 text-sm whitespace-pre-wrap text-white, right
+Assistant bubble:  max-w-[85%] rounded-2xl border border-border-default bg-elevated px-3.5 py-2.5 text-sm
+                   text-text-primary, left, with the sparkle avatar. NO whitespace-pre-wrap — markdown owns spacing
+Assistant content: rendered through ChatMarkdown (react-markdown), never a raw string
+Thinking:          "Thinking…" span with the .shimmer utility inside an assistant bubble
+Tool-status chip:  inline-flex items-center gap-1.5 rounded-full bg-subtle px-2.5 py-1 text-xs text-text-muted
+                   + Loader2Icon h-3 w-3 animate-spin
+Action chip:       inline-flex items-center gap-1.5 rounded-full border border-accent-border bg-accent-dim
+                   px-2.5 py-1 text-xs text-accent-text transition-colors hover:bg-accent-dim/70
+                   disabled:opacity-60 + trailing ArrowRightIcon (CheckIcon h-3 w-3 when a compare chip is selected)
+Thread scroll:     scroll-fade scrollbar-none flex-1 space-y-3 overflow-y-auto p-4
+Empty state:       text-sm text-text-secondary welcome line + suggested-prompt chips —
+                   rounded-full border border-accent-border bg-accent-dim px-2.5 py-1 text-xs text-accent-text
+Composer:          form border-t border-border-default p-3; Input h-10 rounded-xl border-border-default bg-subtle
+                   + send button h-10 w-10 rounded-xl bg-accent-primary text-white disabled:opacity-50
+Inline error:      text-xs text-error
+```
+
+`ChatWidget` is server-gated in `app/layout.tsx` (`getServerSession()`), so logged-out users download no widget code. It lives inside `CompareProvider` and reads `useCompareSelection` so it can coexist with the **Floating Compare Tray**.
+
+**Positioning is level with the Compare Tray, not lifted above it (corrected 2026-07-25).** The tray is a centred `sm:w-fit` pill at `bottom-4`; the widget hugs the right edge (`right-6`, panel `sm:w-96`), so on `sm:` and up the two never overlap horizontally and both sit at `bottom-6`/`bottom-4` — a neat row. The earlier `sm:bottom-24` lift on both the trigger and the open panel made the widget float visibly higher than the tray, which read as misalignment. **Only the mobile trigger keeps a lift (`bottom-32`)**, because below `sm:` the tray is full-width (`w-full`) and would otherwise sit under the trigger; the mobile *panel* needs no lift since it is a full-screen `inset-0` takeover. For elevation follow the Floating Compare Tray (`shadow-elevated`), not the Panel entry (no shadow) — floating surfaces carry the shadow.
+
+**Assistant messages are rendered markdown; user messages are not.** The model emits `**bold**` and the occasional list on its own, so a raw string showed literal asterisks. `ChatMarkdown` (react-markdown, commonmark, no plugins) maps `p`/`ul`/`ol`/`li`/`strong`/`a`/`code` to the design tokens (`text-accent-text` links, `bg-subtle` inline code) and is the **shared** renderer Feature 48's chatbot mounts too — build it once here. The assistant bubble drops `whitespace-pre-wrap` because markdown owns its own paragraph spacing; the user bubble keeps it for plain text.
+
+**The thinking indicator is a `.shimmer` "Thinking…" text, not the original three-dot pulse (changed 2026-07-25).** `.shimmer` is a new custom utility in `globals.css` (a text-clip gradient sweep, `shimmer-sweep 1.8s linear infinite`) that honours `prefers-reduced-motion` by falling back to static `text-muted`. This is the first motion primitive beyond `animate-pulse`/`animate-spin`; `ui-rules.md`'s motion section and streaming line were updated so it reads as a decision, not drift. Any future "model is working" signal should reuse `.shimmer`.
+
+**Scroll-fade and scrollbar-none are shadcn utilities, not hand-rolled.** `shadcn/tailwind.css` (imported in `globals.css`) ships an `@utility scroll-fade` that fades the top/bottom edges dynamically with scroll position (verified: `--scroll-fade-t` grows from `0px` to `min(12%, 40px)` as the thread scrolls down) plus a `.scrollbar-none`. An earlier hand-rolled `.scroll-fade`/`.scrollbar-none` in `globals.css` was removed once these were found — **check `shadcn/tailwind.css` for a utility before writing a custom one.**
+
+**Auto-scroll never yanks a scrolled-up reader.** `ChatThread` keeps an `isPinnedToBottom` ref (threshold 60px) and only pins to bottom on new content when the user was already near the bottom — the same restraint the app uses nowhere else because no other surface streams.

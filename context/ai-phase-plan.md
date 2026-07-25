@@ -300,7 +300,7 @@ UI, reusing existing patterns:
 - **Composer** — Input pattern + send button, disabled while a response is in flight.
 - Auto-scrolls to the newest message, but never yanks scroll position if the user has scrolled up to reread.
 
-*Test:* a session survives a page refresh and follows navigation; "New chat" starts a fresh one; logged-out users never see the widget; the panel is usable on a small viewport; a closed tab mid-reply still persists the message.
+*Test:* a session survives a page refresh and follows navigation; "New chat" starts a fresh one; logged-out users never see the widget; the panel is usable on a small viewport; a tab closed mid-reply still persists the **user's** message (the in-flight reply is cancelled, not saved — see the split-write decision in Feature 44's Completed Features entry).
 
 ### Phase 14 — Chatbot
 

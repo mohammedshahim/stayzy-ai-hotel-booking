@@ -933,21 +933,21 @@ A hash miss regenerates. A new review changes the hash (`review.service.ts` reco
 
 `hotel_ids_hash` is built from the ids that actually **resolved**, not the ids requested. Asking for `{A, B, deleted-C}` therefore hits the same row as asking for `{A, B}` — the key describes what was really summarised.
 
-### `chat_sessions` (Feature 44, not yet built)
+### `chat_sessions` (Feature 44)
 
 | Column          | Type        | Notes                                                              |
 | --------------- | ----------- | -------------------------------------------------------------------- |
 | id              | uuid        | doubles as the LangGraph `thread_id`                                  |
-| user_id         | text        | FK to `user` — chat is logged-in only, no guest duality               |
+| user_id         | text        | FK to `user`, CASCADE — chat is logged-in only, no guest duality      |
 | feature         | text        | `widget` \| `chatbot`, CHECK-constrained                              |
-| title           | text        |                                                                       |
+| title           | text        | truncated to 60 chars from the first user message                     |
 | created_at      | timestamptz |                                                                       |
-| last_message_at | timestamptz |                                                                       |
+| last_message_at | timestamptz | bumped on every message insert                                        |
 | ended_at        | timestamptz | nullable — a `widget` row with `ended_at IS NULL` is the active one   |
 
-The widget has at most one active session per user, resumed on open and closed only by an explicit "New chat". The chatbot has many, browsable in a list.
+The widget has at most one active session per user, resumed on open and closed only by an explicit "New chat". The chatbot has many, browsable in a list. **The single-active-session rule is enforced by a partial unique index on `(user_id, feature) WHERE ended_at IS NULL`**, so a race to open two sessions fails the second insert rather than orphaning one; the resolver catches the conflict and re-reads. A second index on `(user_id, feature, last_message_at)` serves the chatbot's session list.
 
-### `chat_messages` (Feature 44, not yet built)
+### `chat_messages` (Feature 44)
 
 | Column          | Type        | Notes                                            |
 | --------------- | ----------- | -------------------------------------------------- |
@@ -955,10 +955,12 @@ The widget has at most one active session per user, resumed on open and closed o
 | session_id      | uuid        | FK to `chat_sessions`, CASCADE                      |
 | role            | text        | `user` \| `assistant`, CHECK-constrained            |
 | content         | text        |                                                     |
-| tool_calls_json | jsonb       | nullable — what the assistant invoked for this turn |
+| actions_json    | jsonb       | nullable — final action chips attached to this reply |
 | created_at      | timestamptz |                                                     |
 
 This is the display source of truth. The LangGraph checkpointer holds the same messages as execution state, in its own schema, and loses on mismatch.
+
+**The column is `actions_json`, not the plan's `tool_calls_json`** (deviation recorded in `progress-tracker.md`'s Feature 44 entry). It holds only the **final** action chips the model settled on for a reply — `navigate` / `open_hotel` / `compare`, each with a resolved `hotelId` or filter names — never the progress chips or intermediate tool calls a turn emits and retracts. Write ownership is split: `backend/` inserts the user message at turn start (once the stream is confirmed open); `agent/` inserts the assistant message at turn end via `POST /internal/chat/messages`, because only it knows which reply survived a `drop` and which chips were final.
 
 ---
 

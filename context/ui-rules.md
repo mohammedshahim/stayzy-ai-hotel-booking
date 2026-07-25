@@ -364,11 +364,16 @@ Reuses `FilterSidebar`'s existing `w-72` rather than inventing a width.
 
 ```
 User bubble:      bg-accent-primary text-white, right-aligned
-Assistant bubble: bg-elevated border border-border-default, left-aligned
+Assistant bubble: bg-elevated border border-border-default, left-aligned. Assistant content
+                  is rendered markdown (react-markdown → ChatMarkdown), never a raw string —
+                  the model emits **bold**/lists on its own. User bubbles stay whitespace-pre-wrap plain text
 Assistant avatar: bg-accent-dim text-accent-text — matches AccountMenu's fallback treatment
-Streaming:        three-dot pulse in an assistant bubble, animate-pulse
+Thinking:         "Thinking…" in an assistant bubble with the .shimmer utility (Feature 44 swapped this
+                  in for the original three-dot animate-pulse — a warmer signal that the model is working)
 Tool-status chip: inline-flex items-center gap-1.5 rounded-full bg-subtle px-2.5 py-1 text-xs text-text-muted + spinner
 Action chip:      Skill-Tag pattern + trailing arrow icon (navigate / compare proposals)
+Thread scroll:    scroll-fade scrollbar-none (shadcn utilities) on the overflow-y-auto container —
+                  top/bottom edges fade dynamically with scroll position
 Rich results:     flex gap-3 overflow-x-auto row of trimmed SimilarHotelCard-style cards inside the bubble
 Inline error:     text-xs text-error + retry affordance — same tone as Checkout's inline error
 ```
@@ -413,6 +418,7 @@ Always use `strokeWidth={1.5}` for icons larger than `h-5 w-5`.
 - Never use complex animations on data-heavy components — tables, search results, feeds
 - Skeleton loading uses `animate-pulse` only
 - Spinner uses `animate-spin` only
+- The chat "Thinking…" indicator uses the `.shimmer` utility (a text-clip gradient sweep) — the one motion primitive beyond pulse/spin, added in Feature 44. It honours `prefers-reduced-motion` by falling back to static `text-muted`. Reuse it for any future "the model is working" signal rather than inventing another animation
 - The floating compare tray may use a simple `transition-all` for its enter/exit, nothing more elaborate
 - No entrance animations, slide-ins, or fade-ins on search results or admin tables — they slow perceived performance
 
