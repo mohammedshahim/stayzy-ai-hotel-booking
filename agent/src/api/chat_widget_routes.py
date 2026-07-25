@@ -7,8 +7,8 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessageChunk, HumanMessage
 
+from src.api.chat_replies import save_reply
 from src.api.deps import ActingUser
-from src.clients import backend_client
 from src.graphs.chat_widget.graph import build_widget_graph
 from src.schemas.chat import ChatWidgetRequest
 from src.streaming import events
@@ -21,21 +21,6 @@ SUMMARY_LENGTH = 120
 
 # Backstop only: MAX_TOOL_LOOPS ends a turn first, and the library default is 10007.
 RECURSION_LIMIT = 12
-
-
-async def _save_reply(session_id: str, user_id: str | None, text: str, actions: list[dict]) -> None:
-    """Write the surviving reply to `backend/`, which cannot read this stream itself."""
-    if not user_id or not text:
-        return
-
-    try:
-        await backend_client.post(
-            "/internal/chat/messages",
-            user_id=user_id,
-            json={"sessionId": session_id, "content": text, "actions": actions},
-        )
-    except backend_client.BackendError:
-        logger.exception("[api/chat_widget] could not persist reply for thread %s", session_id)
 
 
 async def _run_turn(body: ChatWidgetRequest, user_id: str | None) -> AsyncIterator[str]:
@@ -89,7 +74,7 @@ async def _run_turn(body: ChatWidgetRequest, user_id: str | None) -> AsyncIterat
 
     if not failed:
         text = "\n\n".join("".join(parts) for parts in replies.values()).strip()
-        await _save_reply(body.session_id, user_id, text, actions)
+        await save_reply(body.session_id, user_id, text, actions)
 
     yield events.done()
 

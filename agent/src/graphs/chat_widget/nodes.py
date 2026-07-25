@@ -12,6 +12,7 @@ from src.graphs.chat_widget.prompts import CONTEXT_CURRENT, CONTEXT_EARLIER, WID
 from src.graphs.chat_widget.state import WidgetState
 from src.graphs.chat_widget.tools.widget_tools import TOOL_SCHEMAS, to_chip_filters
 from src.tools.outcome import ToolOutcome
+from src.tools.resolve import resolve_hotel
 from src.tools.search_tools import run_get_hotel_details, run_search_hotels
 
 logger = logging.getLogger(__name__)
@@ -78,17 +79,6 @@ async def call_model(state: WidgetState) -> dict[str, Any]:
     return {"messages": [response], "steps": steps + 1}
 
 
-def _resolve_hotel(name: str, hotel_ids: dict[str, str]) -> str | None:
-    exact = hotel_ids.get(name)
-    if exact:
-        return exact
-    lowered = name.strip().lower()
-    for known, hotel_id in hotel_ids.items():
-        if known.lower() == lowered:
-            return hotel_id
-    return None
-
-
 async def _run_one(
     name: str, args: dict[str, Any], state: WidgetState, user_id: str | None
 ) -> tuple[ToolOutcome, dict[str, Any] | None]:
@@ -98,7 +88,7 @@ async def _run_one(
         return await run_search_hotels(args, user_id), None
 
     if name == "GetHotelDetails":
-        hotel_id = _resolve_hotel(str(args.get("hotel_name", "")), hotel_ids)
+        hotel_id = resolve_hotel(str(args.get("hotel_name", "")), hotel_ids)
         if not hotel_id:
             return ToolOutcome("That hotel has not come up yet. Search for it first.", {}), None
         return await run_get_hotel_details(hotel_id, user_id), None
@@ -108,7 +98,7 @@ async def _run_one(
         return ToolOutcome(f"Offered the user a chip: {args['label']}", {}), action
 
     hotel_name = str(args.get("hotel_name", ""))
-    hotel_id = _resolve_hotel(hotel_name, hotel_ids)
+    hotel_id = resolve_hotel(hotel_name, hotel_ids)
     if not hotel_id:
         return ToolOutcome(f"No chip offered — {hotel_name} has not come up yet.", {}), None
 

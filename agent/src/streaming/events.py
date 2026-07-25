@@ -37,6 +37,11 @@ def action(payload: dict[str, Any]) -> str:
     return _frame({"type": "action", **payload})
 
 
+def confirm(envelope: dict[str, Any]) -> str:
+    """The turn has paused for the user to approve or refuse an action."""
+    return _frame({"type": "confirm", **envelope})
+
+
 def done() -> str:
     """The turn is complete."""
     return _frame({"type": "done"})
