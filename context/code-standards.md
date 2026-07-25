@@ -321,7 +321,7 @@ When a rule elsewhere in this file conflicts with this section, this section win
 api/ (routes) → graphs/ or chains/ → tools/ → clients/ → backend/
 ```
 
-- `api/` — FastAPI routers. Request/response shaping and dependency injection only. No prompts, no LLM calls, no business logic
+- `api/` — FastAPI routers. Request/response shaping and dependency injection only. No prompts, no LLM calls, no business logic. A non-router module may sit here when two routers share the same plumbing — `api/chat_replies.py` is the write-back both chat streams perform when their turn ends
 - `chains/` — stateless single-shot LLM flows. No graph, no checkpointer, no conversation state. **One folder per feature area, with its own `prompts.py` beside the chains that use it** — `chains/summary/` holds both summary chains and their shared prompts; `chains/smart_search/` holds the extraction chain and its own. A second chain in an existing area joins that folder rather than starting a new one
 - `graphs/` — stateful multi-turn LangGraph agents. Owns conversation execution state through the checkpointer and nothing else. A graph also owns `tools/` for the tools only that surface binds
 - `tools/` — tool schemas and their runners. **Top-level `src/tools/` is for tools *every* surface binds; a tool only one feature uses lives in that feature's `graphs/<feature>/tools/`.** A tool returns a `ToolOutcome` — text for the model, id maps for the graph — and never touches `httpx` itself

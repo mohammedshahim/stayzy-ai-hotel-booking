@@ -24,13 +24,18 @@ After completing any feature:
 ## Current Status
 
 **Phase:** 14 — Chatbot (AI phase) — in progress
-**Current feature:** none — 46 is done, all four mutating tools verified through a real `interrupt()` pause and resume against the real backend
-**Next up:** 47 Agent assembly (single ReAct agent + tool node + guardrail system prompt) — read **`ai-phase-plan.md`**. **Two obligations 46 hands it, both of which are correctness bugs if missed:**
+**Current feature:** none — 47 is done, the chatbot answers, books, cancels, favourites and reviews end to end over a real HTTP route
+**Next up:** 48 Chatbot UI (`/assistant`, the second mount of `ChatThread`) — read **`ai-phase-plan.md`**. **Both obligations 46 handed 47 are discharged:** the route returns `403 email_not_verified` on a message *and* on a decision turn, before the model is reached; and the tool node runs every read but at most one mutating call, refusing any sibling mutation with a message that tells the model to ask again.
 
-1. **The chatbot's `/ai` route must reject an unverified email.** `POST /bookings` checks `user.emailVerified` in its controller; `requireAuth` does not, and the `/internal` guard only receives a user id. Nothing is exposed today because no chatbot route exists yet — the moment 47 adds one, `BookRoom` becomes a way around that check unless the route gates on it the way `createBooking` does. Deliberately not solved inside `/internal/bookings`: the acting user is trusted there by design, and adding a user lookup would have made a thin wrapper into business logic.
-2. **The tool node must dispatch at most one mutating tool call per node execution.** `interrupt()` resumes by **re-running its node from the start**, so if the node runs two tool calls and the second pauses, the first re-executes on resume — an already-committed booking would be made twice. Every 46 runner is safe to re-run *up to* its own pause (they only read before it), but that guarantee does not extend across sibling tool calls in the same node.
+**What 48 inherits from 47:**
 
-Also still open: clear the leftover "Temp User 1" test bookings (see the Feature 27 note below) — 18 of them, still there, and `ListMyBookings` reads them verbatim into any eval.
+1. **The SSE vocabulary is fixed and verified.** `token`, `drop`, `tool_start`, `tool_end`, `action`, `confirm`, `error`, `done`. A pause arrives as one `confirm` frame — `{type, action, title, lines: [{label, value}], confirmLabel}`, **camelCase on the wire** — immediately followed by `done`. A `BookRoom` pause emits `tool_start BookRoom` with **no matching `tool_end`**, so a tool-status chip must not wait for one before rendering the card.
+2. **The composer must be disabled while a pause is pending.** A message sent to a paused thread is refused with **409** and is not recorded, because LangGraph re-pauses instead of resuming (see `library-docs.md`). The decision goes to the same route as `{decision: {approved}}`, never as text.
+3. **`GET /ai/chat/assistant/pending` exists so a reload re-renders the card.** Optional `sessionId`; without one it reads the caller's active chatbot session. Returns `{pending: null}` when nothing is waiting.
+4. **`sessionId` is optional on `POST /ai/chat/assistant`** and ownership-checked (404 otherwise), so a session list can switch threads without changing the route. `chat_sessions.id` is still the checkpointer `thread_id` verbatim. **48 has to decide what "New chat" means** — the unique index still allows only one active session per `(user, feature)`, so a second live chatbot thread needs the current one ended first.
+5. **The checkout link arrives as an `action` frame**, `{kind: "checkout", label, path: "/checkout/<id>"}` — relative, so the frontend supplies its own origin.
+
+Also still open: clear the leftover "Temp User 1" test bookings (see the Feature 27 note below) — 18 of them, still there, and `ListMyBookings` reads them verbatim into any eval. The `agent.checkpoints` table also still holds 23 threads from earlier features — 15 named probe threads (`chip-*`, `dup*-*`, `drop*-*`, `qwen-*`, `verify45-*`, `mut-*`, `ood-*`, `stale-*`, `multi-*`, `probe-thread-A`) and 8 real session threads from widget testing; 47's own threads were cleared.
 
 **Feature 44 shipped the widget persistence layer and the whole widget UI.** The four build-time constraints it had to honour — group tokens by `id` and honour `drop`, chips carry filter *names* not ids/URLs, send `sessionId` as the real `chat_sessions.id`, and resolve the widget/Compare-Tray stacking — are all satisfied; see the Completed Features entry for how, and for the deviations and review-pass additions (`actions_json`, split write ownership, cancel-on-disconnect, `react-markdown`, the `.shimmer` thinking indicator, shadcn `scroll-fade`, and the tray-level positioning).
 
@@ -161,7 +166,7 @@ Planned in `ai-phase-plan.md`. Read that file, not `build-plan.md`, for every fe
 
 - [x] 45 Read-only tool suite
 - [x] 46 Mutating tools
-- [ ] 47 Agent assembly
+- [x] 47 Agent assembly
 - [ ] 48 Chatbot UI (`/assistant`)
 
 ### Phase 15 — Hardening
@@ -185,6 +190,36 @@ Moved from Phase 9 on 2026-07-19. Scope widened: `agent/` is a fourth deployable
 
 ## Completed Features
 
+### ✅ 47 Agent assembly — completed 2026-07-25
+
+Notes: the chatbot's graph, its route, and the `backend/` route that fronts it — everything but the UI. New agent files: `graphs/chatbot/{state,prompts,nodes,graph}.py`, `api/chatbot_routes.py`, `api/chat_replies.py`, `tools/resolve.py`. New backend surface: `POST /ai/chat/assistant` and `GET /ai/chat/assistant/pending`. One `confirm` frame added to `streaming/events.py`. No table, no migration, no new dependency, no new env var, no `frontend/` change.
+
+Decision: **a hand-rolled `StateGraph` in the widget's shape, not `create_react_agent`.** The prebuilt agent gives no control over the one-mutation-per-node rule or the unbind-tools-to-stop-looping trick, which are the two things this graph exists to guarantee. `agent ⇄ tools`, no `prepare_context` node — `/assistant` is its own page and injects no page context.
+
+Decision: **the tool node runs every read in model order, then at most one mutating call**; a second mutating call in the same batch gets a ToolMessage telling the model to ask again next turn. This is what discharges 46's second obligation. It is safe because everything a runner does before its pause is a repeatable read, so the re-run costs one duplicate GET and a repeated tool chip, nothing more. **Every call in the batch still gets a ToolMessage**, including the refused one, or the next model call would carry a tool_call with no result and be rejected by the OpenAI protocol.
+
+Decision: **one route, `message` XOR `decision`.** A decision invokes the graph with `Command(resume={"approved": bool})`; a message invokes it with a new `HumanMessage` and resets `actions`/`steps`. Session resolve, 502 handling and the pipe are therefore written once. Rejected: a separate `/confirm` route, which duplicates all of that for an identical SSE response.
+
+Decision: **`sessionId` is optional and ownership-checked.** Absent, the active chatbot session is resolved or created, mirroring the widget; present, it must belong to the caller or 404. `resolveActiveSession` was generalised to take a `ChatFeature` rather than being widget-hardcoded.
+
+Decision: **a message sent to a thread with a pending pause is refused with 409, not auto-declined.** `Command(resume=..., update=...)` does deliver both at once, but it inserts the user's message *between* the assistant's tool_call and its ToolMessage, which strict OpenAI-protocol providers reject. 409 also matches 48's disabled composer, and the pending route means the card is always recoverable rather than the thread being bricked.
+
+Decision: **an unseen hotel name is resolved by searching, and only an exact case-insensitive name match is accepted.** `near=<name>` is the resolution path because `destination` matches city/country only and never a hotel name (`search.queries.ts`), while `resolveSearchAnchor` looks a hotel up by name first. The anchor lookup itself is a substring `ilike`, so **the exact-match rule is applied to the returned result names, not to the anchor** — a loose name cannot become the wrong hotel. Verified: "the Ritz" refuses and reports what the search did return, rather than booking Asakusa Ryokan Inn. The developer chose cold resolution over refusing outright; exact matching is what makes it safe.
+
+Deviation — **`resolve_hotel` was promoted to `src/tools/resolve.py`** and the widget now imports it, agreed up front. It is the mechanism that keeps ids out of the model, and two copies would drift. **`_save_reply` was also extracted**, to `api/chat_replies.py`, and both chat routes use it — the same argument, applied to the write half of Feature 44's split-write ownership. Both call sites were re-verified live.
+
+Fixed a latent bug from 46: **`chatActionSchema` had no `checkout` variant**, so the first assistant reply carrying a checkout link would have been rejected by `POST /internal/chat/messages` and silently lost. Nothing had ever sent one through that path before 47.
+
+**Four LangGraph behaviours were verified against the installed package rather than assumed** — all four are recorded in `library-docs.md`, and two of them changed the design: a plain message on a paused thread re-pauses rather than resuming (hence the 409), and `Command(resume=..., update=...)` interleaves messages illegally (hence no auto-decline). A duplicate resume with nothing pending is a harmless no-op, so a double-clicked Confirm cannot book twice.
+
+Verified end to end through `backend/` with a real signed-in throwaway user, not a harness: out-of-domain refused with no tool call; search, room types, compare and reviews reading real inventory; a full book → pause → decline (nothing written) → re-ask → pause → approve → committed `pending_payment` row, previewed total USD 435 matching the committed total, and the checkout link arriving only as an `action` frame; cancel and review each paused and committed, confirmed by direct SQL; `403 email_not_verified` on both a message and a decision turn while unverified; `409` on a message sent mid-pause, with nothing recorded; the pending route returning the full envelope; and a fabricated two-mutation batch proving both reads ran, the first mutation paused, and the second was refused. Zero uuids across 63 model-visible messages, regex-checked. The widget was re-run after both extractions and is unchanged. `ruff check` + `ruff format --check` clean (agent), `pnpm build` clean (backend).
+
+**`MAX_TOKENS` is 2000 here, not the widget's 1200** — this surface answers with lists of hotels rather than one-liners, and the existing ceiling comment warns that too low a ceiling returns empty content rather than short content.
+
+**The free OpenRouter model returns an empty turn — no text, no tool call — from time to time.** Two consecutive cancel turns did it, then the identical history worked on replay, so it is transient rather than a context limit (5237 input tokens at the time). Per the developer, model flakiness is not something this feature should engineer around, so a retry that had been added for it was reverted. What stayed is the honest failure: a turn that produces no text and no pause emits an `error` frame instead of ending in silence, which is also 48's "never a silent failure" rule.
+
+**Verification data was restored in one transaction** — the throwaway user and its bookings, favourite, review, sessions and messages deleted, and `Hotel Marais Charme` put back to `review_count`/`average_rating` `0|0`. Its 6 seeded reviews are untouched. **The dev account was never used, so its single completed unreviewed booking is still intact** — a throwaway user whose booking status is flipped by SQL is a better harness than the one reviewable stay, and 48 and 51 should do the same. Incidentally this proves the seed aggregate bug below is *only* a stale write: publishing one review recalculated Marais Charme to `7 / 4.43` correctly, counting all six seeded reviews plus the new one.
+
 ### ✅ 46 Mutating tools — completed 2026-07-25
 
 Notes: the four tools that write on the user's behalf — `BookRoom`, `CancelBooking`, `AddFavorite`, `WriteReview` — each pausing at `interrupt()` before it touches anything. **No graph, no prompt, no UI.** New backend pieces: `POST /internal/bookings`, `POST /internal/bookings/:id/cancel`, `POST /internal/bookings/:id/review`, `POST /internal/favorites`, all thin wrappers over services that already existed. New agent files: `graphs/chatbot/tools/booking_tools.py` and `graphs/chatbot/tools/confirm.py`. No table, no migration, no new dependency, no new env var.
@@ -201,7 +236,7 @@ Decision: **all four stay gated, including favorites.** `code-standards.md` and 
 
 Deviation — **the tools went where their domain lives, not all into `booking_tools.py`** as the Feature 45 hand-off note suggested. `AddFavorite` sits in `account_tools.py` beside `ListMyFavorites`, `WriteReview` in `review_tools.py` beside `GetHotelReviews`, and only booking and cancel are in the new file. The point of that note was *never `src/tools/`*, which still holds absolutely. `find_booking_by_name` and `unknown_booking` live in `account_tools.py` next to `unique_booking_key`, shared by cancel and review.
 
-**`interrupt()` re-runs its whole node from the start on resume** — read out of the installed package, not assumed. Everything a runner does before its pause is therefore a repeatable read, by construction. The consequence Feature 47 inherits is recorded in Current Status above: two mutating tool calls in one node execution would re-commit the first one.
+**`interrupt()` re-runs its whole node from the start on resume** — read out of the installed package, not assumed. Everything a runner does before its pause is therefore a repeatable read, by construction. The consequence Feature 47 inherited — two mutating tool calls in one node execution would re-commit the first one — is how its tool node came to run every read but at most one mutation; see the Feature 47 entry above.
 
 Verified with a throwaway one-node graph over the **real `PostgresSaver`** (scratch file inside `agent/`, deleted after), driving every runner against the real backend and seeded DB. Each of the four: paused with the right card, resumed `approved: false` → returned `DECLINED` and wrote nothing, then paused again and resumed `approved: true` → committed, confirmed by direct SQL. Every rejection refuses **before** pausing: unknown room name (lists what the hotel does offer), check-out before check-in, unknown booking name, cancelling a `cancelled` and a `pending_payment` booking, reviewing a `confirmed` stay, rating 9, blank description, and reviewing the same stay twice. `BookRoom`'s previewed total (USD 960) matched the committed total exactly, so the nightly×nights×rooms formula mirrored from `createBookingForUser` is right. Zero uuids in any model-facing text, regex-checked on every path; the only uuid is inside `action.path`. The widget's bound surface was re-checked and is unchanged at five read-only/proposal tools, with no import from `graphs/chatbot/` anywhere in it. `ruff check` + `ruff format --check` clean (agent), `pnpm build` clean (backend).
 

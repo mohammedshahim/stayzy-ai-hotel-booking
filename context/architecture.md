@@ -203,10 +203,12 @@ agent/
 ├── src/
 │   ├── main.py                  → FastAPI entrypoint
 │   ├── config/                  → settings, OpenRouter LLM factory, PostgresSaver checkpointer
-│   ├── api/                     → routers + deps.py (validates the internal service secret)
+│   ├── api/                     → routers, deps.py (validates the internal service secret),
+│   │                              chat_replies.py (the write-back both chat streams share)
 │   ├── graphs/                  → stateful multi-turn LangGraph agents (chatbot, chat_widget)
 │   │                              each owning `tools/` for the tools only that surface binds
-│   ├── tools/                   → read-only tools EVERY surface binds, plus ToolOutcome
+│   ├── tools/                   → read-only tools EVERY surface binds, ToolOutcome, and
+│   │                              resolve.py (a hotel name → the id the model never sees)
 │   │                              (mutating tools are chatbot-only and never live here)
 │   ├── chains/                  → stateless single-shot LLM flows (summaries, query extraction)
 │   ├── clients/backend_client.py → internal-only httpx client back into backend/
@@ -698,7 +700,7 @@ Three invariants this path establishes:
 
 **`AI_REQUEST_TIMEOUT_MS` is one global ceiling for every AI call, raised from 20s to 45s in Feature 41.** Not a per-feature override: `postToAgent`'s `timeoutMs` parameter remains available but nothing uses it. Cached features lose nothing by waiting longer (the ceiling is only reached on a miss), while smart search has no cache and pays full generation cost on every request — a measured extraction hit 17.7s, about two seconds under the old limit. 45s sits below the ~60s cut a production proxy typically imposes; **raising it further requires checking that proxy first**, and `trust proxy` must be settled at deployment or the IP-keyed `aiRateLimit` guarding these calls is effectively disabled.
 
-### Chat (Feature 43 built 2026-07-23; Features 44–48 not yet built)
+### Chat (Features 43–47 built; Feature 48 not yet built)
 
 ```
 User sends a message
@@ -727,6 +729,15 @@ Two stores hold the conversation, with an explicit winner: `chat_messages` is th
 - **Page context is assembled per call and never persisted into the history, and it goes *last*, after the messages.** Placed after the system prompt it gets buried by a long conversation and the model resolves "this one" to whatever hotel came up most recently. This was observed, not theorised — do not move it back.
 - **The tool loop is bounded by unbinding tools at 4 rounds, with `recursion_limit: 12` behind it.** LangGraph 1.2.9 defaults `recursion_limit` to **10007**, so the framework provides no useful ceiling of its own.
 - **A tool lives in `agent/src/tools/` only if *both* surfaces bind it; otherwise it belongs to its own feature's `graphs/<feature>/tools/`** (added Feature 45). Today that means `SearchHotels` and `GetHotelDetails` are shared and everything else is chatbot-only. This is what keeps the widget's safety property structural rather than a matter of discipline: no booking, cancel, favorite, or review tool is even importable from where the widget builds its `TOOL_SCHEMAS`. Verified live — asked "what are my bookings?", the widget calls no tool and says it cannot see them.
+
+**Added 2026-07-25 (Feature 47).** The chatbot graph lives in `agent/src/graphs/chatbot/` and runs `agent ⇄ tools` with no context node. Its public surface is `POST /ai/chat/assistant` and `GET /ai/chat/assistant/pending` in `backend/`, over `POST /chat/assistant` and `GET /chat/assistant/pending` in `agent/`. What Feature 48 and anything later must respect:
+
+- **The chatbot route carries the `emailVerified` check itself.** `requireAuth` does not check it and `/internal/bookings` only ever receives a user id, so this route is the only thing standing between an unverified account and `BookRoom`. It returns `403 email_not_verified` exactly as `createBooking` does, on a decision turn as well as a message turn. **Any future route that can reach a mutating tool owes the same check.**
+- **One route takes `message` XOR `decision`.** A decision resumes the paused graph with `Command(resume={"approved": bool})` and is never recorded as a chat message; a message resets `actions` and `steps` for the new turn. `sessionId` is optional and ownership-checked — absent, the caller's active chatbot session is resolved or created.
+- **A pause ends the turn.** The envelope goes out as one `confirm` frame followed by `done`; no stream is held open waiting for a person. A message sent while a pause is pending is refused with **409** and not recorded, because LangGraph re-pauses rather than resuming — see `library-docs.md`. The pending route exists so a reload re-renders the card instead of stranding the thread.
+- **The tool node runs every read, then at most one mutating call**, refusing any sibling mutation. This is the standing consequence of `interrupt()` re-running its node from the start.
+- **A hotel name the conversation has not seen is resolved by searching, and only an exact case-insensitive name match is accepted.** `near=` is the path, since `destination` matches city and country but never a hotel name; the anchor lookup behind it is a substring `ilike`, so the exact-match test is applied to the **result** names. A loose name refuses and reports what the search returned rather than silently booking a different hotel.
+- **`chatActionSchema` must list every action kind a tool can emit.** It was missing `checkout`, so the first reply carrying a payment link would have been rejected by `POST /internal/chat/messages` and lost. Adding a kind in `agent/` without adding it here loses the message, silently.
 
 **Superseded by Feature 43:** "the AI changes what you are looking at reduces to the AI writes a URL" is not how it shipped. The model cannot emit an amenity uuid and `backend/` may not parse the stream to insert one, so an `action` frame carries a **partial filter object with names**, in the `ExtractedSearchFilters` shape from Features 40–41. The frontend maps names to ids from the catalog it already holds and builds the URL itself through `toSearchState`. The AI still never writes search *results* — only filters.
 
@@ -964,7 +975,7 @@ The widget has at most one active session per user, resumed on open and closed o
 
 This is the display source of truth. The LangGraph checkpointer holds the same messages as execution state, in its own schema, and loses on mismatch.
 
-**The column is `actions_json`, not the plan's `tool_calls_json`** (deviation recorded in `progress-tracker.md`'s Feature 44 entry). It holds only the **final** action chips the model settled on for a reply — `navigate` / `open_hotel` / `compare`, each with a resolved `hotelId` or filter names — never the progress chips or intermediate tool calls a turn emits and retracts. Write ownership is split: `backend/` inserts the user message at turn start (once the stream is confirmed open); `agent/` inserts the assistant message at turn end via `POST /internal/chat/messages`, because only it knows which reply survived a `drop` and which chips were final.
+**The column is `actions_json`, not the plan's `tool_calls_json`** (deviation recorded in `progress-tracker.md`'s Feature 44 entry). It holds only the **final** action chips the model settled on for a reply — `navigate` / `open_hotel` / `compare`, each with a resolved `hotelId` or filter names, plus `checkout` (a relative `/checkout/<id>` path) once Feature 47 wired the chatbot through this path — never the progress chips or intermediate tool calls a turn emits and retracts. Write ownership is split: `backend/` inserts the user message at turn start (once the stream is confirmed open); `agent/` inserts the assistant message at turn end via `POST /internal/chat/messages`, because only it knows which reply survived a `drop` and which chips were final.
 
 ---
 
