@@ -10,6 +10,7 @@ import {
 import type { ChatAction } from "../types/chat.schemas";
 
 const WIDGET: ChatFeature = "widget";
+const CHATBOT: ChatFeature = "chatbot";
 const TITLE_MAX_LENGTH = 60;
 
 export interface ChatThreadMessage {
@@ -26,22 +27,36 @@ function toTitle(message: string): string {
   return `${trimmed.slice(0, TITLE_MAX_LENGTH - 1).trimEnd()}…`;
 }
 
-async function resolveActiveSession(userId: string, title: string) {
-  const existing = await findActiveSession(userId, WIDGET);
+async function resolveActiveSession(userId: string, feature: ChatFeature, title: string) {
+  const existing = await findActiveSession(userId, feature);
   if (existing) return existing;
 
   try {
-    return await insertSession({ userId, feature: WIDGET, title });
+    return await insertSession({ userId, feature, title });
   } catch (error) {
-    const raced = await findActiveSession(userId, WIDGET);
+    const raced = await findActiveSession(userId, feature);
     if (!raced) throw error;
     return raced;
   }
 }
 
 export async function startWidgetSession(userId: string, message: string): Promise<string> {
-  const session = await resolveActiveSession(userId, toTitle(message));
+  const session = await resolveActiveSession(userId, WIDGET, toTitle(message));
   return session.id;
+}
+
+export async function startChatbotSession(userId: string, message: string): Promise<string> {
+  const session = await resolveActiveSession(userId, CHATBOT, toTitle(message));
+  return session.id;
+}
+
+export async function findChatbotSessionId(userId: string): Promise<string | null> {
+  const session = await findActiveSession(userId, CHATBOT);
+  return session?.id ?? null;
+}
+
+export async function ownsSession(sessionId: string, userId: string): Promise<boolean> {
+  return (await findSessionOwner(sessionId)) === userId;
 }
 
 export async function recordUserMessage(sessionId: string, content: string): Promise<void> {

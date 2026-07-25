@@ -4,9 +4,11 @@ import { requireAuth } from "../middlewares/requireAuth";
 import {
   endWidgetChat,
   extractSearchQuery,
+  getAssistantPending,
   getCompareAiSummary,
   getHotelAiSummary,
   getWidgetSession,
+  streamAssistantChat,
   streamWidgetChat,
 } from "../controllers/ai.controller";
 
@@ -21,5 +23,9 @@ router.post("/chat/widget", requireAuth, chatRateLimit, streamWidgetChat);
 // No chatRateLimit: neither reaches the model, and both are needed to recover from one.
 router.get("/chat/widget/session", requireAuth, getWidgetSession);
 router.post("/chat/widget/session/end", requireAuth, endWidgetChat);
+
+router.post("/chat/assistant", requireAuth, chatRateLimit, streamAssistantChat);
+// No chatRateLimit: reading a pending confirmation never reaches the model.
+router.get("/chat/assistant/pending", requireAuth, getAssistantPending);
 
 export default router;

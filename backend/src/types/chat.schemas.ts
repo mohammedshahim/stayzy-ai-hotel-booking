@@ -16,6 +16,22 @@ export const chatWidgetBodySchema = z.object({
 
 export type ChatWidgetBody = z.infer<typeof chatWidgetBodySchema>;
 
+export const chatbotBodySchema = z
+  .object({
+    sessionId: z.string().uuid().optional(),
+    message: z.string().trim().min(1).max(MAX_CHAT_MESSAGE_LENGTH).optional(),
+    decision: z.object({ approved: z.boolean() }).optional(),
+  })
+  .refine((body) => (body.message === undefined) !== (body.decision === undefined), {
+    message: "Send either a message or a decision, not both",
+  });
+
+export type ChatbotBody = z.infer<typeof chatbotBodySchema>;
+
+export const chatbotPendingQuerySchema = z.object({
+  sessionId: z.string().uuid().optional(),
+});
+
 const hotelActionSchema = z.object({
   label: z.string().min(1),
   hotelId: z.string().uuid(),
@@ -30,6 +46,11 @@ export const chatActionSchema = z.discriminatedUnion("kind", [
   }),
   hotelActionSchema.extend({ kind: z.literal("open_hotel") }),
   hotelActionSchema.extend({ kind: z.literal("compare") }),
+  z.object({
+    kind: z.literal("checkout"),
+    label: z.string().min(1),
+    path: z.string().startsWith("/checkout/"),
+  }),
 ]);
 
 export const assistantMessageBodySchema = z.object({
