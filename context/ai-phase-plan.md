@@ -339,6 +339,9 @@ New patterns (`ChatBubble`, action chip, tool-status chip, confirmation card, se
 
 *Test (all of Phase 14):* the eval prompt set below end to end, including one full booking-through-confirmation flow, switching between two past sessions, and one refused out-of-domain request.
 
+
+*Built 2026-07-25 (Feature 48), and it did stay pure React on the `agent/` side — but not on `backend/`'s.* **The session list needed three new read routes** (`GET /ai/chat/assistant/sessions`, `GET .../sessions/:id`, `POST .../session/end`), all additive to files that already existed; `chat_sessions` already carried the index they use. **`ended_at` now means two different things** — "this conversation is over" for the widget, "this is no longer the thread you land on" for the chatbot, where every session a user owns stays writable forever. That needed no code: nothing on the write path checks it. **The planned row of hotel cards was not built** — 47's `tool_end` carries a truncated string, not structured data, so replies render as markdown and a comparison as a GFM table (`remark-gfm` added). **A chips-only turn now ends the graph**, because `drop` retracted text the prompt then forbade the model to rewrite, deleting good answers. New files: `features/chat/{components/AssistantShell,SessionList,ConfirmationCard,ChatCheckoutButton}.tsx`, `hooks/useAssistantStream.ts`, `lib/sse.ts`, `app/assistant/page.tsx`. See the Feature 48 entry in `progress-tracker.md`.
+
 ### Phase 15 — Hardening
 
 **50. Tracing + cost controls** — LangSmith or equivalent. (Rate limiting already shipped in Feature 37.)

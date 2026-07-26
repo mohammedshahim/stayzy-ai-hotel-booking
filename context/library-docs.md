@@ -671,7 +671,21 @@ The shape that works, in `chains/smart_search/query_extraction_chain.py`:
 Added in Feature 44 to render assistant chat replies. The widget model emits `**bold**` and the occasional list on its own, so a raw string showed literal markdown markers.
 
 - **One shared component: `frontend/features/chat/components/ChatMarkdown.tsx`.** Feature 48's chatbot mounts the same renderer — do not write a second one. Build it here, reuse it there.
-- **Commonmark only — no plugins.** No `remark-gfm`, no `rehype-*`. The model uses bold, links, short lists, and inline code; commonmark covers all of it, and every plugin is attack surface plus bundle weight on a client component. Add one only when a real reply needs a feature commonmark lacks.
+- **`remark-gfm` and nothing else — no `rehype-*`.** Commonmark alone was the rule until Feature 48, on the reasoning that the model only uses bold, links, short lists and inline code. Tables broke it: asked to compare hotels the model writes a GFM pipe table, which commonmark renders as literal `| Hotel | Price |` text. That is the "a real reply needs a feature commonmark lacks" case the original rule allowed for, so the plugin went in. **The bar for the next one is unchanged** — a plugin is attack surface plus bundle weight on a client component, so add one only against a reply you have actually seen render wrong.
+- **A GFM table needs its own renderers and its own scroll container.** `table`/`thead`/`tr`/`th`/`td` all map to tokens like every other element, and the table sits inside a `overflow-x-auto` wrapper so a wide comparison scrolls itself instead of pushing the page sideways. Verified at 390px.
 - **Every element maps to a design token**, never a default browser style: `strong` → `font-semibold`, `a` → `text-accent-text underline`, inline `code` → `bg-subtle font-mono text-xs`, list/paragraph spacing via `mb-2 last:mb-0`. A bare `<ReactMarkdown>` with no `components` overrides is drift — it renders blue underlined links and serif code that belong to no other surface.
 - **Assistant messages only.** User bubbles stay plain `whitespace-pre-wrap` text — a user's literal `*` is not markup. The assistant bubble drops `whitespace-pre-wrap` because the renderer owns paragraph spacing; keeping both double-spaces every reply.
 - **Streaming is fine.** `ChatMarkdown` re-parses on each token as `reply` grows; a momentarily-unbalanced `**` mid-stream resolves the instant its closer arrives. No special handling needed for partial markdown.
+
+---
+
+## @base-ui/react Drawer (`frontend/`)
+
+Used directly for the first time in Feature 48, for `/assistant`'s mobile session list. **`@base-ui/react` is not a new dependency** — it is what this project's shadcn primitives are built on (`components/ui/popover.tsx` imports `@base-ui/react/popover`), so the drawer was already installed.
+
+- **Read `node_modules/@base-ui/react/docs/react/components/drawer.md` before writing one.** It is shipped with the package and is authoritative; it opens by saying so. The package was renamed from `@base-ui-components/react`, so older examples import the wrong name.
+- **The parts are `Root → Portal → Backdrop → Viewport → Popup`,** plus `Title` (use `sr-only` when the drawer has its own visible header). Skipping `Viewport` leaves the popup unpositioned — positioning is yours, the library does not place it.
+- **`swipeDirection` sets which way dismisses it and defaults to `"down"`** (a bottom sheet). A left-anchored navigation drawer needs `swipeDirection="left"` or the swipe gesture fights the panel.
+- **Animate with `data-starting-style` / `data-ending-style` and the `--drawer-swipe-movement-x|y` variable.** The docs' own examples use `[transform:translateX(var(--drawer-swipe-movement-x))]` so the panel tracks the finger; a plain CSS transition without it snaps instead of dragging.
+- **Backdrop, focus trap, Esc and scroll-lock come free** with the default `modal`. This is why it beat hand-rolling the widget's `fixed inset-0` takeover for a surface that needs to trap focus.
+- **It lives in the feature that uses it, not `components/ui/`,** while there is exactly one consumer — see the Chatbot Page entry in `ui-registry.md` for when to promote it.

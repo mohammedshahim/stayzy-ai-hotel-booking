@@ -351,11 +351,12 @@ Panel styling:  bg-surface rounded-2xl border border-border-default shadow-eleva
 
 ```
 Layout:         flex h-[calc(100vh-4rem)] flex-col lg:flex-row   (navbar-offset calc, as MapView uses)
-Session list:   drawer below lg:, persistent lg:w-72 lg:shrink-0 lg:border-r lg:border-border-default
+Session list:   @base-ui/react Drawer below lg:, persistent lg:w-72 lg:shrink-0 lg:border-r lg:border-border-default
 Session item:   h-10 rounded-xl px-3 text-text-secondary hover:bg-subtle
 Active item:    border border-accent-border bg-accent-dim text-accent-text
 Thread column:  flex-1 flex flex-col, list flex-1 overflow-y-auto
 Composer:       border-t border-border-default p-4, pinned inside the column — not fixed
+Readable width: thread and composer each mx-auto w-full max-w-3xl inside their full-width containers
 ```
 
 Reuses `FilterSidebar`'s existing `w-72` rather than inventing a width.
@@ -374,9 +375,13 @@ Tool-status chip: inline-flex items-center gap-1.5 rounded-full bg-subtle px-2.5
 Action chip:      Skill-Tag pattern + trailing arrow icon (navigate / compare proposals)
 Thread scroll:    scroll-fade scrollbar-none (shadcn utilities) on the overflow-y-auto container —
                   top/bottom edges fade dynamically with scroll position
-Rich results:     flex gap-3 overflow-x-auto row of trimmed SimilarHotelCard-style cards inside the bubble
+Rich results:     ~~row of trimmed hotel cards inside the bubble~~ — NOT BUILT, see the note below
+Markdown table:   the shape hotel comparisons actually arrive in — scrollbar-none overflow-x-auto wrapper,
+                  table w-full border-collapse text-left text-xs, rows border-b border-border-default
 Inline error:     text-xs text-error + retry affordance — same tone as Checkout's inline error
 ```
+
+**Hotel cards inside a bubble were planned and not built (Feature 48).** The sketch above assumed structured hotel data reached the UI. It does not: the SSE contract Feature 47 shipped carries `tool_end` as `{tool, summary}` where `summary` is the tool's text truncated to 120 characters — a string for a human, not data to render — and the chatbot binds no tool that emits a hotel payload. The only `action` frame it produces is `checkout`. Search results therefore arrive as **markdown**, and a comparison arrives as a **GFM table**, which is what `ChatMarkdown` now styles. Building the card row means a new structured SSE frame and an `agent/` change — a contract change, not a UI feature. Do not treat the struck-through line above as outstanding UI work.
 
 **Confirmation card** — the `interrupt()` pause before a mutating tool runs.
 

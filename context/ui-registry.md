@@ -822,3 +822,58 @@ Inline error:      text-xs text-error
 **Scroll-fade and scrollbar-none are shadcn utilities, not hand-rolled.** `shadcn/tailwind.css` (imported in `globals.css`) ships an `@utility scroll-fade` that fades the top/bottom edges dynamically with scroll position (verified: `--scroll-fade-t` grows from `0px` to `min(12%, 40px)` as the thread scrolls down) plus a `.scrollbar-none`. An earlier hand-rolled `.scroll-fade`/`.scrollbar-none` in `globals.css` was removed once these were found — **check `shadcn/tailwind.css` for a utility before writing a custom one.**
 
 **Auto-scroll never yanks a scrolled-up reader.** `ChatThread` keeps an `isPinnedToBottom` ref (threshold 60px) and only pins to bottom on new content when the user was already near the bottom — the same restraint the app uses nowhere else because no other surface streams.
+
+### Chatbot Page (AssistantShell / SessionList / ConfirmationCard / ChatCheckoutButton)
+
+File: `frontend/features/chat/components/*.tsx`, `frontend/app/assistant/page.tsx` (Feature 48)
+Last updated: 2026-07-25
+
+```
+Page shell:        flex h-[calc(100vh-4rem)] flex-col lg:flex-row — the navbar-offset calc MapView uses
+Sidebar (lg:+):    hidden lg:flex lg:w-72 lg:shrink-0 lg:flex-col lg:border-r lg:border-border-default
+Sidebar (< lg:):   @base-ui/react Drawer, left-anchored, swipeDirection="left"
+                   backdrop fixed inset-0 z-40 bg-black/40
+                   popup h-full w-72 max-w-[85vw] border-r border-border-default bg-surface
+Thread header:     border-b border-border-default px-4 py-3; MenuIcon ghost icon button (lg:hidden)
+                   + SparklesIcon h-3.5 w-3.5 inside h-6 w-6 rounded-full bg-accent-dim text-accent-text
+New chat:          Secondary Button pattern — h-9 rounded-xl border border-border-default bg-elevated
+                   px-4 text-sm font-medium text-text-secondary + PlusIcon h-4 w-4
+Session item:      flex h-10 w-full items-center rounded-xl px-3 text-left text-sm transition-colors
+                   idle    text-text-secondary hover:bg-subtle hover:text-text-primary
+                   active  border border-accent-border bg-accent-dim text-accent-text
+                   title truncate, relative time ml-2 shrink-0 text-xs text-text-muted
+Sidebar empty:     px-3 text-xs text-text-muted — not the locked EmptyState component
+Confirmation card: rounded-2xl border border-border-default bg-elevated p-5 shadow-card, full width
+                   ShieldCheckIcon in the accent-dim avatar; title text-sm font-medium text-text-primary
+                   lines as <dl>: dt text-xs text-text-muted / dd text-right text-sm text-text-primary
+                   Confirm = Primary, Cancel = Secondary, both disabled:cursor-not-allowed
+                   disabled:opacity-70, stacked below sm: (flex-col gap-2 sm:flex-row, sm:flex-1)
+Checkout button:   Primary Button pattern — inline-flex h-9 rounded-xl bg-accent-primary px-4
+                   text-sm font-medium text-white hover:bg-accent-hover hover:shadow-accent + ArrowRightIcon
+Thread skeleton:   mx-auto w-full max-w-3xl space-y-3; h-10 animate-pulse rounded-2xl bg-subtle bars,
+                   widths w-2/3 w-1/2 w-3/4 w-2/5, odd ones ml-auto
+Readable column:   thread list and composer each mx-auto w-full max-w-3xl inside a full-width container
+Composer:          border-t border-border-default p-4 (the widget's is p-3 — see notes)
+Markdown table:    wrapper scrollbar-none mb-2 overflow-x-auto
+                   table w-full border-collapse text-left text-xs
+                   thead + tr border-b border-border-default (tr last:border-0)
+                   th px-2 py-1.5 font-medium whitespace-nowrap text-text-secondary; td px-2 py-1.5 align-top
+Inline error:      text-xs text-error + "Try again" rounded-full border border-error/40 px-2 py-0.5
+                   transition-colors hover:bg-error-dim
+Navbar entry:      SparklesIcon h-5 w-5 strokeWidth={1.5} in the Favorites-heart ghost icon button
+                   pattern, but hover:text-accent-text rather than hover:text-text-secondary
+```
+
+**`ChatThread`, `ChatBubble`, `ChatMarkdown`, `ChatActionChip` and `ChatComposer` are the *same components* the widget uses — this page is their second mount, not a copy.** The plan required building the chat UI once and mounting it twice; `ChatThread` gained optional `welcome`, `prompts`, `pending`, `isDeciding`, `onDecide` and `onRetry` props rather than growing a sibling. Anything added to the thread from here must keep working in the widget, and vice versa — the two were re-verified together after every change in Feature 48.
+
+**The mobile sidebar uses `@base-ui/react/drawer` directly and there is no `components/ui/drawer.tsx`.** `@base-ui/react` was already a dependency (it is what the shadcn primitives here are built on) and ships a `drawer` part with backdrop, focus trap, Esc and swipe-to-dismiss, so no new package was added. **This is a deliberate exception to "`components/ui/` holds the primitives":** it is used in exactly one place, and wrapping a single consumer would be indirection. If a second surface ever needs a drawer, promote it to `components/ui/drawer.tsx` then — not before.
+
+**Content is capped at `max-w-3xl` and centred, on both the thread and the composer.** The thread column is full-width so its border and background span the page, but text that runs the full width of a desktop monitor is unreadable — measured at ~110 characters before the cap. The skeleton uses the same wrapper so loading bars do not sit wider than the messages that replace them.
+
+**The confirmation card is never nested inside a `ChatBubble`,** per `ui-rules.md`. It is a higher-stakes moment and card-inside-a-card is a locked rule. It renders after the last message in the same `space-y-3` flow, so it reads as part of the conversation without being a message.
+
+**The checkout link is a Primary Button, not an action chip.** Every other `action` frame renders as a `ChatActionChip`; `checkout` is the one that leads to payment, so it gets the weight of a real CTA. `ActionRow` branches on `kind === "checkout"` for this alone.
+
+**The floating widget is suppressed on `/assistant`** (`usePathname` inside `ChatWidget`). Two assistants on one screen with different tool sets would be plainly wrong, and the page-level one is the capable surface.
+
+**Markdown tables needed `remark-gfm`.** Tables are a GFM extension, so the commonmark-only `ChatMarkdown` rendered the model's pipe syntax as literal `| Hotel | Price |` text. The table scrolls inside its own `overflow-x-auto` wrapper so a wide comparison never makes the page scroll sideways — verified at 390px.

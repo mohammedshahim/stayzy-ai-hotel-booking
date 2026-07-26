@@ -23,19 +23,19 @@ After completing any feature:
 
 ## Current Status
 
-**Phase:** 14 — Chatbot (AI phase) — in progress
-**Current feature:** none — 47 is done, the chatbot answers, books, cancels, favourites and reviews end to end over a real HTTP route
-**Next up:** 48 Chatbot UI (`/assistant`, the second mount of `ChatThread`) — read **`ai-phase-plan.md`**. **Both obligations 46 handed 47 are discharged:** the route returns `403 email_not_verified` on a message *and* on a decision turn, before the model is reached; and the tool node runs every read but at most one mutating call, refusing any sibling mutation with a message that tells the model to ask again.
+**Phase:** 14 — Chatbot (AI phase) — **complete**
+**Current feature:** none — 48 is done, so the chatbot is usable by a person at `/assistant`, not just over curl
+**Next up:** 50 Tracing + cost controls (Phase 15) — read **`ai-phase-plan.md`**. Feature 49 is retired.
 
-**What 48 inherits from 47:**
+**What 48 settled, and what 50/51 inherit:**
 
-1. **The SSE vocabulary is fixed and verified.** `token`, `drop`, `tool_start`, `tool_end`, `action`, `confirm`, `error`, `done`. A pause arrives as one `confirm` frame — `{type, action, title, lines: [{label, value}], confirmLabel}`, **camelCase on the wire** — immediately followed by `done`. A `BookRoom` pause emits `tool_start BookRoom` with **no matching `tool_end`**, so a tool-status chip must not wait for one before rendering the card.
-2. **The composer must be disabled while a pause is pending.** A message sent to a paused thread is refused with **409** and is not recorded, because LangGraph re-pauses instead of resuming (see `library-docs.md`). The decision goes to the same route as `{decision: {approved}}`, never as text.
-3. **`GET /ai/chat/assistant/pending` exists so a reload re-renders the card.** Optional `sessionId`; without one it reads the caller's active chatbot session. Returns `{pending: null}` when nothing is waiting.
-4. **`sessionId` is optional on `POST /ai/chat/assistant`** and ownership-checked (404 otherwise), so a session list can switch threads without changing the route. `chat_sessions.id` is still the checkpointer `thread_id` verbatim. **48 has to decide what "New chat" means** — the unique index still allows only one active session per `(user, feature)`, so a second live chatbot thread needs the current one ended first.
-5. **The checkout link arrives as an `action` frame**, `{kind: "checkout", label, path: "/checkout/<id>"}` — relative, so the frontend supplies its own origin.
+1. **`ended_at` means one thing for the widget and another for the chatbot.** Widget: "this conversation is over." Chatbot: **"this is no longer the thread you land on"** — every session a user owns stays writable, forever. This needed no code, which is why it was chosen: nothing on the write path checks `ended_at`, and passing an explicit `sessionId` skips `resolveActiveSession` entirely, so the partial unique index is never touched.
+2. **The landing thread is the row with `ended_at IS NULL`,** and there is at most one. If none exists the page opens on the empty state and the next message creates one — which is also all "New chat" does.
+3. **Omitting `sessionId` always targets the active thread,** on the turn route and the pending route alike. That is what lets a brand-new chat send its first *decision* before the client has learned its own session id.
+4. **A `checkout` action survives a reload,** because it is persisted in `chat_messages.actions_json` and replayed by the session-read route. This is the first thing that ever exercised 47's `chatActionSchema` fix in anger.
+5. **A chips-only turn ends the graph instead of going back to the model.** `drop` retracted text the prompt then forbade the model to rewrite — see the Feature 48 entry. Any new chip tool must be added to that surface's `CHIP_TOOL_NAMES` or it re-arms the bug.
 
-Also still open: clear the leftover "Temp User 1" test bookings (see the Feature 27 note below) — 18 of them, still there, and `ListMyBookings` reads them verbatim into any eval. The `agent.checkpoints` table also still holds 23 threads from earlier features — 15 named probe threads (`chip-*`, `dup*-*`, `drop*-*`, `qwen-*`, `verify45-*`, `mut-*`, `ood-*`, `stale-*`, `multi-*`, `probe-thread-A`) and 8 real session threads from widget testing; 47's own threads were cleared.
+Also still open: clear the leftover "Temp User 1" test bookings (see the Feature 27 note below) — 18 of them, still there, and `ListMyBookings` reads them verbatim into any eval. `agent.checkpoints` holds ~30 threads: the 23 documented at 47, plus a few the developer created testing `/assistant`; 48's own probe threads were all cleared.
 
 **Feature 44 shipped the widget persistence layer and the whole widget UI.** The four build-time constraints it had to honour — group tokens by `id` and honour `drop`, chips carry filter *names* not ids/URLs, send `sessionId` as the real `chat_sessions.id`, and resolve the widget/Compare-Tray stacking — are all satisfied; see the Completed Features entry for how, and for the deviations and review-pass additions (`actions_json`, split write ownership, cancel-on-disconnect, `react-markdown`, the `.shimmer` thinking indicator, shadcn `scroll-fade`, and the tray-level positioning).
 
@@ -77,7 +77,7 @@ Still unresolved from Feature 27: the dev database has leftover test data (a "Te
 
 **Hosting provider still undecided** ("will do later") — no longer blocking anything, since deployment moved to Phase 16.
 
-**Latest completed addition:** Feature 44 Widget persistence + UI — 2026-07-25. Phase 13 complete.
+**Latest completed addition:** Feature 48 Chatbot UI — 2026-07-25. Phase 14 complete.
 
 ---
 
@@ -167,7 +167,7 @@ Planned in `ai-phase-plan.md`. Read that file, not `build-plan.md`, for every fe
 - [x] 45 Read-only tool suite
 - [x] 46 Mutating tools
 - [x] 47 Agent assembly
-- [ ] 48 Chatbot UI (`/assistant`)
+- [x] 48 Chatbot UI (`/assistant`)
 
 ### Phase 15 — Hardening
 
@@ -189,6 +189,32 @@ Moved from Phase 9 on 2026-07-19. Scope widened: `agent/` is a fourth deployable
 ---
 
 ## Completed Features
+
+### ✅ 48 Chatbot UI — completed 2026-07-25
+
+Notes: `/assistant` — a ChatGPT-shaped page with a browsable chat history in a left sidebar, the second mount of `ChatThread`. New frontend files: `features/chat/components/{AssistantShell,SessionList,ConfirmationCard,ChatCheckoutButton}.tsx`, `features/chat/hooks/useAssistantStream.ts`, `features/chat/lib/sse.ts`, `app/assistant/page.tsx`. New backend surface: `GET /ai/chat/assistant/sessions`, `GET /ai/chat/assistant/sessions/:id`, `POST /ai/chat/assistant/session/end`. No migration, no `agent/` change for the UI itself. `remark-gfm` added; `@base-ui/react` used directly for the first time.
+
+Decision: **past chats stay writable, so `ended_at` means "not the landing thread" for the chatbot.** Traced before choosing: nothing on the write path checks `ended_at`, and sending an explicit `sessionId` skips `resolveActiveSession`, so the partial unique index is never touched. It cost nothing; making past chats read-only would have cost a guard on two routes plus UI explaining a dead composer. The semantic split from the widget is the price, recorded here because it is not visible in the schema.
+
+Decision: **the mobile session list is `@base-ui/react`'s Drawer, used directly in the feature, with no `components/ui/drawer.tsx`.** The package was already installed — it is what the shadcn primitives here are built on — so backdrop, focus trap, Esc and swipe-to-dismiss came free with no new dependency. One consumer, so no wrapper; `ui-registry.md` records when to promote it.
+
+Decision: **a second hook, `useAssistantStream`, not a mode flag on `useChatStream`.** The widget hook was verified and diverges materially (page context, its own hydrate route, no decisions). Only `parseFrames` was extracted to `lib/sse.ts`. The cost is real and measured — **82% of the assistant's SSE read loop is line-for-line identical to the widget's** — and the hook is now 334 lines against a 167-line next-largest, which the developer flagged. The natural split (a `useAssistantSessions` hook beside it) is described in that discussion and not yet done.
+
+**The planned row of hotel cards inside a bubble was not built.** 47's `tool_end` carries `{tool, summary}` where `summary` is the tool's text cut to 120 characters — a string for a human, not data — and the chatbot binds no tool emitting a hotel payload. Replies render as markdown; a comparison renders as a GFM table, which is why `remark-gfm` went in. Building the cards means a new structured SSE frame and an `agent/` change. `ui-rules.md` is corrected.
+
+Fixed during review, in the UI: the loading skeleton stretched full width while messages were capped at `max-w-3xl`; the sessions list was refetched after **every** turn (now only when the turn named no session, since only then can one have been created — otherwise the row is bumped locally and re-sorted); and the inline error gained the retry affordance `ui-rules.md` always required.
+
+Fixed during review, in `agent/` — **three model-facing bugs that read as flakiness but were not.** (1) Every hotel-name tool described its argument as *"Exact hotel name **as it appeared earlier**"*, but the chatbot resolves names cold by searching; the model read the constraint and concluded it could not use the tool, answering *"I don't have a tool to save hotels to favorites"* — reproducible 2/2. Rewording all six schemas took favourites 0/2 → 2/3 and navigation 0/1 → 3/3. (2) The model answered from a stale `ListMyBookings` result after a booking changed outside the chat; the prompt now forbids describing a booking's state from memory. (3) The model wrote malformed tool calls as plain text on two-action requests; a prompt rule cleared it, and the same rule fixed the widget leaking `[{"type": "hotel_page"…}]` into its reply.
+
+**A `drop` frame was deleting good answers, and the persisted history with them.** `drop`'s docstring assumed the model *"is about to write it again"*; the prompt said *"never repeat a sentence you have already sent."* When the model wrote a full answer **and** called chip tools in one message, the answer was retracted from the screen but stayed in the model's history, so the next turn wrote filler — and only the filler reached `chat_messages`. Reproduced on the first try, confirmed by reading the row back. **Fix: a turn that already answered and only offered chips ends the graph** (`is_final_chip_reply`, a conditional edge off `tools`, and no `drop` for that case), because a chip returns nothing to reason about. `drop` still behaves as before for a genuine preamble alongside a data tool. Applied to both graphs — the chatbot had the identical latent defect.
+
+Deviation — **`src/tools/` was deleted and every tool moved into its own surface's `graphs/<feature>/tools/`,** at the developer's instruction, reversing Feature 45's shared-if-both rule. Each surface now owns a full copy of `SearchHotels`/`GetHotelDetails`. The justification is not tidiness: **a tool's docstring is that surface's prompt**, and this feature proved twice that editing one surface's tool text moves the other's behaviour. Only non-tools stay shared — `graphs/outcome.py` and `graphs/describe.py`. The chatbot's two-phase dispatch was flattened at the same time. `architecture.md` and `code-standards.md` are corrected.
+
+Deviation — **only `ProposeHotel` is bound to the chatbot, not all three chip tools.** Binding `ProposeSearch` and `ProposeCompare` made `AddFavorite` and `ListMyFavorites` invisible: the model read the tool list and reported no favourites tool existed, sometimes returning nothing at all. Measured directly — same prompt, same model: 14 tools → `AddFavorite` called 0/4; 11 tools → 4/4; 12 tools (`ProposeHotel` only) → 4/4. **This model handles 12 tools and not 14**, so any tool added to the chatbot must be re-tested against favourites first.
+
+Verified end to end against the running app with throwaway verified users, never the dev account: full book → pause → card → decline (nothing written) → re-ask → confirm → `pending_payment` row with the previewed USD total matching, and a working checkout link; save-favourite and the saved list; the navigation chip resolving cold and opening the real hotel page; session switching, "New chat", and a reload mid-pause restoring both the history and the card; `403` redirect for an unverified email, `404` on another user's session for all three routes, and the logged-out redirect. The widget was re-verified after every shared change. **The dev account's single completed unreviewed booking is still intact.** All probe users, bookings and checkpointer threads removed in one transaction each time.
+
+**The model was changed to `inclusionai/ling-3.0-flash:free` late in the session and then changed back.** The investigation is worth keeping even though its code was reverted: **`MAX_TOOL_LOOPS` unbinding the tools mid-turn is what makes a model type a tool call out as text.** With tools bound the model behaved; unbound it emitted raw `<tool_call>` XML 4/4, and improvised `[View X](ProposeHotel:X)` markdown links. That is the mechanism behind the raw-XML replies seen on the previous model too. A just-in-time system message at the moment of unbinding took it to 0/4, but that fix was reverted with the model switch. **The ceiling can still bite.** Two other reverted findings: models send the string `"null"` for optional fields, which reaches `backend/` as a literal and 400s a search; and `chat_widget_routes.py` has no empty-turn guard, so a turn producing no text emits no `error` frame — the chatbot route has one.
 
 ### ✅ 47 Agent assembly — completed 2026-07-25
 
