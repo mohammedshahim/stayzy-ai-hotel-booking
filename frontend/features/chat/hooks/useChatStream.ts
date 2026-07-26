@@ -3,7 +3,9 @@
 import { useCallback, useRef, useState } from "react";
 
 import { apiClient } from "@/lib/api-client";
-import type { ChatAction, ChatMessage, ChatStreamEvent, PageContext } from "@/features/chat/types";
+import { toAction } from "@/features/chat/lib/chat-actions";
+import { parseFrames } from "@/features/chat/lib/sse";
+import type { ChatAction, ChatMessage, PageContext } from "@/features/chat/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -20,36 +22,6 @@ export type ChatStream = {
   send: (text: string, context: PageContext) => void;
   newChat: () => void;
 };
-
-function parseFrames(buffer: string): { events: ChatStreamEvent[]; rest: string } {
-  const parts = buffer.split("\n\n");
-  const rest = parts.pop() ?? "";
-  const events: ChatStreamEvent[] = [];
-
-  for (const part of parts) {
-    const line = part.trim();
-    if (!line.startsWith("data:")) continue;
-    try {
-      events.push(JSON.parse(line.slice(5).trim()) as ChatStreamEvent);
-    } catch {
-      // A frame we cannot read is dropped rather than ending the turn.
-    }
-  }
-
-  return { events, rest };
-}
-
-function toAction(event: { type: "action" } & ChatAction): ChatAction {
-  if (event.kind === "navigate") {
-    return { kind: "navigate", label: event.label, filters: event.filters };
-  }
-  return {
-    kind: event.kind,
-    label: event.label,
-    hotelId: event.hotelId,
-    hotelName: event.hotelName,
-  };
-}
 
 export function useChatStream(): ChatStream {
   const [messages, setMessages] = useState<ChatMessage[]>([]);

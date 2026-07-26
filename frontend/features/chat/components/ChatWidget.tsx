@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { MessageCircleIcon } from "lucide-react";
 
 import { useCompareSelection } from "@/features/compare/hooks/useCompareSelection";
@@ -14,12 +15,16 @@ export function ChatWidget() {
   const { hydrate } = chat;
   const { context, label } = usePageContext(isOpen);
   const { ids } = useCompareSelection();
+  const pathname = usePathname();
 
   const isTrayShowing = ids.length > 0;
 
   useEffect(() => {
     if (isOpen) hydrate();
   }, [isOpen, hydrate]);
+
+  // The chatbot owns /assistant, and it has the tools this widget deliberately lacks.
+  if (pathname === "/assistant") return null;
 
   if (isOpen) {
     return (

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { HeartIcon } from "lucide-react";
+import { HeartIcon, SparklesIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { AccountMenu } from "@/components/layout/AccountMenu";
@@ -16,6 +16,15 @@ export async function Navbar() {
           Stayzy
         </Link>
         <div className="flex items-center gap-3">
+          {user ? (
+            <Link
+              href="/assistant"
+              aria-label="Assistant"
+              className="flex h-9 w-9 items-center justify-center rounded-xl text-text-muted transition-colors hover:bg-subtle hover:text-accent-text"
+            >
+              <SparklesIcon className="h-5 w-5" strokeWidth={1.5} />
+            </Link>
+          ) : null}
           <Link
             href="/favorites"
             aria-label="Favorites"

@@ -11,7 +11,9 @@ import type { ChatAction } from "@/features/chat/types";
 const CHIP_CLASS =
   "inline-flex items-center gap-1.5 rounded-full border border-accent-border bg-accent-dim px-2.5 py-1 text-xs text-accent-text transition-colors hover:bg-accent-dim/70 disabled:opacity-60";
 
-export function ChatActionChip({ action, catalogs }: { action: ChatAction; catalogs: SearchCatalogs }) {
+type ChipAction = Exclude<ChatAction, { kind: "checkout" }>;
+
+export function ChatActionChip({ action, catalogs }: { action: ChipAction; catalogs: SearchCatalogs }) {
   const router = useRouter();
   const { isSelected, isFull, add, remove } = useCompareSelection();
 

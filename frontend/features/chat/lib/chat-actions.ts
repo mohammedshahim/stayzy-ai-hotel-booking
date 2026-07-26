@@ -2,7 +2,22 @@ import { toSearchState } from "@/features/search/lib/extraction";
 import { DEFAULT_STATE, serializeSearchState } from "@/features/search/hooks/useSearchState";
 import type { SearchCatalogs } from "@/features/search/hooks/useSearchCatalogs";
 import type { CatalogOption } from "@/features/search/types";
-import type { ChatChipFilters } from "@/features/chat/types";
+import type { ChatAction, ChatChipFilters } from "@/features/chat/types";
+
+export function toAction(event: { type: "action" } & ChatAction): ChatAction {
+  if (event.kind === "navigate") {
+    return { kind: "navigate", label: event.label, filters: event.filters };
+  }
+  if (event.kind === "checkout") {
+    return { kind: "checkout", label: event.label, path: event.path };
+  }
+  return {
+    kind: event.kind,
+    label: event.label,
+    hotelId: event.hotelId,
+    hotelName: event.hotelName,
+  };
+}
 
 function idsOf(names: string[] | undefined, options: CatalogOption[]): string[] | undefined {
   if (!names?.length) return undefined;
