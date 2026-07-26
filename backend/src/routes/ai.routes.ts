@@ -2,9 +2,12 @@ import { Router } from "express";
 import { aiRateLimit, chatRateLimit } from "../middlewares/rateLimit";
 import { requireAuth } from "../middlewares/requireAuth";
 import {
+  endAssistantChat,
   endWidgetChat,
   extractSearchQuery,
   getAssistantPending,
+  getAssistantSession,
+  getAssistantSessions,
   getCompareAiSummary,
   getHotelAiSummary,
   getWidgetSession,
@@ -25,7 +28,10 @@ router.get("/chat/widget/session", requireAuth, getWidgetSession);
 router.post("/chat/widget/session/end", requireAuth, endWidgetChat);
 
 router.post("/chat/assistant", requireAuth, chatRateLimit, streamAssistantChat);
-// No chatRateLimit: reading a pending confirmation never reaches the model.
+// No chatRateLimit: none of these reach the model, and the first is needed to recover from one.
 router.get("/chat/assistant/pending", requireAuth, getAssistantPending);
+router.get("/chat/assistant/sessions", requireAuth, getAssistantSessions);
+router.get("/chat/assistant/sessions/:id", requireAuth, getAssistantSession);
+router.post("/chat/assistant/session/end", requireAuth, endAssistantChat);
 
 export default router;

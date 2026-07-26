@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { db } from "../config/db";
 import { chatMessages, chatSessions, type ChatMessage, type ChatSession } from "../models/chat.schema";
 import type { ChatAction } from "../types/chat.schemas";
@@ -14,6 +14,14 @@ export async function findActiveSession(userId: string, feature: ChatFeature): P
     )
     .limit(1);
   return row ?? null;
+}
+
+export async function listSessions(userId: string, feature: ChatFeature): Promise<ChatSession[]> {
+  return db
+    .select()
+    .from(chatSessions)
+    .where(and(eq(chatSessions.userId, userId), eq(chatSessions.feature, feature)))
+    .orderBy(desc(chatSessions.lastMessageAt));
 }
 
 export interface InsertSessionParams {

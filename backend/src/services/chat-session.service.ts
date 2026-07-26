@@ -5,6 +5,7 @@ import {
   findSessionOwner,
   insertMessage,
   insertSession,
+  listSessions,
   type ChatFeature,
 } from "../queries/chat.queries";
 import type { ChatAction } from "../types/chat.schemas";
@@ -19,6 +20,24 @@ export interface ChatThreadMessage {
   content: string;
   actions: ChatAction[];
   createdAt: string;
+}
+
+export interface ChatSessionSummary {
+  id: string;
+  title: string;
+  lastMessageAt: string;
+  endedAt: string | null;
+}
+
+async function readThread(sessionId: string): Promise<ChatThreadMessage[]> {
+  const messages = await findSessionMessages(sessionId);
+  return messages.map((message) => ({
+    id: message.id,
+    role: message.role,
+    content: message.content,
+    actions: (message.actionsJson as ChatAction[] | null) ?? [],
+    createdAt: message.createdAt,
+  }));
 }
 
 function toTitle(message: string): string {
@@ -80,16 +99,27 @@ export async function getWidgetThread(userId: string): Promise<ChatThreadMessage
   const session = await findActiveSession(userId, WIDGET);
   if (!session) return [];
 
-  const messages = await findSessionMessages(session.id);
-  return messages.map((message) => ({
-    id: message.id,
-    role: message.role,
-    content: message.content,
-    actions: (message.actionsJson as ChatAction[] | null) ?? [],
-    createdAt: message.createdAt,
+  return readThread(session.id);
+}
+
+export async function getChatbotThread(sessionId: string): Promise<ChatThreadMessage[]> {
+  return readThread(sessionId);
+}
+
+export async function listChatbotSessions(userId: string): Promise<ChatSessionSummary[]> {
+  const sessions = await listSessions(userId, CHATBOT);
+  return sessions.map((session) => ({
+    id: session.id,
+    title: session.title,
+    lastMessageAt: session.lastMessageAt,
+    endedAt: session.endedAt,
   }));
 }
 
 export async function endWidgetSession(userId: string): Promise<void> {
   await endActiveSession(userId, WIDGET);
+}
+
+export async function endChatbotSession(userId: string): Promise<void> {
+  await endActiveSession(userId, CHATBOT);
 }

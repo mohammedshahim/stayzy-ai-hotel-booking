@@ -4,9 +4,12 @@ import { env } from "../config/env";
 import { getCompareSummary, getFromAgent, getHotelSummary, streamFromAgent } from "../services/ai.service";
 import { extractSearchFilters } from "../services/search-extraction.service";
 import {
+  endChatbotSession,
   endWidgetSession,
   findChatbotSessionId,
+  getChatbotThread,
   getWidgetThread,
+  listChatbotSessions,
   ownsSession,
   recordUserMessage,
   startChatbotSession,
@@ -194,6 +197,39 @@ export async function getAssistantPending(req: Request, res: Response, next: Nex
     }
 
     res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getAssistantSessions(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const sessions = await listChatbotSessions(req.user!.id);
+    res.json({ success: true, data: { sessions } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getAssistantSession(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = requireParam(req.params.id, "id");
+    if (!(await ownsSession(id, req.user!.id))) {
+      res.status(404).json({ success: false, error: "Conversation not found" });
+      return;
+    }
+
+    const messages = await getChatbotThread(id);
+    res.json({ success: true, data: { messages } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function endAssistantChat(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    await endChatbotSession(req.user!.id);
+    res.json({ success: true, data: { ended: true } });
   } catch (error) {
     next(error);
   }
