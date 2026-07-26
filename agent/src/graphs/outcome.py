@@ -10,7 +10,7 @@ class ToolOutcome(NamedTuple):
     back. Treat them as read-only — the empty defaults are shared between instances.
 
     `action` carries what the UI must render but the model must never write itself,
-    such as a checkout link. The widget never sets it.
+    such as a chip or a checkout link.
     """
 
     text: str

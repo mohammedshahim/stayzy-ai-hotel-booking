@@ -1,6 +1,7 @@
 """The widget graph's nodes: context preparation, the model turn, and tool dispatch."""
 
 import logging
+from datetime import date
 from typing import Any
 
 from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
@@ -8,12 +9,25 @@ from langchain_core.runnables import RunnableConfig
 
 from src.clients.backend_client import BackendError
 from src.config.llm import get_smart_llm
-from src.graphs.chat_widget.prompts import CONTEXT_CURRENT, CONTEXT_EARLIER, WIDGET_SYSTEM
+from src.graphs.chat_widget.prompts import (
+    CONTEXT_CURRENT,
+    CONTEXT_EARLIER,
+    TODAY,
+    WIDGET_SYSTEM,
+)
 from src.graphs.chat_widget.state import WidgetState
-from src.graphs.chat_widget.tools.widget_tools import TOOL_SCHEMAS, to_chip_filters
-from src.tools.outcome import ToolOutcome
-from src.tools.resolve import resolve_hotel
-from src.tools.search_tools import run_get_hotel_details, run_search_hotels
+from src.graphs.chat_widget.tools.propose_tools import (
+    CHIP_TOOL_NAMES,
+    chip_key,
+    hotel_chip,
+    search_chip,
+)
+from src.graphs.chat_widget.tools.search_tools import (
+    run_get_hotel_details,
+    run_search_hotels,
+)
+from src.graphs.chat_widget.tools.widget_tools import TOOL_SCHEMAS
+from src.graphs.outcome import ToolOutcome
 
 logger = logging.getLogger(__name__)
 
@@ -68,9 +82,11 @@ async def call_model(state: WidgetState) -> dict[str, Any]:
     if steps < MAX_TOOL_LOOPS:
         llm = llm.bind_tools(TOOL_SCHEMAS)
 
+    today = TODAY.format(today=date.today().strftime("%A, %d %B %Y"))
+
     # Last, not after the system prompt, or the newest hotel mentioned wins over it.
     messages = [
-        SystemMessage(content=WIDGET_SYSTEM),
+        SystemMessage(content=f"{WIDGET_SYSTEM}\n\n{today}"),
         *state["messages"],
         *_context_messages(state),
     ]
@@ -79,37 +95,39 @@ async def call_model(state: WidgetState) -> dict[str, Any]:
     return {"messages": [response], "steps": steps + 1}
 
 
+def _resolve_hotel(name: str, hotel_ids: dict[str, str]) -> str | None:
+    """Match a name against the ids this conversation has already shown the user."""
+    exact = hotel_ids.get(name)
+    if exact:
+        return exact
+
+    lowered = name.strip().lower()
+    for known, hotel_id in hotel_ids.items():
+        if known.lower() == lowered:
+            return hotel_id
+    return None
+
+
 async def _run_one(
-    name: str, args: dict[str, Any], state: WidgetState, user_id: str | None
-) -> tuple[ToolOutcome, dict[str, Any] | None]:
-    hotel_ids = state.get("hotel_ids") or {}
-
+    name: str, args: dict[str, Any], hotel_ids: dict[str, str], user_id: str | None
+) -> ToolOutcome:
+    """Run one tool call. The widget only knows hotels it has already shown."""
     if name == "SearchHotels":
-        return await run_search_hotels(args, user_id), None
-
-    if name == "GetHotelDetails":
-        hotel_id = resolve_hotel(str(args.get("hotel_name", "")), hotel_ids)
-        if not hotel_id:
-            return ToolOutcome("That hotel has not come up yet. Search for it first.", {}), None
-        return await run_get_hotel_details(hotel_id, user_id), None
+        return await run_search_hotels(args, user_id)
 
     if name == "ProposeSearch":
-        action = {"kind": "navigate", "label": args["label"], "filters": to_chip_filters(args)}
-        return ToolOutcome(f"Offered the user a chip: {args['label']}", {}), action
+        return ToolOutcome(f"Offered the user a chip: {args['label']}", action=search_chip(args))
 
     hotel_name = str(args.get("hotel_name", ""))
-    hotel_id = resolve_hotel(hotel_name, hotel_ids)
+    hotel_id = _resolve_hotel(hotel_name, hotel_ids)
     if not hotel_id:
-        return ToolOutcome(f"No chip offered — {hotel_name} has not come up yet.", {}), None
+        return ToolOutcome(f"{hotel_name} has not come up yet. Search for it first.")
 
-    kind = "open_hotel" if name == "ProposeHotel" else "compare"
-    action = {"kind": kind, "label": args["label"], "hotelId": hotel_id, "hotelName": hotel_name}
-    return ToolOutcome(f"Offered the user a chip: {args['label']}", {}), action
+    if name == "GetHotelDetails":
+        return await run_get_hotel_details(hotel_id, user_id)
 
-
-def _chip_key(action: dict[str, Any]) -> tuple[str, str]:
-    """Two chips are the same offer when the hotel matches, or the label for a search."""
-    return action["kind"], action.get("hotelId") or action["label"]
+    chip = hotel_chip(name, args["label"], hotel_id, hotel_name)
+    return ToolOutcome(f"Offered the user a chip: {args['label']}", action=chip)
 
 
 async def call_tools(state: WidgetState, config: RunnableConfig) -> dict[str, Any]:
@@ -120,29 +138,27 @@ async def call_tools(state: WidgetState, config: RunnableConfig) -> dict[str, An
     messages: list[ToolMessage] = []
     hotel_ids = dict(state.get("hotel_ids") or {})
     actions = list(state.get("actions") or [])
-    offered = {_chip_key(action) for action in actions}
+    offered = {chip_key(chip) for chip in actions}
 
     for call in last.tool_calls:
         try:
-            outcome, action = await _run_one(call["name"], call["args"], state, user_id)
+            outcome = await _run_one(call["name"], call["args"], hotel_ids, user_id)
         except BackendError as exc:
             logger.warning("[graphs/chat_widget] %s failed: %s", call["name"], exc)
-            outcome, action = ToolOutcome("That lookup failed. Tell the user, briefly.", {}), None
+            outcome = ToolOutcome("That lookup failed. Tell the user, briefly.")
 
         hotel_ids.update(outcome.hotel_ids)
-        state = {**state, "hotel_ids": hotel_ids}
 
-        if action:
-            key = _chip_key(action)
+        if outcome.action:
+            key = chip_key(outcome.action)
             if key in offered:
                 outcome = ToolOutcome(
-                    f"'{action['label']}' is already on screen. Do not offer it again — "
-                    "answer the user instead.",
-                    {},
+                    f"'{outcome.action['label']}' is already on screen. Do not offer it "
+                    "again — answer the user instead."
                 )
             else:
                 offered.add(key)
-                actions.append(action)
+                actions.append(outcome.action)
 
         messages.append(
             ToolMessage(content=outcome.text, tool_call_id=call["id"], name=call["name"])
@@ -157,3 +173,22 @@ def should_continue(state: WidgetState) -> str:
     if isinstance(last, AIMessage) and last.tool_calls:
         return "tools"
     return "end"
+
+
+def is_final_chip_reply(message: AIMessage) -> bool:
+    """Did the model write its reply and only offer chips alongside it?
+
+    A chip returns nothing to reason about, so there is nothing left to say. Going back
+    to the model would make it write a second, emptier reply — and having already said
+    the first, it will not repeat itself.
+    """
+    called = {call["name"] for call in message.tool_calls}
+    return bool(message.content) and bool(called) and called <= CHIP_TOOL_NAMES
+
+
+def after_tools(state: WidgetState) -> str:
+    """End the turn when the reply is already written; otherwise let the model answer."""
+    for message in reversed(state["messages"]):
+        if isinstance(message, AIMessage):
+            return "end" if is_final_chip_reply(message) else "agent"
+    return "agent"

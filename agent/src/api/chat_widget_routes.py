@@ -10,6 +10,7 @@ from langchain_core.messages import AIMessageChunk, HumanMessage
 from src.api.chat_replies import save_reply
 from src.api.deps import ActingUser
 from src.graphs.chat_widget.graph import build_widget_graph
+from src.graphs.chat_widget.nodes import is_final_chip_reply
 from src.schemas.chat import ChatWidgetRequest
 from src.streaming import events
 
@@ -55,7 +56,7 @@ async def _run_turn(body: ChatWidgetRequest, user_id: str | None) -> AsyncIterat
             for node, update in payload.items():
                 if node == "agent":
                     message = update["messages"][-1]
-                    if message.tool_calls and message.content:
+                    if message.tool_calls and message.content and not is_final_chip_reply(message):
                         replies.pop(str(message.id), None)
                         yield events.drop(str(message.id))
                     for call in message.tool_calls:

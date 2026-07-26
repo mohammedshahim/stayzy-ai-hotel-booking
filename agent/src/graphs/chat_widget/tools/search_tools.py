@@ -1,14 +1,14 @@
-"""Hotel search tools every chat surface shares.
+"""The widget's read-only hotel tools.
 
 Each schema's docstring is the interface the model reads. No schema takes an id: the
-model works in names, and the calling graph maps one back to an id it has seen.
+model works in names, and the node maps a name back to an id it has already seen.
 """
 
 from pydantic import BaseModel, Field
 
 from src.clients import backend_client
-from src.tools.describe import amenity_line, rating_phrase
-from src.tools.outcome import ToolOutcome
+from src.graphs.describe import amenity_line, rating_phrase
+from src.graphs.outcome import ToolOutcome
 
 
 class SearchHotels(BaseModel):
@@ -56,10 +56,8 @@ class GetHotelDetails(BaseModel):
     looking at or that a previous search returned. Give the hotel's exact name.
     """
 
-    hotel_name: str = Field(description="Exact hotel name as it appeared earlier.")
+    hotel_name: str = Field(description="The hotel's exact name.")
 
-
-SEARCH_TOOL_SCHEMAS = [SearchHotels, GetHotelDetails]
 
 SEARCH_PARAM_NAMES = {
     "destination": "destination",
@@ -140,7 +138,7 @@ async def run_search_hotels(args: dict[str, object], user_id: str | None) -> Too
 
 
 async def run_get_hotel_details(hotel_id: str, user_id: str | None) -> ToolOutcome:
-    """Fetch one hotel's own page data. The id comes from the graph, never the model."""
+    """Fetch one hotel's own page data. The id comes from the node, never the model."""
     hotel = await backend_client.get(f"/hotels/{hotel_id}", user_id=user_id)
 
     amenities = [amenity["name"] for amenity in hotel.get("amenities", [])]

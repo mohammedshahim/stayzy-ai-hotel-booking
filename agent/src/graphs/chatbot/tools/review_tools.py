@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from src.clients import backend_client
 from src.graphs.chatbot.tools.account_tools import find_booking_by_name, unknown_booking
 from src.graphs.chatbot.tools.confirm import DECLINED, confirm
-from src.tools.outcome import ToolOutcome
+from src.graphs.outcome import ToolOutcome
 
 
 class GetHotelReviews(BaseModel):
@@ -14,7 +14,7 @@ class GetHotelReviews(BaseModel):
     GetHotelDetails gives only the score, never the comments.
     """
 
-    hotel_name: str = Field(description="Exact hotel name as it appeared earlier.")
+    hotel_name: str = Field(description="The hotel's exact name.")
 
 
 class WriteReview(BaseModel):

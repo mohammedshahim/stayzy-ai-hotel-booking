@@ -18,6 +18,7 @@ from pydantic import ValidationError
 from src.api.chat_replies import save_reply
 from src.api.deps import ActingUser
 from src.graphs.chatbot.graph import build_chatbot_graph
+from src.graphs.chatbot.nodes import is_final_chip_reply
 from src.schemas.chat import ChatbotRequest, PendingConfirmation, PendingData
 from src.schemas.common import SuccessResponse
 from src.streaming import events
@@ -82,7 +83,7 @@ async def _run_turn(
             for node, update in payload.items():
                 if node == "agent":
                     message = update["messages"][-1]
-                    if message.tool_calls and message.content:
+                    if message.tool_calls and message.content and not is_final_chip_reply(message):
                         replies.pop(str(message.id), None)
                         yield events.drop(str(message.id))
                     for call in message.tool_calls:

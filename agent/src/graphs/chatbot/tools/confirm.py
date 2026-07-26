@@ -11,7 +11,7 @@ from typing import Any
 
 from langgraph.types import interrupt
 
-from src.tools.outcome import ToolOutcome
+from src.graphs.outcome import ToolOutcome
 
 DECLINED = ToolOutcome(
     "The user declined that action, so nothing was changed. Do not propose it again "

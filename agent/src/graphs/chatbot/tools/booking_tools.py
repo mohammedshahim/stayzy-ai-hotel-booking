@@ -13,8 +13,8 @@ from pydantic import BaseModel, Field
 from src.clients import backend_client
 from src.graphs.chatbot.tools.account_tools import find_booking_by_name, unknown_booking
 from src.graphs.chatbot.tools.confirm import DECLINED, confirm
-from src.tools.describe import count_phrase
-from src.tools.outcome import ToolOutcome
+from src.graphs.describe import count_phrase
+from src.graphs.outcome import ToolOutcome
 
 
 class BookRoom(BaseModel):
@@ -27,7 +27,7 @@ class BookRoom(BaseModel):
     them rather than asking for a separate yes first.
     """
 
-    hotel_name: str = Field(description="Exact hotel name as it appeared earlier.")
+    hotel_name: str = Field(description="The hotel's exact name.")
     room_type_name: str = Field(description="Exact room name as `GetRoomTypes` returned it.")
     check_in: str = Field(description="Arrival date, YYYY-MM-DD.")
     check_out: str = Field(description="Departure date, YYYY-MM-DD.")

@@ -7,8 +7,8 @@ from pydantic import BaseModel, Field
 
 from src.clients import backend_client
 from src.graphs.chatbot.tools.confirm import DECLINED, confirm
-from src.tools.describe import count_phrase, rating_phrase
-from src.tools.outcome import ToolOutcome
+from src.graphs.describe import count_phrase, rating_phrase
+from src.graphs.outcome import ToolOutcome
 
 
 class ListMyBookings(BaseModel):
@@ -29,7 +29,7 @@ class AddFavorite(BaseModel):
     before it is saved.
     """
 
-    hotel_name: str = Field(description="Exact hotel name as it appeared earlier.")
+    hotel_name: str = Field(description="The hotel's exact name.")
 
 
 ACCOUNT_TOOL_SCHEMAS = [ListMyBookings, ListMyFavorites, AddFavorite]

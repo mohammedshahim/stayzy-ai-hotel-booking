@@ -4,7 +4,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 from src.config import checkpointer as checkpointer_config
-from src.graphs.chatbot.nodes import call_model, call_tools, should_continue
+from src.graphs.chatbot.nodes import after_tools, call_model, call_tools, should_continue
 from src.graphs.chatbot.state import ChatbotState
 
 
@@ -16,6 +16,6 @@ def build_chatbot_graph() -> CompiledStateGraph:
 
     builder.add_edge(START, "agent")
     builder.add_conditional_edges("agent", should_continue, {"tools": "tools", "end": END})
-    builder.add_edge("tools", "agent")
+    builder.add_conditional_edges("tools", after_tools, {"agent": "agent", "end": END})
 
     return builder.compile(checkpointer=checkpointer_config.checkpointer)
