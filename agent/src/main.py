@@ -9,6 +9,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import uvicorn
+from dotenv import load_dotenv
 from fastapi import FastAPI
 
 from src.api.router import api_router
@@ -16,6 +17,9 @@ from src.clients import backend_client
 from src.config import checkpointer
 from src.config.settings import settings
 from src.middlewares.error_handler import register_error_handlers
+
+# Settings parses .env on its own; LangSmith reads os.environ, which nothing else fills.
+load_dotenv()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)

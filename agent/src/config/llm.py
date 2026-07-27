@@ -16,6 +16,8 @@ def _build(model: str, temperature: float) -> ChatOpenAI:
         base_url=settings.openrouter_base_url,
         api_key=SecretStr(settings.openrouter_api_key),
         temperature=temperature,
+        # langchain-openai leaves this off when base_url is custom, so streamed turns lose tokens.
+        stream_usage=True,
     )
 
 
