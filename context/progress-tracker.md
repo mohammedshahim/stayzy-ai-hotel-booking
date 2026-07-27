@@ -23,11 +23,13 @@ After completing any feature:
 
 ## Current Status
 
-**Phase:** 14 — Chatbot (AI phase) — **complete**
-**Current feature:** none — 48 is done, so the chatbot is usable by a person at `/assistant`, not just over curl
-**Next up:** 50 Tracing + cost controls (Phase 15) — read **`ai-phase-plan.md`**. Feature 49 is retired.
+**Phase:** 15 — Hardening (AI phase) — in progress
+**Current feature:** none — 50 is done, so every model call in `agent/` is traceable with real token counts
+**Next up:** 51 Eval pass (Phase 15) — read **`ai-phase-plan.md`**. Feature 49 is retired. Then Phase 16.
 
-**What 48 settled, and what 50/51 inherit:**
+**What 50 leaves for 51:** tracing is a switch, not a habit — `LANGSMITH_TRACING` is off unless set, so an eval run that wants traces has to turn it on. Token counts are recorded and **cost is not**: LangSmith has no price entry for an OpenRouter slug, so every run reports a blank cost until one is registered in the console. Both slugs are free, so the true figure is $0 regardless.
+
+**What 48 settled, and what 51 inherits:**
 
 1. **`ended_at` means one thing for the widget and another for the chatbot.** Widget: "this conversation is over." Chatbot: **"this is no longer the thread you land on"** — every session a user owns stays writable, forever. This needed no code, which is why it was chosen: nothing on the write path checks `ended_at`, and passing an explicit `sessionId` skips `resolveActiveSession` entirely, so the partial unique index is never touched.
 2. **The landing thread is the row with `ended_at IS NULL`,** and there is at most one. If none exists the page opens on the empty state and the next message creates one — which is also all "New chat" does.
@@ -172,7 +174,7 @@ Planned in `ai-phase-plan.md`. Read that file, not `build-plan.md`, for every fe
 ### Phase 15 — Hardening
 
 - ~~49~~ *retired — `PostgresSaver` is used from Feature 36, so there is nothing to swap*
-- [ ] 50 Tracing + cost controls
+- [x] 50 Tracing + cost controls
 - [ ] 51 Eval pass
 
 ### Phase 16 — Production Deployment
@@ -189,6 +191,20 @@ Moved from Phase 9 on 2026-07-19. Scope widened: `agent/` is a fourth deployable
 ---
 
 ## Completed Features
+
+### ✅ 50 Tracing + cost controls — completed 2026-07-27
+
+Notes: LangSmith tracing for `agent/`, in three lines of code. `load_dotenv()` in `main.py`, `stream_usage=True` in `config/llm.py`, and the four `LANGSMITH_*` variables documented in `.env.example`. No new dependency (`langsmith` is already a `langchain-core` dependency, and `python-dotenv` a `pydantic-settings` one), no new module, no table, no route, no UI. Rate limiting was never part of this — it shipped in Feature 37, which is why this feature is only observability.
+
+Decision: **the LangSmith dashboard is the entire surface.** No usage table in `backend/`, no admin page. The alternative — recording tokens per user in Postgres — is the foundation a per-user budget cap would need, and it is a real feature with a migration and a second source of truth for numbers LangSmith already holds. Deliberately not started here.
+
+Decision: **full transcripts are traced, with the switch off by default.** `LANGSMITH_HIDE_INPUTS` / `HIDE_OUTPUTS` exist (`langsmith/client.py:1343`) and were not enabled: hiding the text would blind exactly the bug class Feature 48 spent a session on, where a tool docstring the model misread was only visible in the prompt. The protection is the switch, not redaction — a trace carries a user's real bookings, names and dates off this infrastructure, so `LANGSMITH_TRACING` stays unset in production until that is decided deliberately.
+
+**Two things that look like they should work and do not.** (1) **Putting `LANGSMITH_*` in `agent/.env` alone does nothing.** `pydantic-settings` parses the file into `Settings` and never touches `os.environ`, which is the only place the library looks — proven directly: `CHECKPOINTER_SCHEMA` loads into `settings` while `'CHECKPOINTER_SCHEMA' in os.environ` stays `False`, and `tracing_is_enabled()` returns `False` with every variable set. `load_dotenv()` is the bridge. (2) **`stream_usage` is off whenever `base_url` is custom** (`langchain_openai/chat_models/base.py:1217-1236`, "many chat completions APIs do not support" it). OpenRouter *is* a custom `base_url` and both chat graphs stream, so tracing without this reports every chat turn at **zero tokens** — a cost feature that observes nothing on the two expensive surfaces. OpenRouter does honour `stream_options`, verified live.
+
+**User attribution and thread grouping needed no code.** `langchain_core/runnables/config.py:155-168` promotes every primitive `configurable` key into LangSmith run metadata, excluding only `api_key`. Both graph routes already pass `thread_id` and `user_id` there, so the six metadata call sites originally planned were deleted before being written.
+
+Verified: `tracing_is_enabled()` flips `False → True` once `load_dotenv()` runs; a live streamed OpenRouter call returned `input 22 / output 15 / total 37` with `reasoning: 12` broken out; that run landed in the configured project with `tokens: 37` matching and `cost: None`. **Not yet verified against the running app** — a real turn over HTTP through `backend/ → agent/` was not driven, so the run tree across a full tool loop and the conversation grouping by `thread_id` are still unproven. Do that before relying on either for Feature 51.
 
 ### ✅ 48 Chatbot UI — completed 2026-07-25
 

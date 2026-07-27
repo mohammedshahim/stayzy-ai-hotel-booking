@@ -346,6 +346,8 @@ New patterns (`ChatBubble`, action chip, tool-status chip, confirmation card, se
 
 **50. Tracing + cost controls** — LangSmith or equivalent. (Rate limiting already shipped in Feature 37.)
 
+*Built 2026-07-27 (Feature 50), in three lines.* LangSmith needs no integration code — `langchain-core` reads `LANGSMITH_*` from `os.environ` on its own, and `langsmith` is already a dependency of it. What it does need is for the variables to **arrive**: `pydantic-settings` parses `agent/.env` into `Settings` without ever touching `os.environ`, so they sat inert until `load_dotenv()` went into `main.py`. The second line is `stream_usage=True` in `config/llm.py` — `langchain-openai` disables usage reporting whenever `base_url` is custom, so both chat graphs were streaming with no token counts at all. **User and thread attribution came free**: `configurable` keys are auto-promoted into run metadata, and both graph routes already carry `thread_id` and `user_id`. No table, no route, no UI — the LangSmith dashboard is the whole surface. **Cost renders blank** until an OpenRouter slug is priced in the console. See the Feature 50 entry in `progress-tracker.md`.
+
 **51. Eval pass** — the fixed prompt set below, re-run after any prompt or graph change so regressions are caught, not shipped.
 
 ### Phase 16 — Production Deployment

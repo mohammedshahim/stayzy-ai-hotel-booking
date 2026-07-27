@@ -630,6 +630,7 @@ Accessed through `langchain-openai` — OpenRouter speaks the OpenAI protocol, s
 - **Temperature is per use case too, and it is set at the call site, not in config.** Prose wants a little variation and extraction wants none: the summary chains take the `get_fast_llm()` default of 0.2, the query extraction chain passes `temperature=0`. Anything whose output is parsed rather than read should be at 0
 - `OPENROUTER_API_KEY` lives only in `agent/`'s environment. It never reaches `backend/` and never reaches a browser
 - This is the project's first genuinely metered dependency. Per-user rate limiting ships in Feature 37, **before** the first billable feature in Feature 38
+- **`stream_usage=True` is set explicitly in `_build()`, and must stay.** `langchain-openai` only default-enables it when no custom `base_url` is set — "many chat completions APIs do not support streaming token usage" (`chat_models/base.py:1217-1236`). OpenRouter is a custom `base_url`, so without it every streamed turn reports **no tokens at all**. OpenRouter does honour `stream_options`, verified live in Feature 50: 22 in / 15 out / 37 total, with `reasoning: 12` broken out
 - Summaries are cached server-side and regenerate only on a content-hash miss. A cache hit must make no LLM call at all — that is the acceptance test for Feature 38 (verified: 0.09s cached vs 13.8s on a miss)
 - **This is not a blanket "cache every AI call" rule.** Feature 40's query extraction has no cache and no table, deliberately: a free-text prompt is not an enumerable key, so it cannot be warmed and repeats too rarely to earn a lookup. Cache when the key is enumerable; otherwise let the rate limiter be the ceiling. See `architecture.md` for the full rule
 
@@ -663,6 +664,19 @@ The shape that works, in `chains/smart_search/query_extraction_chain.py`:
 **A feature with no cache pays that latency every single time.** Feature 40 measured 6–14.5s per extraction and hit the 20s `AI_REQUEST_TIMEOUT_MS` outright on one prompt, with no warm path to fall back on. Budget the timeout against the *uncached* case whenever there is no cache.
 
 **Verify a model slug before trusting it.** `GET https://openrouter.ai/api/v1/models` lists every id; a wrong slug fails only at the first real call. The configured slug was confirmed present in the catalog during Feature 38.
+
+---
+
+## LangSmith (`agent/`)
+
+Added in Feature 50. **Not a new dependency** — `langsmith` is already a hard dependency of `langchain-core`, so tracing needs no install and no integration code.
+
+- **Tracing is pure environment.** `langchain_core/tracers/context.py:132` calls `langsmith.utils.tracing_is_enabled()`, which reads `LANGSMITH_TRACING` / `LANGSMITH_API_KEY` from `os.environ`. No decorators, no callback handlers, no `Client` construction. Do not write wiring for this
+- **`.env` alone does nothing.** `pydantic-settings` parses the file into `Settings` without touching `os.environ`, so the variables never reach the library. `load_dotenv()` in `main.py` is what bridges them, and removing it disables tracing silently — see `architecture.md`
+- **Never add `LANGSMITH_*` to `Settings`.** The library reads the environment directly; a second, typed copy on the settings object would be read by nothing and would drift. This is the one place `.env` is deliberately not routed through `Settings`
+- **User and thread attribution are automatic.** `langchain_core/runnables/config.py:155-168` promotes every primitive `configurable` key into run metadata, excluding only `api_key`. Both graph routes already pass `thread_id` and `user_id`, so runs arrive attributed and grouped without a `metadata=` argument anywhere. Adding one by hand duplicates what the library already did
+- **Cost is blank, and that is not a bug.** LangSmith prices runs from its own model table, which has no entry for an OpenRouter slug like `nvidia/nemotron-3-ultra-550b-a55b:free`. Tokens are recorded; dollars require registering that slug's pricing in the LangSmith console. Both configured slugs are free, so the honest figure is $0 either way
+- **A trace carries the entire transcript.** `LANGSMITH_HIDE_INPUTS` / `HIDE_OUTPUTS` (`langsmith/client.py:1343`) send structure and tokens without the text. They are deliberately unused — the Feature 48 bug class, a tool docstring the model misread, is invisible without the prompt. The switch is the control instead
 
 ---
 
