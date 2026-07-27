@@ -1,59 +1,51 @@
-# Memory — Feature 48 Chatbot UI, complete, verified, pushed. Phase 14 done.
+# Memory — Feature 50 LangSmith tracing, complete. Phase 15 half done.
 
-Last updated: 2026-07-25
+Last updated: 2026-07-27
 
 ## What was built
 
-**Feature 48 Chatbot UI — `/assistant`, shipped and pushed to `origin/main` at `894fee0`.** Four commits, split for traceability:
+**Feature 50 Tracing + cost controls — three lines of code.** Two commits:
 
-- `43518ae` `feat(backend)` — `GET /ai/chat/assistant/sessions`, `GET .../sessions/:id`, `POST .../session/end`. No migration; `chat_sessions` already had the index.
-- `b487113` `feat(agent)` — the tools restructure plus four model-facing fixes.
-- `3c954ff` `feat(frontend)` — the page itself.
-- `894fee0` `docs(context)` — Feature 48 logged, two rules corrected.
+- `a2ecda6` `feat(agent)` — **pushed** to `origin/main`.
+- `f858cba` `docs(context)` — committed, **not pushed** (`main` is ahead 1).
 
-New frontend: `features/chat/components/{AssistantShell,SessionList,ConfirmationCard,ChatCheckoutButton}.tsx`, `features/chat/hooks/useAssistantStream.ts`, `features/chat/lib/sse.ts`, `app/assistant/page.tsx`. New deps: `remark-gfm`; `@base-ui/react` used directly for the first time (already installed).
+The three changes: `load_dotenv()` in `agent/src/main.py`, `stream_usage=True` in `agent/src/config/llm.py`, and the four `LANGSMITH_*` vars documented in `agent/.env.example`. No new dependency — `langsmith` is already a `langchain-core` dep and `python-dotenv` a `pydantic-settings` one. No new module, no table, no route, no UI.
 
-New agent: `graphs/{outcome,describe}.py`, `graphs/chat_widget/tools/{search,propose}_tools.py`, `graphs/chatbot/tools/propose_tools.py`. **`agent/src/tools/` deleted.**
-
-`/imprint` was run — `ui-registry.md` has the Chatbot Page entry (68 entries now).
+The developer's own `agent/.env` has real LangSmith values set and tracing **on**. The key is valid and the file is gitignored — never commit it. Their `LANGSMITH_PROJECT` is `"satyzy"`, which is almost certainly a typo for `stayzy`; it was flagged and deliberately left alone. Traces from this session are in a project by that name.
 
 ## Decisions made
 
-- **`ended_at` means two different things.** Widget: "conversation over." Chatbot: **"not the thread you land on"** — every session a user owns stays writable forever. Chosen because it needed *no code*: nothing on the write path checks it, and an explicit `sessionId` skips `resolveActiveSession` so the partial unique index is never touched.
-- **No tool is shared between surfaces.** `src/tools/` is gone; each graph owns a full copy, including near-identical `SearchHotels`/`GetHotelDetails`. **This reverses Feature 45** at the developer's instruction. Reason that matters: *a tool's docstring is that surface's prompt* — proven twice this session. Only non-tools stay shared (`graphs/outcome.py`, `graphs/describe.py`).
-- **Only `ProposeHotel` is bound to the chatbot**, not all three chip tools. See the tool-ceiling finding below.
-- **A chips-only turn ends the graph** rather than returning to the model (`is_final_chip_reply`, conditional edge off `tools`, no `drop` for that case).
-- **A second hook (`useAssistantStream`), not a mode flag** on `useChatStream`. Only `parseFrames` was extracted.
-- **The base-ui Drawer lives in the feature, not `components/ui/`** — one consumer, so no wrapper. Promote if a second surface needs it.
-- **Committed straight to `main`**, matching every prior feature in this repo.
+- **The LangSmith dashboard is the entire surface.** No usage table in `backend/`, no admin page. A Postgres usage table is what a future per-user budget cap would need — it was explicitly considered and not started, because it is a real feature with a migration and a second source of truth for numbers LangSmith already holds.
+- **Full transcripts are traced; the switch is the privacy control, not redaction.** `LANGSMITH_HIDE_INPUTS`/`HIDE_OUTPUTS` exist and are deliberately unused — hiding the prompt hides the only evidence for the Feature 48 bug class (a tool docstring the model misread). Therefore **`LANGSMITH_TRACING` stays unset in production** until that call is made deliberately.
+- **Never add `LANGSMITH_*` to `Settings`.** The library reads `os.environ` directly; a typed copy on the settings object would be read by nothing and would drift. This is the one place `.env` is deliberately not routed through `Settings`.
+- **Cost is expected to render blank.** LangSmith cannot price an OpenRouter slug. Registering pricing is a console step, not code. Both slugs are free, so the honest figure is $0 regardless.
 
 ## Problems solved
 
-- **"as it appeared earlier" made tools invisible.** Every hotel-name schema said the name must have appeared earlier, but the chatbot resolves cold by searching. The model read the constraint and answered *"I don't have a tool to save hotels to favorites"* — reproducible 2/2, **not flakiness**. Rewording six schemas: favourites 0/2 → 2/3, navigation 0/1 → 3/3.
-- **This model handles 12 tools, not 14.** Measured on identical prompts: 14 tools → `AddFavorite` called **0/4**; 12 tools → **4/4**. Binding `ProposeSearch`/`ProposeCompare` hid both favourites tools. **Anything added to the chatbot must be re-tested against favourites first.**
-- **`drop` was destroying good answers and the saved history with them.** Its docstring assumed the model would rewrite the text; the prompt forbade repeating. A full answer written alongside chip calls was retracted from screen, stayed in model history, and only the filler that followed reached `chat_messages`. Fixed both graphs.
-- **`MAX_TOOL_LOOPS` unbinding tools is what makes a model type a tool call out as text** — raw `<tool_call>` XML, or `[View X](ProposeHotel:X)` markdown. Verified 4/4 unbound vs 0/4 bound. **The fix (a just-in-time system message at unbind, 0/4 leaks) was reverted** with the model switch. The ceiling can still bite on nemotron.
-- **Models send the string `"null"` for optional fields**, which reaches `backend/` as a literal and 400s a search. **The guard was reverted** with the model switch.
-- **Markdown tables need `remark-gfm`** — commonmark rendered pipe syntax as literal text.
-- **The model never knew the date** and answered from its training cutoff (~a year off). `TODAY` is now formatted from the clock each turn.
-- Also fixed: stale booking status answered from memory; recommending Booking.com/Expedia on a booking product; asking users for booking ids it must never see.
+- **`LANGSMITH_*` in `agent/.env` alone does nothing, silently.** `pydantic-settings` parses the file into `Settings` and never touches `os.environ`, which is the only place the library looks. Proven directly: `CHECKPOINTER_SCHEMA` loads into `settings` while `'CHECKPOINTER_SCHEMA' in os.environ` stays `False`, and `tracing_is_enabled()` returns `False` with every variable set. `load_dotenv()` is the bridge — **it looks redundant and deleting it turns tracing off with no error.**
+- **`stream_usage` is disabled whenever `base_url` is custom** (`langchain_openai/chat_models/base.py:1217-1236`). OpenRouter is a custom `base_url` and both chat graphs stream, so tracing without the explicit `stream_usage=True` reports every chat turn at **zero tokens** — cost observability that observes nothing on the two expensive surfaces. OpenRouter does honour `stream_options`: verified live at 22 in / 15 out / 37 total with `reasoning: 12` broken out.
+- **Attribution needed no code, and six planned call sites were deleted before being written.** `langchain_core/runnables/config.py:155-168` promotes every primitive `configurable` key into run metadata, excluding only `api_key`. Both graph routes already pass `thread_id` and `user_id`.
 
 ## Current state
 
-- **Phase 14 complete.** Working tree clean, `origin/main` = local, all checks green (`pnpm build` backend, `tsc --noEmit` + `eslint` frontend, `ruff check`/`format` + graph compile agent).
-- **Model is back on `nvidia/nemotron-3-ultra-550b-a55b:free`** (both slots). The ling-3.0-flash experiment was reverted in full.
-- Verified live throughout with throwaway users: book → pause → decline → re-ask → confirm → `pending_payment` + checkout link; favourites; saved list; navigation chip; session switching; New chat; reload mid-pause; unverified redirect; 404 on another user's session. Widget re-verified after every shared change. **The dev account's single completed unreviewed booking is still intact** — keep using throwaway users.
+- **Phase 15 half done** — 50 complete, 51 (evals) is next. Checks green: `ruff check`, `ruff format --check`, both graphs compile.
+- **Tracing works end to end**: a live streamed OpenRouter call landed in LangSmith with `tokens: 37` matching exactly and `cost: None`.
+- **Not verified against the running app.** No turn was driven over HTTP through `backend/ → agent/`, so the run tree across a full tool loop and conversation grouping by `thread_id` are unproven. This gap is recorded in the Feature 50 tracker entry too.
+- Model is `nvidia/nemotron-3-ultra-550b-a55b:free` in both slots.
 
 ## Next session starts with
 
-**Feature 50 — Tracing + cost controls** (Phase 15; LangSmith or equivalent). Feature 49 is retired. Read `ai-phase-plan.md`. Then Feature 51 (evals), then Phase 16 (deployment, Features 31–35).
+**Push `f858cba`** (`git push origin main`), then either close the verification gap — bring up `backend/` + `agent/`, drive one real chatbot turn, confirm the run tree and thread grouping — or start **Feature 51, the eval pass** (`ai-phase-plan.md` holds the fixed prompt set). Then Phase 16 (deployment, Features 31–35).
 
 ## Open questions
 
-- **Test data still not cleared — asked five times now.** "Temp User 1" holds **18 bookings**, and `agent.checkpoints` now holds **48 threads**. `ListMyBookings` reads them verbatim into any Feature 51 eval. A `test room test` hotel is also in search results.
-- **Two reverted fixes worth reconsidering**, both model-independent: the just-in-time notice when `MAX_TOOL_LOOPS` unbinds tools, and the `"null"`-argument guard. Also **`chat_widget_routes.py` has no empty-turn guard** — a turn producing no text emits no `error` frame; the chatbot route has one.
-- **`useAssistantStream` is 334 lines** against a 167-line next-largest hook, with 13 state slots. The split (a `useAssistantSessions` hook beside it) was discussed and **not done**. Three specific defects noted: a `return` inside `finally`, `runTurn`'s `finally` doing four unrelated jobs, and three overlapping booleans.
-- Minor `ui-registry.md` inconsistencies recorded but not fixed: `ChatComposer` is `p-3` in the widget and `p-4` on the page; the retry affordance uses `border-error/40` where every other error surface uses the flat `error`/`error-dim` tokens.
-- Should `seed.ts` call `recalculateHotelRatingStats` after inserting reviews? The aggregate logic itself is proven fine — this is only a missing call after seeding.
-- The Feature 16 rating-scale inconsistency is still open (1–5 stored, 0–10 displayed). Features 45–48 all sidestepped it.
+- **Test data still not cleared — asked six times now.** "Temp User 1" holds **18 bookings** and `agent.checkpoints` ~48 threads. `ListMyBookings` reads them verbatim into any Feature 51 eval, so this now blocks meaningful evals rather than merely being untidy. A `test room test` hotel is also in search results.
+- **Feature 51 should decide whether evals run with tracing on.** Tracing is a switch, not a habit — an eval run that wants traces has to enable it.
+- **Two reverted fixes worth reconsidering**, both model-independent: the just-in-time notice when `MAX_TOOL_LOOPS` unbinds tools (unbinding is what makes a model type tool calls out as raw text), and the `"null"`-argument guard. Also **`chat_widget_routes.py` still has no empty-turn guard** — the chatbot route has one.
+- **This model handles 12 tools, not 14.** Anything added to the chatbot must be re-tested against favourites first.
+- **`useAssistantStream` is 334 lines** with 13 state slots; the `useAssistantSessions` split was discussed and not done. Three noted defects: a `return` inside `finally`, `runTurn`'s `finally` doing four unrelated jobs, three overlapping booleans.
+- `main.py:28` has a pre-existing Pylance deprecation — `asynccontextmanager` wants `AsyncGenerator`, not `AsyncIterator`. Harmless, untouched.
+- Minor `ui-registry.md` inconsistencies unfixed: `ChatComposer` is `p-3` in the widget, `p-4` on the page; the retry affordance uses `border-error/40` where other error surfaces use flat tokens.
+- Should `seed.ts` call `recalculateHotelRatingStats` after inserting reviews? Aggregate logic itself is fine — only the post-seed call is missing.
+- Feature 16's rating-scale inconsistency is still open (1–5 stored, 0–10 displayed). Features 45–50 all sidestepped it.
 - Standing: `trust proxy` must be settled at deployment or the IP-keyed `aiRateLimit` is disabled in production (Phase 16).
