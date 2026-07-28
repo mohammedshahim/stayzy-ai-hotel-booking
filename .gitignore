@@ -17,3 +17,5 @@ pnpm-debug.log*
 *.tsbuildinfo
 .vscode/*
 !.vscode/extensions.json
+
+scraper/
