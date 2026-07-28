@@ -9,13 +9,13 @@ export function HotelCardSkeleton({ variant }: Props) {
     <div
       className={cn(
         "flex overflow-hidden rounded-2xl border border-border-default bg-elevated shadow-card",
-        variant === "grid" ? "flex-col" : "flex-row",
+        variant === "grid" ? "flex-col" : "flex-col sm:flex-row",
       )}
     >
       <div
         className={cn(
           "shrink-0 animate-pulse bg-subtle",
-          variant === "grid" ? "aspect-[4/3] w-full" : "aspect-[4/3] w-56 sm:w-64",
+          variant === "grid" ? "aspect-[4/3] w-full" : "aspect-[4/3] w-full sm:aspect-auto sm:w-56 md:w-64",
         )}
       />
       <div className="flex flex-1 flex-col gap-2 p-4">

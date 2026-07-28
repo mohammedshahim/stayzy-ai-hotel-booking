@@ -51,12 +51,14 @@ export function HotelCard({ hotel, variant, isSelected, onLocate, isFavorited, o
     >
       <div
         className={cn(
-          "relative shrink-0",
-          variant === "grid" ? "aspect-[4/3] w-full" : "aspect-[4/3] w-full sm:w-56 md:w-64",
+          "relative shrink-0 overflow-hidden bg-subtle",
+          variant === "grid" ? "aspect-[4/3] w-full" : "aspect-[4/3] w-full sm:aspect-auto sm:w-56 md:w-64",
         )}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element -- S3-hosted photos, no next/image domain configured yet */}
-        <img src={hotel.image ?? ""} alt={hotel.name} className="h-full w-full object-cover" />
+        {hotel.image && (
+          /* eslint-disable-next-line @next/next/no-img-element -- S3-hosted photos, no next/image domain configured yet */
+          <img src={hotel.image} alt={hotel.name} className="absolute inset-0 h-full w-full object-cover" />
+        )}
         <div className="absolute right-3 top-3 flex gap-2">
           <button
             type="button"
