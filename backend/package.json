@@ -10,7 +10,6 @@
     "migrate:down": "tsx src/config/migrate-down.ts",
     "seed": "tsx src/config/seed.ts",
     "seed:admin": "tsx src/config/seed-admin.ts",
-    "seed:images": "tsx src/config/seed-images.ts",
     "seed:ai-summaries": "tsx src/config/seed-ai-summaries.ts"
   },
   "dependencies": {
