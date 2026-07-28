@@ -15,12 +15,12 @@ export function BookingListCard({ booking }: Props) {
       href={`/bookings/${booking.id}`}
       className="flex flex-col overflow-hidden rounded-2xl border border-border-default bg-elevated shadow-card transition-colors hover:border-border-subtle sm:flex-row"
     >
-      <div className="relative aspect-[4/3] w-full shrink-0 sm:aspect-square sm:w-40">
+      <div className="relative aspect-[4/3] w-full shrink-0 overflow-hidden bg-subtle sm:aspect-auto sm:w-40">
         {booking.hotelMainImageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- S3-hosted photos, no next/image domain configured yet
-          <img src={booking.hotelMainImageUrl} alt={booking.hotelName} className="h-full w-full object-cover" />
+          <img src={booking.hotelMainImageUrl} alt={booking.hotelName} className="absolute inset-0 h-full w-full object-cover" />
         ) : (
-          <div className="flex h-full w-full items-center justify-center bg-subtle">
+          <div className="absolute inset-0 flex items-center justify-center">
             <ImageOffIcon className="h-8 w-8 text-text-faint" strokeWidth={1.5} />
           </div>
         )}

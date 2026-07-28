@@ -26,9 +26,9 @@ export function HotelGallery({ images, hotelName }: Props) {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="aspect-[16/9] w-full overflow-hidden rounded-2xl bg-elevated">
+      <div className="relative aspect-[16/9] w-full overflow-hidden rounded-2xl bg-elevated">
         {/* eslint-disable-next-line @next/next/no-img-element -- S3-hosted photos, no next/image domain configured yet */}
-        <img src={activeImage.url} alt={hotelName} className="h-full w-full object-cover" />
+        <img src={activeImage.url} alt={hotelName} className="absolute inset-0 h-full w-full object-cover" />
       </div>
       {images.length > 1 && (
         <div className="flex gap-3 overflow-x-auto">

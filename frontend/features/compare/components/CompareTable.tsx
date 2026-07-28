@@ -33,13 +33,15 @@ export function CompareTable({ hotels }: Props) {
               {hotels.map((hotel) => (
                 <th key={hotel.id} className={CELL_CLASS}>
                   <div className="flex flex-col gap-2">
-                    <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl">
-                      {/* eslint-disable-next-line @next/next/no-img-element -- S3-hosted photos, no next/image domain configured yet */}
-                      <img
-                        src={hotel.mainImageUrl ?? ""}
-                        alt={hotel.name}
-                        className="h-full w-full object-cover"
-                      />
+                    <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl bg-subtle">
+                      {hotel.mainImageUrl && (
+                        /* eslint-disable-next-line @next/next/no-img-element -- S3-hosted photos, no next/image domain configured yet */
+                        <img
+                          src={hotel.mainImageUrl}
+                          alt={hotel.name}
+                          className="absolute inset-0 h-full w-full object-cover"
+                        />
+                      )}
                       <button
                         type="button"
                         onClick={() => remove(hotel.id)}

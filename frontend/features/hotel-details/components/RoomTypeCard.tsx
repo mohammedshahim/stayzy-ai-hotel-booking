@@ -43,12 +43,12 @@ export function RoomTypeCard({ roomType, hotelId, search }: Props) {
         roomType.isSoldOut && "opacity-60",
       )}
     >
-      <div className="relative aspect-[4/3] w-full shrink-0 sm:aspect-square sm:w-48">
+      <div className="relative aspect-[4/3] w-full shrink-0 overflow-hidden bg-subtle sm:aspect-auto sm:w-48">
         {mainImage ? (
           // eslint-disable-next-line @next/next/no-img-element -- S3-hosted photos, no next/image domain configured yet
-          <img src={mainImage.url} alt={roomType.name} className="h-full w-full object-cover" />
+          <img src={mainImage.url} alt={roomType.name} className="absolute inset-0 h-full w-full object-cover" />
         ) : (
-          <div className="flex h-full w-full items-center justify-center bg-subtle">
+          <div className="absolute inset-0 flex items-center justify-center">
             <ImageOffIcon className="h-8 w-8 text-text-faint" strokeWidth={1.5} />
           </div>
         )}

@@ -17,13 +17,15 @@ export function SimilarHotelCard({ hotel }: Props) {
       href={`/hotels/${hotel.id}`}
       className="flex flex-col overflow-hidden rounded-2xl border border-border-default bg-elevated shadow-card transition-colors hover:border-border-subtle"
     >
-      <div className="relative aspect-[4/3] w-full">
-        {/* eslint-disable-next-line @next/next/no-img-element -- S3-hosted photos, no next/image domain configured yet */}
-        <img
-          src={hotel.mainImageUrl ?? ""}
-          alt={hotel.name}
-          className="h-full w-full rounded-t-2xl object-cover"
-        />
+      <div className="relative aspect-[4/3] w-full overflow-hidden bg-subtle">
+        {hotel.mainImageUrl && (
+          /* eslint-disable-next-line @next/next/no-img-element -- S3-hosted photos, no next/image domain configured yet */
+          <img
+            src={hotel.mainImageUrl}
+            alt={hotel.name}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        )}
       </div>
 
       <div className="flex flex-col gap-2 p-4">

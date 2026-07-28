@@ -22,13 +22,15 @@ export function FavoritesCard({ hotel, onRemove }: Props) {
 
   return (
     <div className="flex flex-col overflow-hidden rounded-2xl border border-border-default bg-elevated shadow-card ring-1 ring-inset ring-accent-border transition-colors">
-      <div className="relative aspect-[4/3] w-full">
-        {/* eslint-disable-next-line @next/next/no-img-element -- S3-hosted photos, no next/image domain configured yet */}
-        <img
-          src={hotel.mainImageUrl ?? ""}
-          alt={hotel.name}
-          className="h-full w-full rounded-t-2xl object-cover"
-        />
+      <div className="relative aspect-[4/3] w-full overflow-hidden bg-subtle">
+        {hotel.mainImageUrl && (
+          /* eslint-disable-next-line @next/next/no-img-element -- S3-hosted photos, no next/image domain configured yet */
+          <img
+            src={hotel.mainImageUrl}
+            alt={hotel.name}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        )}
         <div className="absolute right-3 top-3 flex gap-2">
           <button
             type="button"
