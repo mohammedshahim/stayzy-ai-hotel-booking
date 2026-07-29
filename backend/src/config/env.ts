@@ -10,6 +10,7 @@ const envSchema = z.object({
 
   BETTER_AUTH_SECRET: z.string().optional(),
   BETTER_AUTH_ADMIN_SECRET: z.string().optional(),
+  COOKIE_DOMAIN: z.string().optional(),
 
   ADMIN_SEED_EMAIL: z.string().email().optional(),
   ADMIN_SEED_PASSWORD: z.string().min(8).optional(),

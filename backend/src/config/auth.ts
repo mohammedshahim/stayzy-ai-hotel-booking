@@ -14,6 +14,11 @@ export const auth = betterAuth({
   secret: env.BETTER_AUTH_SECRET,
   baseURL: `${env.APP_URL}/api/auth`,
   trustedOrigins: [env.APP_URL],
+  advanced: {
+    crossSubDomainCookies: env.COOKIE_DOMAIN
+      ? { enabled: true, domain: env.COOKIE_DOMAIN }
+      : { enabled: false },
+  },
   emailAndPassword: {
     enabled: true,
     // Verification is enforced at booking creation, not as a login gate (architecture.md).
