@@ -6,8 +6,11 @@ import adminAuthRoutes from "./routes/admin/auth.routes";
 import webhooksRoutes from "./routes/webhooks.routes";
 import { cors } from "./middlewares/cors";
 import { errorHandler } from "./middlewares/errorHandler";
+import { env } from "./config/env";
 
 export const app = express();
+
+app.set("trust proxy", env.TRUST_PROXY);
 
 app.use(cors);
 app.use(cookieParser());
