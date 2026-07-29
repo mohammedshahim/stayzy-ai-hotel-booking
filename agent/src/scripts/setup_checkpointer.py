@@ -13,8 +13,9 @@ import logging
 
 import psycopg
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from psycopg.rows import dict_row
 
-from src.config.checkpointer import conn_string
+from src.config.checkpointer import pin_search_path
 from src.config.settings import settings
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -44,8 +45,14 @@ async def setup() -> None:
     logger.info("[scripts/setup_checkpointer] schema %r ready", schema)
 
     # autocommit, because setup() issues CREATE INDEX CONCURRENTLY.
-    async with AsyncPostgresSaver.from_conn_string(conn_string()) as saver:
-        await saver.setup()
+    async with await psycopg.AsyncConnection.connect(
+        settings.agent_database_url,
+        autocommit=True,
+        prepare_threshold=0,
+        row_factory=dict_row,  # type: ignore[arg-type]
+    ) as conn:
+        await pin_search_path(conn)
+        await AsyncPostgresSaver(conn=conn).setup()  # type: ignore[arg-type]
 
     async with await psycopg.AsyncConnection.connect(
         settings.agent_database_url, autocommit=True

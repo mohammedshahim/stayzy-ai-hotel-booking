@@ -6,6 +6,7 @@ Its tables live in their own Postgres schema, and its schema is created by
 """
 
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from psycopg import AsyncConnection, sql
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 
@@ -17,16 +18,10 @@ checkpointer: AsyncPostgresSaver | None = None
 _pool: AsyncConnectionPool | None = None
 
 
-def conn_string() -> str:
-    """Agent database URL with `search_path` pinned to the checkpointer schema.
-
-    A libpq `options` parameter rather than a session `SET`, so it survives
-    pool reconnects.
-    """
-    separator = "&" if "?" in settings.agent_database_url else "?"
-    return (
-        f"{settings.agent_database_url}{separator}"
-        f"options=-csearch_path%3D{settings.checkpointer_schema}"
+async def pin_search_path(conn: AsyncConnection) -> None:
+    """Pin `search_path` to the checkpointer schema, per connection."""
+    await conn.execute(
+        sql.SQL("SET search_path TO {}").format(sql.Identifier(settings.checkpointer_schema))
     )
 
 
@@ -35,10 +30,11 @@ async def open_pool() -> None:
     global checkpointer, _pool
 
     _pool = AsyncConnectionPool(
-        conninfo=conn_string(),
+        conninfo=settings.agent_database_url,
         min_size=1,
         max_size=10,
         kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row},
+        configure=pin_search_path,
         open=False,
     )
     await _pool.open(wait=True)
