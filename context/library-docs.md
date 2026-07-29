@@ -106,7 +106,16 @@ export const authAdmin = betterAuth({
 - Mount the user instance's handler under `/api/auth/*` and the admin instance's handler under `/api/admin/auth/*` — never the same path
 - `requireAuth` middleware checks the user instance's session; `requireAdmin` middleware checks the admin instance's session — never cross-check one against the other
 - A booking-creation route also checks `session.user.emailVerified` — verification is enforced at the booking step, not globally
-- Frontend and backend must share a top-level domain in production (e.g. `stayzy.com` / `api.stayzy.com`) so better-auth's cookie is sent cross-subdomain; CORS on the backend must set `credentials: true` and an explicit `origin`, never `*`, when auth cookies are involved
+- Frontend and backend must share a top-level domain in production (e.g. `stayzy.com` / `api.stayzy.com`); CORS on the backend must set `credentials: true` and an explicit `origin`, never `*`, when auth cookies are involved
+- **A shared top-level domain is necessary but not sufficient — better-auth writes host-only cookies unless told not to.** `createCookieGetter` emits no `Domain` attribute at all unless `advanced.crossSubDomainCookies.enabled` is true, so a cookie set on the frontend host is simply never sent to the API host no matter how closely related the two are. Set it on the **user** instance, driven by `COOKIE_DOMAIN` so dev stays host-only:
+  ```typescript
+  advanced: {
+    crossSubDomainCookies: env.COOKIE_DOMAIN
+      ? { enabled: true, domain: env.COOKIE_DOMAIN }
+      : { enabled: false },
+  },
+  ```
+  The domain must be the shared parent (`.stayzy.com`), not either host. Verify by reading `Set-Cookie`, not by reading the config — and verify in production, since local dev cannot reproduce the failure at all (below).
 - **Local dev has no shared domain** (`localhost:3000` vs `localhost:4000`), so `frontend/next.config.ts` proxies `/api/auth/:path*` to the backend via `rewrites()`. The browser only ever talks to `localhost:3000`, so the session cookie is same-origin with no `SameSite`/CORS gymnastics — this mirrors the production subdomain setup instead of fighting it.
 - **The admin instance (Feature 04) deliberately does not use this proxy trick.** `frontend-admin/` is Vite, not Next.js, and calls the backend directly cross-origin via `lib/apiBaseQuery.ts`'s `credentials: "include"`. `localhost:5173` and `localhost:4000` are same-site (same registrable domain, different port), so no `SameSite` issues arise — `backend/src/middlewares/cors.ts` just needs to echo back whichever of `APP_URL`/`ADMIN_APP_URL` sent the request (never `*`) with `Access-Control-Allow-Credentials: true`. Because there's no proxy, `baseURL`/`trustedOrigins` above point at the backend's own address (`API_URL`) and the admin frontend's real origin (`ADMIN_APP_URL`), not a frontend-facing proxy path like the user instance's `APP_URL`.
 

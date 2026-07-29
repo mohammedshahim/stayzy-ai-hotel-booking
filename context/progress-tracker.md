@@ -27,6 +27,14 @@ After completing any feature:
 **Current feature:** none — 50 is done, so every model call in `agent/` is traceable with real token counts
 **Next up:** 51 Eval pass (Phase 15) — read **`ai-phase-plan.md`**. Feature 49 is retired. Then Phase 16.
 
+**Phase 16 prep landed ahead of 51 (2026-07-29), on the developer's call, because it is host-shaped rather than feature-shaped.** Target topology: `frontend/` and `frontend-admin/` on Vercel, `backend/` and `agent/` on Render, all four behind subdomains of one apex, DNS-only at Cloudflare. Three changes, no feature work:
+
+1. **`COOKIE_DOMAIN` on the user better-auth instance.** The blocker: better-auth writes host-only cookies, so the session set through `frontend/`'s `/api/auth` rewrite would never have reached the API subdomain and every authenticated call would have 401'd. **Dev could not have caught this** — cookie scope ignores the port, so `localhost:3000`'s cookie reaches `localhost:4000` for free. Found by reading `createCookieGetter` in `node_modules`, then verified by booting both instances with the production URLs and printing the resolved `Set-Cookie` attributes with and without the var. The admin instance needed nothing.
+2. **`TRUST_PROXY`** — closes the Feature 38 deferral below. A hop count, not a boolean.
+3. **`frontend-admin/vercel.json`** — history fallback for `react-router-dom` deep links, plus `X-Robots-Tag: noindex`, which is Feature 34's "not indexed" requirement.
+
+Deployment itself is still ahead: Features 31–35 are untouched, and nothing has been pushed to a host. `library-docs.md`'s cross-subdomain rule was corrected in the same pass — it said a shared top-level domain was enough, which is necessary but not sufficient.
+
 **What 50 leaves for 51:** tracing is a switch, not a habit — `LANGSMITH_TRACING` is off unless set, so an eval run that wants traces has to turn it on. Token counts are recorded and **cost is not**: LangSmith has no price entry for an OpenRouter slug, so every run reports a blank cost until one is registered in the console. Both slugs are free, so the true figure is $0 regardless.
 
 **What 48 settled, and what 51 inherits:**
@@ -45,7 +53,7 @@ Also still open: clear the leftover "Temp User 1" test bookings (see the Feature
 
 **The Mapbox token in use has no POI data, and Feature 42 is shaped around that.** Verified against the live API on both the v5 and v6 endpoints: "Eiffel Tower" returns *Eiffel Tower Street, Philippines* at relevance **1.0**, "Times Square" returns a street in Australia, and `types=poi` returns nothing at all. A relevance threshold alone cannot catch this — the bad match scores perfectly. So `geocodePlace` excludes street and address types outright and additionally requires relevance ≥ 0.8. The consequence is deliberate: **a POI landmark resolves to no anchor and the UI says so, rather than silently anchoring on the wrong continent.** Cities, neighbourhoods and districts all resolve correctly ("Paris", "Shibuya", "Manhattan", "Asakusa Tokyo" verified), and hotel names never touch the geocoder. A POI-enabled token would light up the landmark path with no code change.
 
-**The 20s AI timeout is gone.** `AI_REQUEST_TIMEOUT_MS` now defaults to **45s** (`config/env.ts`, `.env.example`), raised during Feature 41 and applied to *every* AI call rather than to extraction alone — the developer's call, and the right one: summaries are cached, so a higher ceiling costs them nothing on a hit and saves a cold generation that would otherwise fail. Justified immediately — a verification extraction measured **17.7s**, roughly two seconds from failing under the old ceiling. 45s sits under the ~60s production proxy cut. **`trust proxy` still has to be settled at deployment or the IP-keyed `aiRateLimit` is effectively disabled in production.**
+**The 20s AI timeout is gone.** `AI_REQUEST_TIMEOUT_MS` now defaults to **45s** (`config/env.ts`, `.env.example`), raised during Feature 41 and applied to *every* AI call rather than to extraction alone — the developer's call, and the right one: summaries are cached, so a higher ceiling costs them nothing on a hit and saves a cold generation that would otherwise fail. Justified immediately — a verification extraction measured **17.7s**, roughly two seconds from failing under the old ceiling. 45s sits under the ~60s production proxy cut. **`trust proxy` was settled in Phase 16 prep** — it now reads a hop count from `TRUST_PROXY`, default 0.
 
 **Phase 11 is complete.** Features 38 and 39 both ship real, cached, metered AI. What the rest of the AI phase inherits and must not rebuild:
 
@@ -460,7 +468,7 @@ Notes: The first feature that spends real money, and the first time `backend/` e
 
 Decision (confirmed with the developer during `/architect`): **the summary route is public**, matching the hotel page it renders on. That forced the limiter to key on **IP**, deliberately the opposite of `internalRateLimit`'s acting-user key — a public route has no user to key on, and unlike internal traffic these are real browsers from many addresses. Recorded as an invariant in `architecture.md`.
 
-Decision: **`trust proxy` is deliberately NOT set, and is a Phase 16 deployment task.** Behind a production load balancer, IP keying collapses every visitor into one bucket and the limit becomes useless. Setting `trust proxy` without knowing the topology is worse than leaving it — it lets anyone forge `X-Forwarded-For` and bypass the limiter outright. Harmless in dev.
+Decision: **`trust proxy` is deliberately NOT set, and is a Phase 16 deployment task.** Behind a production load balancer, IP keying collapses every visitor into one bucket and the limit becomes useless. Setting `trust proxy` without knowing the topology is worse than leaving it — it lets anyone forge `X-Forwarded-For` and bypass the limiter outright. Harmless in dev. *(Resolved in Phase 16 prep: `TRUST_PROXY`, a hop count defaulting to 0. The deferral was right — the correct value turned out to depend on whether a CDN proxies the host, which was unknowable in Feature 38.)*
 
 Decision: **the cache, not the limiter, is the real spend bound.** A hotel generates once per content change regardless of traffic; the limiter exists only to stop someone spraying many distinct hotel ids. Hence a generous 20/min rather than something tight.
 
