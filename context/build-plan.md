@@ -6,6 +6,8 @@ UI and logic built together for every feature. Every feature must be visible and
 
 The AI phase is broken down in its own companion file, `ai-phase-plan.md` (Features 36–51). **It now runs before deployment, not after** — see the sequencing note on Phase 9 below.
 
+Post-launch work has its own companion file too, `iteration-plan.md` (Features 52–55). Everything in this file was planned before anything shipped; that one is the first work planned against a product already live.
+
 ---
 
 ## Phase 1 — Foundation

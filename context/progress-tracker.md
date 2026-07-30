@@ -23,9 +23,9 @@ After completing any feature:
 
 ## Current Status
 
-**Phase:** Complete — all 16 phases. **Stayzy is live in production as of 2026-07-30.**
-**Current feature:** none. Feature 51 closed Phase 15; Phase 16 put all four apps on real hosts.
-**Next up:** nothing planned. What follows is operation and iteration, not a numbered feature.
+**Phase:** 17 — Post-Launch Iteration. **Stayzy has been live in production since 2026-07-30.**
+**Current feature:** none started. Phases 1–16 are closed; Phase 17 is the first work against the live product.
+**Next up:** Feature 52 — email send throttle. Planned in `iteration-plan.md`, one feature per session, in order.
 
 | App | URL | Host |
 | --- | --- | --- |
@@ -185,7 +185,14 @@ Moved from Phase 9 on 2026-07-19. Scope widened: `agent/` is a fourth deployable
 - [x] 35 Production smoke test (extended to the four AI features)
 - [x] Agent service deployment
 
-**All 16 phases complete. Stayzy is live — see Current Status for the URLs and the operating constraints.**
+**All 16 build phases complete. Stayzy is live — see Current Status for the URLs and the operating constraints.**
+
+### Phase 17 — Post-Launch Iteration
+
+- [ ] 52 Email send throttle
+- [ ] 53 Frontend palette re-skin
+- [ ] 54 Homepage banner
+- [ ] 55 Profile page
 
 ---
 
