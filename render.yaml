@@ -14,25 +14,29 @@ services:
         - backend/**
     envVars:
       - key: NODE_VERSION
-        value: "22"
+        sync: false
       - key: TRUST_PROXY
-        value: "1"
+        sync: false
       - key: APP_URL
-        value: https://stayzy.shahim.dev
+        sync: false
       - key: ADMIN_APP_URL
-        value: https://stayzy-admin.shahim.dev
+        sync: false
       - key: API_URL
-        value: https://stayzy-api.shahim.dev
+        sync: false
       - key: COOKIE_DOMAIN
-        value: ".shahim.dev"
+        sync: false
       - key: AGENT_BASE_URL
-        value: https://stayzy-agent.shahim.dev
+        sync: false
       - key: BOOKING_EXPIRY_MINUTES
-        value: "20"
+        sync: false
       - key: GEOCODING_PROVIDER
-        value: mapbox
+        sync: false
       - key: EMAIL_FROM
-        value: "Stayzy <noreply@shahim.dev>"
+        sync: false
+      - key: INTERNAL_RATE_LIMIT_MAX
+        sync: false
+      - key: INTERNAL_RATE_LIMIT_WINDOW_MS
+        sync: false
       - key: INTERNAL_SERVICE_SECRET
         generateValue: true
       - key: DATABASE_URL
@@ -40,6 +44,10 @@ services:
       - key: BETTER_AUTH_SECRET
         sync: false
       - key: BETTER_AUTH_ADMIN_SECRET
+        sync: false
+      - key: ADMIN_SEED_EMAIL
+        sync: false
+      - key: ADMIN_SEED_PASSWORD
         sync: false
       - key: CRON_SECRET
         sync: false
@@ -79,19 +87,25 @@ services:
         - agent/**
     envVars:
       - key: PYTHON_VERSION
-        value: "3.12.7"
+        sync: false
       - key: CHECKPOINTER_SCHEMA
-        value: agent
+        sync: false
       - key: BACKEND_INTERNAL_URL
-        value: https://stayzy-api.shahim.dev
+        sync: false
       - key: OPENROUTER_BASE_URL
-        value: https://openrouter.ai/api/v1
+        sync: false
       - key: OPENROUTER_MODEL_FAST
-        value: nvidia/nemotron-3-ultra-550b-a55b:free
+        sync: false
       - key: OPENROUTER_MODEL_SMART
-        value: nvidia/nemotron-3-ultra-550b-a55b:free
+        sync: false
       - key: LANGSMITH_TRACING
-        value: "false"
+        sync: false
+      - key: LANGSMITH_ENDPOINT
+        sync: false
+      - key: LANGSMITH_PROJECT
+        sync: false
+      - key: LANGSMITH_API_KEY
+        sync: false
       - key: INTERNAL_SERVICE_SECRET
         fromService:
           type: web
