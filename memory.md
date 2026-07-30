@@ -1,51 +1,54 @@
-# Memory — Feature 50 LangSmith tracing, complete. Phase 15 half done.
+# Memory — Feature 52 Email send throttle, complete. Phase 17 open.
 
-Last updated: 2026-07-27
+Last updated: 2026-07-30
 
 ## What was built
 
-**Feature 50 Tracing + cost controls — three lines of code.** Two commits:
+**Feature 52 Email send throttle** — one transactional auth email per `(recipient, purpose)` per 20 minutes. Three commits, all on branch **`feature/52-email-send-throttle`**, none on `main`, nothing pushed:
 
-- `a2ecda6` `feat(agent)` — **pushed** to `origin/main`.
-- `f858cba` `docs(context)` — committed, **not pushed** (`main` is ahead 1).
+- `c97a7e7` `feat(backend)` — the feature and its migration
+- `9d23a98` `chore(deploy)` — `EMAIL_THROTTLE_WINDOW_MINUTES` declared in `render.yaml`
+- `a00a7bf` `docs(context)` — tracker, architecture, code standards
 
-The three changes: `load_dotenv()` in `agent/src/main.py`, `stream_usage=True` in `agent/src/config/llm.py`, and the four `LANGSMITH_*` vars documented in `agent/.env.example`. No new dependency — `langsmith` is already a `langchain-core` dep and `python-dotenv` a `pydantic-settings` one. No new module, no table, no route, no UI.
-
-The developer's own `agent/.env` has real LangSmith values set and tracing **on**. The key is valid and the file is gitignored — never commit it. Their `LANGSMITH_PROJECT` is `"satyzy"`, which is almost certainly a typo for `stayzy`; it was flagged and deliberately left alone. Traces from this session are in a project by that name.
+Files: new `backend/src/models/email.schema.ts` (`email_send_throttles`, composite unique on `(recipient, purpose)`, plus the `EmailPurpose` union), new `backend/src/queries/email-throttle.queries.ts`, migration `backend/drizzle/0005_add_email_send_throttles.sql` with its hand-written `.down.sql`, a private `sendThrottledEmail` in `backend/src/services/email.service.ts` that both exported senders now route through, and `EMAIL_THROTTLE_WINDOW_MINUTES` added to `env.ts`, `.env.example` and `render.yaml`. `config/auth.ts` was not touched.
 
 ## Decisions made
 
-- **The LangSmith dashboard is the entire surface.** No usage table in `backend/`, no admin page. A Postgres usage table is what a future per-user budget cap would need — it was explicitly considered and not started, because it is a real feature with a migration and a second source of truth for numbers LangSmith already holds.
-- **Full transcripts are traced; the switch is the privacy control, not redaction.** `LANGSMITH_HIDE_INPUTS`/`HIDE_OUTPUTS` exist and are deliberately unused — hiding the prompt hides the only evidence for the Feature 48 bug class (a tool docstring the model misread). Therefore **`LANGSMITH_TRACING` stays unset in production** until that call is made deliberately.
-- **Never add `LANGSMITH_*` to `Settings`.** The library reads `os.environ` directly; a typed copy on the settings object would be read by nothing and would drift. This is the one place `.env` is deliberately not routed through `Settings`.
-- **Cost is expected to render blank.** LangSmith cannot price an OpenRouter slug. Registering pricing is a console step, not code. Both slugs are free, so the honest figure is $0 regardless.
+- **The throttle wraps a new opt-in path, not `sendEmail` itself.** Gating the shared helper would silently give a future booking-confirmation email a 20-minute cooldown, so a user who books twice gets one email. A purpose opts in by name; the two purposes carry independent clocks.
+- **Read → send → record, not an atomic claim.** Chosen by the developer over an `INSERT ... ON CONFLICT ... WHERE ... RETURNING` claim, against the recommendation, with the trade understood. Cost: a race the width of the Resend call where two interleaved requests both send — bounded by the unique constraint to a duplicate email, never a broken row. Upside: a send that throws records nothing, so a provider outage never costs a user their window.
+- **The senders return `Promise<boolean>` rather than `void`**, also against the recommendation. No caller reads it. This moved the disclosure risk from *impossible* to *a rule someone must remember*, so the rule is now an invariant in `architecture.md`: nothing may branch on that boolean in a way the client can observe. better-auth's password-reset response is deliberately identical for a known and an unknown address.
+- **No FK to `user`; the key is the lowercased email.** Same reasoning already recorded for `compare_ai_summaries` — the key is an address, not an entity elsewhere.
+- **Minutes, not milliseconds**, following `BOOKING_EXPIRY_MINUTES`; the `_MS` suffix in `env.ts` belongs to the rate limiters.
 
 ## Problems solved
 
-- **`LANGSMITH_*` in `agent/.env` alone does nothing, silently.** `pydantic-settings` parses the file into `Settings` and never touches `os.environ`, which is the only place the library looks. Proven directly: `CHECKPOINTER_SCHEMA` loads into `settings` while `'CHECKPOINTER_SCHEMA' in os.environ` stays `False`, and `tracing_is_enabled()` returns `False` with every variable set. `load_dotenv()` is the bridge — **it looks redundant and deleting it turns tracing off with no error.**
-- **`stream_usage` is disabled whenever `base_url` is custom** (`langchain_openai/chat_models/base.py:1217-1236`). OpenRouter is a custom `base_url` and both chat graphs stream, so tracing without the explicit `stream_usage=True` reports every chat turn at **zero tokens** — cost observability that observes nothing on the two expensive surfaces. OpenRouter does honour `stream_options`: verified live at 22 in / 15 out / 37 total with `reasoning: 12` broken out.
-- **Attribution needed no code, and six planned call sites were deleted before being written.** `langchain_core/runnables/config.py:155-168` promotes every primitive `configurable` key into run metadata, excluding only `api_key`. Both graph routes already pass `thread_id` and `user_id`.
+- **`backend/.env`'s active `DATABASE_URL` is the production Supabase pooler — the localhost line is commented out.** So `pnpm migrate` from this checkout hits **production** by default. This was caught before running anything. All verification was done by exporting the commented-out local URL inline (`export DATABASE_URL=$(grep '^# DATABASE_URL=' .env | sed 's/^# DATABASE_URL=//')`), which works because `dotenv` does not override an already-set `process.env` key. `.env` itself was never edited.
+- **The reset endpoint is `/api/auth/request-password-reset`, not `/forget-password`** — the latter 404s. `frontend/features/auth/components/ForgotPasswordForm.tsx` calls `authClient.requestPasswordReset`.
+- **better-auth skips the `sendVerificationEmail` callback entirely when the account is already verified**, returning `{status:true}` with no send. Testing the verification purpose needs an unverified account — done by temporarily flipping `emailVerified` on the developer's own dev account and restoring it afterwards.
+- The `@example.com` and `@stayzy-seed.example` users in the local dev DB are useless for real send tests; Resend rejects them.
 
 ## Current state
 
-- **Phase 15 half done** — 50 complete, 51 (evals) is next. Checks green: `ruff check`, `ruff format --check`, both graphs compile.
-- **Tracing works end to end**: a live streamed OpenRouter call landed in LangSmith with `tokens: 37` matching exactly and `cost: None`.
-- **Not verified against the running app.** No turn was driven over HTTP through `backend/ → agent/`, so the run tree across a full tool loop and conversation grouping by `thread_id` are unproven. This gap is recorded in the Feature 50 tracker entry too.
-- Model is `nvidia/nemotron-3-ultra-550b-a55b:free` in both slots.
+`pnpm build` clean, working tree clean, on branch `feature/52-email-send-throttle` (3 commits ahead of `main`, unpushed).
+
+Verified against the real running app on the **local** database: two reset requests inside the window produced one send and one `console.warn` with both HTTP bodies byte-identical under `cmp`; an uppercase address hit the same row; the verification purpose sent while the reset window was open, then suppressed on its own retry; backdating `last_sent_at` past the window let the next send through and refreshed the row in place, proving the throttle releases rather than locking out. Migration rolled back (`to_regclass` null) and forward once. Test rows deleted and the flipped `emailVerified` flag restored.
+
+**Production has neither the code nor migration `0005`.** `render.yaml` has no migrate step, so the migration is applied by hand.
+
+Context updated in three files: `progress-tracker.md` (status, completed entry, session note, open item, one standing rule), `architecture.md` (the `email_send_throttles` schema section and one invariant on silent suppression), `code-standards.md` (the env var row). `iteration-plan.md` and `build-plan.md` deliberately untouched — only 1 of 16 AI features was ever marked shipped in its plan file, so the tracker is the completion record.
 
 ## Next session starts with
 
-**Push `f858cba`** (`git push origin main`), then either close the verification gap — bring up `backend/` + `agent/`, drive one real chatbot turn, confirm the run tree and thread grouping — or start **Feature 51, the eval pass** (`ai-phase-plan.md` holds the fixed prompt set). Then Phase 16 (deployment, Features 31–35).
+**Feature 53 — frontend palette re-skin.** Read `iteration-plan.md`'s section for it first, including the three derivation traps it names: the three `--shadow-*` rgba values live in `@theme inline` and not `:root` (so they sit outside the block being edited and will read as a warm smudge under teal), `#C6A664` fails WCAG AA as text on white and needs its own darker text tier, and `#C6A664` collides with `--rating-star` `#F2A93B` — which `ui-tokens.md` argues at length must stay separate from the brand accent, so that section needs correcting either way. `frontend-admin/src/index.css` stays untouched, and that deviation from the shared-token rule must be recorded in `ui-tokens.md`.
+
+Two carry-overs to handle before or alongside it:
+
+1. **Apply migration `0005` to production** before or with the deploy of Feature 52's code — otherwise every auth email throws against a missing table. Remember the `DATABASE_URL` situation above.
+2. **Decide what happens to `feature/52-email-send-throttle`.** The repo's history is linear on `main`; the branch exists because the harness branches off a default branch by default. It is one merge away.
 
 ## Open questions
 
-- **Test data still not cleared — asked six times now.** "Temp User 1" holds **18 bookings** and `agent.checkpoints` ~48 threads. `ListMyBookings` reads them verbatim into any Feature 51 eval, so this now blocks meaningful evals rather than merely being untidy. A `test room test` hotel is also in search results.
-- **Feature 51 should decide whether evals run with tracing on.** Tracing is a switch, not a habit — an eval run that wants traces has to enable it.
-- **Two reverted fixes worth reconsidering**, both model-independent: the just-in-time notice when `MAX_TOOL_LOOPS` unbinds tools (unbinding is what makes a model type tool calls out as raw text), and the `"null"`-argument guard. Also **`chat_widget_routes.py` still has no empty-turn guard** — the chatbot route has one.
-- **This model handles 12 tools, not 14.** Anything added to the chatbot must be re-tested against favourites first.
-- **`useAssistantStream` is 334 lines** with 13 state slots; the `useAssistantSessions` split was discussed and not done. Three noted defects: a `return` inside `finally`, `runTurn`'s `finally` doing four unrelated jobs, three overlapping booleans.
-- `main.py:28` has a pre-existing Pylance deprecation — `asynccontextmanager` wants `AsyncGenerator`, not `AsyncIterator`. Harmless, untouched.
-- Minor `ui-registry.md` inconsistencies unfixed: `ChatComposer` is `p-3` in the widget, `p-4` on the page; the retry affordance uses `border-error/40` where other error surfaces use flat tokens.
-- Should `seed.ts` call `recalculateHotelRatingStats` after inserting reviews? Aggregate logic itself is fine — only the post-seed call is missing.
-- Feature 16's rating-scale inconsistency is still open (1–5 stored, 0–10 displayed). Features 45–50 all sidestepped it.
-- Standing: `trust proxy` must be settled at deployment or the IP-keyed `aiRateLimit` is disabled in production (Phase 16).
+- Is 20 minutes a fixed product rule or a starting value to tune? Behind an env var either way — treated as tunable.
+- Whether the accepted send race ever matters in practice. It is bounded to a duplicate email and is recorded in the tracker; if duplicates show up in the Resend log, the atomic-claim shape is the fix.
+- Minor, noticed but not acted on: `backend/package.json` pins `better-auth: ^1.2.7` while `frontend/package.json` pins `^1.6.23`. Not investigated, not related to this feature.
+- Pre-existing gap left alone as out of scope: `RESEND_API_KEY`, `EMAIL_FROM`, `CRON_SECRET` and `BOOKING_EXPIRY_MINUTES` are all missing from `code-standards.md`'s env var table.
