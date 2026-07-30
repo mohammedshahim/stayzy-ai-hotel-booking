@@ -33,6 +33,8 @@ services:
         sync: false
       - key: EMAIL_FROM
         sync: false
+      - key: EMAIL_THROTTLE_WINDOW_MINUTES
+        sync: false
       - key: INTERNAL_RATE_LIMIT_MAX
         sync: false
       - key: INTERNAL_RATE_LIMIT_WINDOW_MS
