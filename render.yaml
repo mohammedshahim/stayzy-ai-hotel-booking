@@ -1,0 +1,103 @@
+services:
+  - type: web
+    name: stayzy-api
+    runtime: node
+    region: singapore
+    plan: free
+    rootDir: backend
+    buildCommand: pnpm install --prod=false && pnpm build
+    startCommand: pnpm start
+    healthCheckPath: /health
+    autoDeploy: true
+    buildFilter:
+      paths:
+        - backend/**
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: TRUST_PROXY
+        value: "1"
+      - key: APP_URL
+        value: https://stayzy.shahim.dev
+      - key: ADMIN_APP_URL
+        value: https://stayzy-admin.shahim.dev
+      - key: API_URL
+        value: https://stayzy-api.shahim.dev
+      - key: COOKIE_DOMAIN
+        value: ".shahim.dev"
+      - key: AGENT_BASE_URL
+        value: https://stayzy-agent.shahim.dev
+      - key: BOOKING_EXPIRY_MINUTES
+        value: "20"
+      - key: GEOCODING_PROVIDER
+        value: mapbox
+      - key: EMAIL_FROM
+        value: "Stayzy <noreply@shahim.dev>"
+      - key: INTERNAL_SERVICE_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: BETTER_AUTH_SECRET
+        sync: false
+      - key: BETTER_AUTH_ADMIN_SECRET
+        sync: false
+      - key: CRON_SECRET
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_REGION
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: MAPBOX_ACCESS_TOKEN
+        sync: false
+
+  - type: web
+    name: stayzy-agent
+    runtime: python
+    region: singapore
+    plan: free
+    rootDir: agent
+    buildCommand: pip install uv && uv sync --frozen --no-dev
+    startCommand: uv run uvicorn src.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    buildFilter:
+      paths:
+        - agent/**
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: CHECKPOINTER_SCHEMA
+        value: agent
+      - key: BACKEND_INTERNAL_URL
+        value: https://stayzy-api.shahim.dev
+      - key: OPENROUTER_BASE_URL
+        value: https://openrouter.ai/api/v1
+      - key: OPENROUTER_MODEL_FAST
+        value: nvidia/nemotron-3-ultra-550b-a55b:free
+      - key: OPENROUTER_MODEL_SMART
+        value: nvidia/nemotron-3-ultra-550b-a55b:free
+      - key: LANGSMITH_TRACING
+        value: "false"
+      - key: INTERNAL_SERVICE_SECRET
+        fromService:
+          type: web
+          name: stayzy-api
+          envVarKey: INTERNAL_SERVICE_SECRET
+      - key: AGENT_DATABASE_URL
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
