@@ -21,6 +21,7 @@ const envSchema = z.object({
 
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().default("onboarding@resend.dev"),
+  EMAIL_THROTTLE_WINDOW_MINUTES: z.coerce.number().int().positive().default(20),
 
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
