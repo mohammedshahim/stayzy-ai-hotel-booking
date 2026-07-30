@@ -402,6 +402,7 @@ Never hardcode any key, URL, or secret anywhere in the codebase. Each app has it
 | `STRIPE_SECRET_KEY`                   | backend           | `config/stripe.ts`                |
 | `STRIPE_WEBHOOK_SECRET`               | backend           | `webhooks/stripe.webhook.ts`      |
 | `S3_BUCKET` / `S3_REGION` / `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | backend | `config/s3.ts`   |
+| `EMAIL_THROTTLE_WINDOW_MINUTES`       | backend           | `services/email.service.ts` (Feature 52) — defaults to 20 minutes per `(recipient, purpose)`; minutes, following `BOOKING_EXPIRY_MINUTES`, since the `_MS` suffix belongs to the rate limiters |
 | `NEXT_PUBLIC_API_BASE_URL`            | frontend          | `lib/api-client.ts`               |
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`  | frontend          | checkout page                     |
 | `NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN`     | frontend          | `features/search/components/MapView.tsx`, `features/hotel-details/components/LocationMapPanel.tsx` |

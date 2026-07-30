@@ -24,8 +24,8 @@ After completing any feature:
 ## Current Status
 
 **Phase:** 17 — Post-Launch Iteration. **Stayzy has been live in production since 2026-07-30.**
-**Current feature:** none started. Phases 1–16 are closed; Phase 17 is the first work against the live product.
-**Next up:** Feature 52 — email send throttle. Planned in `iteration-plan.md`, one feature per session, in order.
+**Current feature:** none in progress. Feature 52 is complete in the repo but **not yet migrated or deployed to production** — see its Completed Features entry.
+**Next up:** Feature 53 — frontend palette re-skin. Planned in `iteration-plan.md`, one feature per session, in order.
 
 | App | URL | Host |
 | --- | --- | --- |
@@ -66,17 +66,19 @@ Two gaps the keep-alive does **not** close: `/health` touches no database, so a 
 - **Do not assume a model stops on its own** — both graphs cap their tool loop because a free model produced 51 assistant turns from one message.
 - **Empty content is failure, not a short answer.** These models reason before answering and the reasoning is buffered separately; too low a token ceiling truncates mid-thought and `content` comes back empty. Never cache an empty string.
 - **New AI surfaces route through what already exists:** `services/ai.service.ts` / `controllers/ai.controller.ts` / `routes/ai.routes.ts` mounted at `/ai` (IP-keyed `aiRateLimit` covers the whole router automatically), and `agent/src/api/deps.py` for `require_internal_service`.
+- **A suppressed email must stay invisible to the client.** `sendVerificationEmail`/`sendPasswordResetEmail` return a boolean, and nothing may branch on it in a way a caller can observe — better-auth's reset response is deliberately identical for a known and an unknown address, and an "already sent" message leaks which one it is.
 - **Cache only what is enumerable.** Hotels are, so `pnpm seed:ai-summaries` warms them; hotel *combinations* are not, so the compare summary sits behind a button. Free-text prompts get no cache table at all. And excluding a fast-moving field is often what makes a cache work — Feature 39 dropped price to get exact content-hash invalidation.
 
 ### Open items
 
+- **Feature 52's migration `0005` has not been applied to production.** It must land before or with the deploy of that code, or every auth email throws against a missing table. Note that `backend/.env`'s active `DATABASE_URL` is the production pooler — the localhost line is commented out — so `pnpm migrate` from this checkout targets production by default, and local work needs the URL overridden inline.
 - **The Feature 16 rating-consistency question.** Mostly moot since Feature 24 keeps `hotels.average_rating`/`review_count` in sync on every review write, but header vs. section numbers can still diverge for any pre-existing hotel whose stored rating was never backed by a real review row. Three remediation options are in that Completed Features entry.
 - **Confirm whether production Stripe is on test or live keys.** `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are unsynced secrets, so the blueprint does not say. Everything through Feature 22 was verified against **test-mode** keys including a real Payment Element checkout and a webhook-verified payment. Whichever mode is live, the webhook endpoint must point at `https://stayzy-api.shahim.dev/webhooks/stripe` and its signing secret must match that endpoint — a booking only ever confirms via the webhook, so a mismatch leaves every payment stuck in `pending_payment` with no visible error.
 - **`LANGSMITH_PROJECT` is `"satyzy"`** in the developer's local `agent/.env` — almost certainly a typo for `stayzy`. Flagged and deliberately left alone; traces from Features 50–51 are under that name.
 - **The Mapbox token has no POI data.** `geocodePlace` is shaped around it — street and address types excluded outright, relevance ≥ 0.8 required — so a POI landmark resolves to no anchor and the UI says so rather than anchoring on the wrong continent. Cities, neighbourhoods and districts resolve correctly; hotel names never touch the geocoder. A POI-enabled token would light up the landmark path with no code change.
 - **Dev-database leftovers (dev only).** The "Temp User 1" account and its 18 bookings are still in the local dev database, along with ~30 `agent.checkpoints` threads. **Production seeded clean and is unaffected** — this no longer blocks anything, but it will still skew anything run locally against real bookings.
 
-**Latest completed addition:** Phase 16 Production Deployment — 2026-07-30. Build complete.
+**Latest completed addition:** Feature 52 Email send throttle — 2026-07-30. Code and migration in the repo, production migration still to run.
 
 ---
 
@@ -197,6 +199,22 @@ Moved from Phase 9 on 2026-07-19. Scope widened: `agent/` is a fourth deployable
 ---
 
 ## Completed Features
+
+### ✅ 52 Email send throttle — completed 2026-07-30
+
+Notes: one transactional auth email per `(recipient, purpose)` per 20 minutes, backed by a new `email_send_throttles` table (`models/email.schema.ts`, migration `0005` with its hand-written `.down.sql`). `queries/email-throttle.queries.ts` holds the two statements; `services/email.service.ts` gains a private `sendThrottledEmail` that both exported senders route through. `EMAIL_THROTTLE_WINDOW_MINUTES` defaults to 20 — minutes, matching `BOOKING_EXPIRY_MINUTES`, since the `_MS` suffix in `env.ts` belongs to the rate limiters. `config/auth.ts` was not touched: both better-auth callbacks already `await` the senders and discard the result.
+
+Decision: **the throttle wraps a new opt-in path, not `sendEmail` itself.** Gating the shared helper would mean a booking-confirmation email added later silently inherits a 20-minute cooldown, and a user who books twice gets one email. A purpose opts in by name; `sendEmail` stays ungated. The two purposes are `email_verification` and `password_reset`, and they carry independent clocks — verified live, a verification email sends normally while a password-reset window is still open.
+
+Decision: **read → send → record, not an atomic claim.** Chosen by the developer over an `INSERT ... ON CONFLICT ... WHERE last_sent_at < now() - window RETURNING` claim, with the trade understood. The cost is a race the width of the Resend API call: two requests that interleave inside it both pass the check and both send. The `onConflictDoUpdate` on the unique constraint still keeps the write safe, so the worst case is a duplicate email, never a broken row. The upside is real and is why it is defensible — **a send that throws records nothing**, so a Resend outage can never cost a user their 20-minute window, which the claim-first shape needed extra rollback code to achieve.
+
+Decision: **the senders return `Promise<boolean>` rather than staying `void`.** No caller reads it today. This moves the disclosure risk from *impossible* to *a rule someone has to remember*, so the rule is written down: **nothing may ever branch on that boolean in a way the client can observe.** Suppression is silent because better-auth's password-reset response is deliberately identical for a known and an unknown address, and a visible "already sent" would leak which one it is. Feature 55's resend button is the first place this bites — its copy says "check your inbox", never "sent".
+
+Decision: **no FK to `user`, and the key is the lowercased email.** The recipient is an address, not a user id, which keeps the table usable for any future non-user recipient and independent of account deletion — the same reasoning already recorded for `compareAiSummaries`. better-auth passes `user.email` straight from the database in both callbacks so it arrives normalized, but the key does not depend on that staying true; `MuhdShahim786@Gmail.com` was verified to hit the same row as the lowercase form.
+
+Verified against the running app on the **local** database, not production: two password-reset requests inside the window produced one send and one `console.warn`, with both HTTP bodies byte-identical under `cmp`; the uppercase variant of the same address was suppressed against the same row; a verification email sent normally while the reset window was open, then suppressed on its own second attempt; backdating `last_sent_at` past the window let the next send through and refreshed the row in place, confirming the throttle releases rather than locking out. `pnpm build` clean. Migration rolled back (`to_regclass` null) and forward (table restored) once.
+
+**The production migration has not been run.** `render.yaml` has no migrate step, so `0005` reaches Supabase only when it is applied by hand — and `backend/.env`'s active `DATABASE_URL` is the production pooler, with the localhost line commented out, so any `pnpm migrate` from this checkout hits production unless the URL is overridden inline. Verification here was done with exactly that override. **The migration must land before or with the deploy of this code** — the service now queries a table production does not have, so pushing the code first breaks every auth email until `0005` is applied.
 
 ### ✅ Phase 16 Production Deployment (31–35 + agent) — completed 2026-07-30
 
@@ -1170,6 +1188,11 @@ Built: [what was completed]
 Left off: [exactly where the session ended]
 Next session starts with: [first thing to do next time]
 ```
+
+### Session — 2026-07-30 (2)
+Built: Feature 52 Email send throttle, in full — see the Completed Features entry for the four decisions and what each trades away. New `email_send_throttles` table, migration `0005` with its down file, `queries/email-throttle.queries.ts`, a `sendThrottledEmail` path in `email.service.ts`, and `EMAIL_THROTTLE_WINDOW_MINUTES` declared in `env.ts`, `.env.example` and `render.yaml`.
+Left off: Verified against the real running app on the **local** database — two reset requests inside the window gave one send and one suppression with byte-identical bodies under `cmp`, an uppercase address hit the same row, the verification purpose sent while the reset window was open then suppressed on its own retry, and backdating `last_sent_at` proved the window releases. `pnpm build` clean, migration rolled back and forward once. Context updated in three files beyond this one: `architecture.md` (the new table section and one invariant on silent suppression), `code-standards.md` (the env var row). `iteration-plan.md` and `build-plan.md` deliberately untouched — plan files are not the completion record here, and build-plan's count table is scoped to 01–51. Work is on branch `feature/52-email-send-throttle`, not `main`.
+Next session starts with: Feature 53 Frontend palette re-skin — read `iteration-plan.md`'s section for it, including the three derivation traps (the `@theme inline` shadow rgba, `#C6A664` failing AA as text, and its collision with `--rating-star`). **Before deploying Feature 52, apply migration `0005` to production** — see Open items.
 
 ### Session — 2026-07-19 (2)
 Built: No code. `/architect` pass over the developer's AI-phase plan, then a full context-file update so the plan is durable before implementation starts.
