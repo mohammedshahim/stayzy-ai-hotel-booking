@@ -23,71 +23,60 @@ After completing any feature:
 
 ## Current Status
 
-**Phase:** 15 — Hardening (AI phase) — in progress
-**Current feature:** none — 50 is done, so every model call in `agent/` is traceable with real token counts
-**Next up:** 51 Eval pass (Phase 15) — read **`ai-phase-plan.md`**. Feature 49 is retired. Then Phase 16.
+**Phase:** Complete — all 16 phases. **Stayzy is live in production as of 2026-07-30.**
+**Current feature:** none. Feature 51 closed Phase 15; Phase 16 put all four apps on real hosts.
+**Next up:** nothing planned. What follows is operation and iteration, not a numbered feature.
 
-**Phase 16 prep landed ahead of 51 (2026-07-29), on the developer's call, because it is host-shaped rather than feature-shaped.** Target topology: `frontend/` and `frontend-admin/` on Vercel, `backend/` and `agent/` on Render, all four behind subdomains of one apex, DNS-only at Cloudflare. Three changes, no feature work:
+| App | URL | Host |
+| --- | --- | --- |
+| `frontend/` | `stayzy.shahim.dev` | Vercel |
+| `frontend-admin/` | `stayzy-admin.shahim.dev` | Vercel |
+| `backend/` | `stayzy-api.shahim.dev` | Render — Singapore, free |
+| `agent/` | `stayzy-agent.shahim.dev` | Render — Singapore, free |
 
-1. **`COOKIE_DOMAIN` on the user better-auth instance.** The blocker: better-auth writes host-only cookies, so the session set through `frontend/`'s `/api/auth` rewrite would never have reached the API subdomain and every authenticated call would have 401'd. **Dev could not have caught this** — cookie scope ignores the port, so `localhost:3000`'s cookie reaches `localhost:4000` for free. Found by reading `createCookieGetter` in `node_modules`, then verified by booting both instances with the production URLs and printing the resolved `Set-Cookie` attributes with and without the var. The admin instance needed nothing.
-2. **`TRUST_PROXY`** — closes the Feature 38 deferral below. A hop count, not a boolean.
-3. **`frontend-admin/vercel.json`** — history fallback for `react-router-dom` deep links, plus `X-Robots-Tag: noindex`, which is Feature 34's "not indexed" requirement.
+Both Render services are defined as a Blueprint in the repo root's `render.yaml`, with `buildFilter` paths so a `backend/` push does not rebuild `agent/`. `INTERNAL_SERVICE_SECRET` is generated once on `stayzy-api` and pulled into `stayzy-agent` via `fromService`, so the shared secret exists in no file anywhere.
 
-Deployment itself is still ahead: Features 31–35 are untouched, and nothing has been pushed to a host. `library-docs.md`'s cross-subdomain rule was corrected in the same pass — it said a shared top-level domain was enough, which is necessary but not sufficient.
+**Every env var in `render.yaml` is `sync: false` — the Render dashboard holds every value, and the blueprint holds none.** The file is a list of *names*: what each service requires, not what it is set to. This is deliberate, and the reason is how Render syncs: a key with a literal `value:` is **overwritten from the file on every blueprint sync**, and a sync fires automatically whenever `render.yaml` itself is pushed. Any value tuned in the dashboard would therefore be silently reverted by an unrelated edit to this file. `sync: false` is ignored on sync, so the dashboard wins permanently.
 
-**What 50 leaves for 51:** tracing is a switch, not a habit — `LANGSMITH_TRACING` is off unless set, so an eval run that wants traces has to turn it on. Token counts are recorded and **cost is not**: LangSmith has no price entry for an OpenRouter slug, so every run reports a blank cost until one is registered in the console. Both slugs are free, so the true figure is $0 regardless.
+Two consequences to know before touching it:
 
-**What 48 settled, and what 51 inherits:**
+- **Never reason about a production value from `render.yaml`, `.env.example`, or `settings.py`** — none of them is authoritative any more. The model slugs are the live example: `settings.py` still defaults to `nvidia/nemotron-3-ultra-550b-a55b:free` while a switch to `qwen/qwen3.5-flash-02-23` was recorded during Feature 43. Read the dashboard.
+- **`INTERNAL_SERVICE_SECRET` is the one exception and must stay that way.** It is `generateValue: true` on `stayzy-api` and `fromService` on `stayzy-agent` — neither is a literal `value:`, so neither is at risk, and both are what keep the shared secret out of every file, commit and dashboard field. Converting it to `sync: false` would mean typing the same secret into two dashboards by hand and keeping them in step forever.
 
-1. **`ended_at` means one thing for the widget and another for the chatbot.** Widget: "this conversation is over." Chatbot: **"this is no longer the thread you land on"** — every session a user owns stays writable, forever. This needed no code, which is why it was chosen: nothing on the write path checks `ended_at`, and passing an explicit `sessionId` skips `resolveActiveSession` entirely, so the partial unique index is never touched.
-2. **The landing thread is the row with `ended_at IS NULL`,** and there is at most one. If none exists the page opens on the empty state and the next message creates one — which is also all "New chat" does.
-3. **Omitting `sessionId` always targets the active thread,** on the turn route and the pending route alike. That is what lets a brand-new chat send its first *decision* before the client has learned its own session id.
-4. **A `checkout` action survives a reload,** because it is persisted in `chat_messages.actions_json` and replayed by the session-read route. This is the first thing that ever exercised 47's `chatActionSchema` fix in anger.
-5. **A chips-only turn ends the graph instead of going back to the model.** `drop` retracted text the prompt then forbade the model to rewrite — see the Feature 48 entry. Any new chip tool must be added to that surface's `CHIP_TOOL_NAMES` or it re-arms the bug.
+### Running it in production
 
-Also still open: clear the leftover "Temp User 1" test bookings (see the Feature 27 note below) — 18 of them, still there, and `ListMyBookings` reads them verbatim into any eval. `agent.checkpoints` holds ~30 threads: the 23 documented at 47, plus a few the developer created testing `/assistant`; 48's own probe threads were all cleared.
+**Postgres is Supabase on the session-mode Supavisor pooler** (`:5432`). **Do not move to the transaction pooler on `:6543`** — `checkpointer.py` sets `prepare_threshold: 0`, which prepares every statement and collides across pooled backends. Supabase's *direct* host is IPv6-only on free projects and Render's outbound is IPv4, so the pooler is the only reachable option, not a preference. Migrations, `seed`, and `setup-checkpointer` were all run against it before deployment.
 
-**Feature 44 shipped the widget persistence layer and the whole widget UI.** The four build-time constraints it had to honour — group tokens by `id` and honour `drop`, chips carry filter *names* not ids/URLs, send `sessionId` as the real `chat_sessions.id`, and resolve the widget/Compare-Tray stacking — are all satisfied; see the Completed Features entry for how, and for the deviations and review-pass additions (`actions_json`, split write ownership, cancel-on-disconnect, `react-markdown`, the `.shimmer` thinking indicator, shadcn `scroll-fade`, and the tray-level positioning).
+**Only `stayzy-api` is kept warm.** Render's free tier grants ~750 instance-hours/month workspace-wide against a ~730-hour month, so exactly one service can stay awake. `stayzy-agent` is left to sleep. The cost is real and accepted: **the first agent call after an idle period exceeds `AI_REQUEST_TIMEOUT_MS` (45s) against a ~50s cold start and fails once** — observed on 2026-07-30 while verifying the live URLs, where `stayzy-agent`'s `/health` timed out at 25s cold and answered in 0.98s immediately after. Pinging both services would exhaust the allowance around day 15 and get them suspended, which is the worse failure.
 
-**The model was changed to `qwen/qwen3.5-flash-02-23` (both slots) during Feature 43.** It loops where the previous free Nemotron did not — one message produced 51 assistant turns — which is why the widget graph caps its tool loop. Any new graph or chain needs the same protection; do not assume a model stops on its own.
+Two gaps the keep-alive does **not** close: `/health` touches no database, so a free Supabase project can still pause after ~7 days of query inactivity; and the two `CRON_SECRET`-guarded routes (`/bookings/expire-stale`, `/bookings/complete-past`) still need a scheduled caller or held inventory never releases.
 
-**The Mapbox token in use has no POI data, and Feature 42 is shaped around that.** Verified against the live API on both the v5 and v6 endpoints: "Eiffel Tower" returns *Eiffel Tower Street, Philippines* at relevance **1.0**, "Times Square" returns a street in Australia, and `types=poi` returns nothing at all. A relevance threshold alone cannot catch this — the bad match scores perfectly. So `geocodePlace` excludes street and address types outright and additionally requires relevance ≥ 0.8. The consequence is deliberate: **a POI landmark resolves to no anchor and the UI says so, rather than silently anchoring on the wrong continent.** Cities, neighbourhoods and districts all resolve correctly ("Paris", "Shibuya", "Manhattan", "Asakusa Tokyo" verified), and hotel names never touch the geocoder. A POI-enabled token would light up the landmark path with no code change.
+**Cloudflare must stay DNS-only (grey cloud) on all four records.** Not cosmetic: the orange cloud adds an `X-Forwarded-For` hop that breaks `TRUST_PROXY=1`, stalls certificate issuance, and buffers the SSE chat streams.
 
-**The 20s AI timeout is gone.** `AI_REQUEST_TIMEOUT_MS` now defaults to **45s** (`config/env.ts`, `.env.example`), raised during Feature 41 and applied to *every* AI call rather than to extraction alone — the developer's call, and the right one: summaries are cached, so a higher ceiling costs them nothing on a hit and saves a cold generation that would otherwise fail. Justified immediately — a verification extraction measured **17.7s**, roughly two seconds from failing under the old ceiling. 45s sits under the ~60s production proxy cut. **`trust proxy` was settled in Phase 16 prep** — it now reads a hop count from `TRUST_PROXY`, default 0.
+**LangSmith cost renders blank, permanently, unless a slug is priced in the console.** Token counts are real; LangSmith has no price entry for an OpenRouter slug. Both slugs are free, so the honest figure is $0 either way. `LANGSMITH_TRACING` is `"false"` in the blueprint — a trace carries a user's real bookings, names and dates to a third party, so turning it on in production is a deliberate decision, not a default.
 
-**Phase 11 is complete.** Features 38 and 39 both ship real, cached, metered AI. What the rest of the AI phase inherits and must not rebuild:
+### Rules still in force
 
-1. **`services/ai.service.ts`, `controllers/ai.controller.ts`, `routes/ai.routes.ts` all exist** and are mounted at `/ai`. Add routes to the same files rather than creating a parallel set. `requestSummary(path, body, timeoutMs)` in the service is the shared `agent/` caller — error handling, timeout, and the empty-content check live there once.
-2. **`aiRateLimit` in `middlewares/rateLimit.ts` is already mounted on the whole `/ai` router**, so any route added there is covered automatically. It is **IP-keyed**, deliberately the opposite of `internalRateLimit` — see the invariant in `architecture.md`.
-3. **`agent/src/api/deps.py` exists** — `require_internal_service` / the `ActingUser` alias. Every new `agent/` route depends on it. `agent/src/chains/summary/` now holds two chains; either is the shape to copy.
-4. **The cost ceiling on a cached feature is the cache, not the limiter.**
-5. **New rule from Feature 39 — auto-generate when the cache key is enumerable and warmable; require an explicit user action when it is not.** Hotels are enumerable, so `pnpm seed:ai-summaries` warms them and the hotel page generates on load. Hotel *combinations* are not, so the compare summary sits behind a button and has no seed command. **Do not assume Feature 38's generate-on-load default for Features 43–48** — check which side of this rule the feature falls on first.
-6. **New rule from Feature 40 — an LLM never emits a uuid.** Where a filter, tool argument or id must be one, `backend/` sends the *names* as a closed vocabulary and maps the reply back to ids itself. **Feature 45 applied this to the whole tool suite:** every tool takes and returns names, and the ids it saw ride back on `ToolOutcome` (`hotel_ids`, `room_type_ids`, `booking_ids`) for the graph to resolve. Feature 46's mutating tools inherit those maps — do not add an id argument to a tool schema.
-7. **Not every AI feature gets a cache.** Feature 40 has none, deliberately — free-text prompts are not enumerable, so the enumerable-key rule that gave 38 a seed command and 39 a button gives 40 no table at all. `aiRateLimit` is its only ceiling. Check the rule before assuming a cache table is required.
-8. **Excluding a fast-moving field can be what makes a cache work.** Feature 39 dropped price from the compare summary, which turned a planned TTL into exact content-hash invalidation. A field the model sees but the hash ignores pins a stale answer forever; a field in the hash that changes constantly destroys the cache. Both directions are bugs.
+- **Comments are the exception, not the habit — the default is no comment.** `code-standards.md` → Comments holds the three tests, and it is one of the standing rules at the top of `CLAUDE.md`. Anything needing a paragraph is design rationale and belongs *here* or in `library-docs.md`, never in the code. `requireCronSecret.ts` is the house style.
+- **`agent/` code stays plainly readable.** `code-standards.md` → Agent Conventions → "Simplicity comes first" sits above every other Python rule there and wins any conflict with them — flag the conflict, do not silently resolve it.
+- **An LLM never emits a uuid.** Every tool takes and returns *names* as a closed vocabulary; the ids ride back on `ToolOutcome` (`hotel_ids`, `room_type_ids`, `booking_ids`) for the graph to resolve. Do not add an id argument to a tool schema.
+- **A tool's docstring is that surface's prompt.** Each graph owns a full copy of its tools under `graphs/<feature>/tools/`; editing one surface's tool text moves the other's behaviour, which is why the copies exist. Only `graphs/outcome.py` and `graphs/describe.py` are shared.
+- **This model handles 12 tools and not 14.** Measured: 14 tools → `AddFavorite` called 0/4; 12 → 4/4. Any tool added to the chatbot must be re-tested against favourites first.
+- **Any new chip tool must be added to its surface's `CHIP_TOOL_NAMES`** or it re-arms the Feature 48 `drop` bug that deleted answers from both the screen and the persisted history.
+- **Do not assume a model stops on its own** — both graphs cap their tool loop because a free model produced 51 assistant turns from one message.
+- **Empty content is failure, not a short answer.** These models reason before answering and the reasoning is buffered separately; too low a token ceiling truncates mid-thought and `content` comes back empty. Never cache an empty string.
+- **New AI surfaces route through what already exists:** `services/ai.service.ts` / `controllers/ai.controller.ts` / `routes/ai.routes.ts` mounted at `/ai` (IP-keyed `aiRateLimit` covers the whole router automatically), and `agent/src/api/deps.py` for `require_internal_service`.
+- **Cache only what is enumerable.** Hotels are, so `pnpm seed:ai-summaries` warms them; hotel *combinations* are not, so the compare summary sits behind a button. Free-text prompts get no cache table at all. And excluding a fast-moving field is often what makes a cache work — Feature 39 dropped price to get exact content-hash invalidation.
 
-**Standing rule added 2026-07-20 — applies to every remaining AI feature:** `agent/` code must stay plainly readable. The rule lives in **`code-standards.md` → Agent Conventions → "Simplicity comes first"**, sits above every other Python rule there, and wins any conflict with them (flag the conflict, do not silently resolve it). Read it before writing Python in Features 37–51, not just when something feels over-built. Feature 36's code was refactored against it the day it was written.
+### Open items
 
-**Standing rule tightened 2026-07-20 — applies to all four apps, every remaining feature, not just the AI phase:** comments are the exception, not the habit. The default is **no comment**. The rule lives in **`code-standards.md` → Comments** and is now also one of the three standing rules repeated at the top of `CLAUDE.md`, so it is in context every session. Three tests a comment must pass before it is written: could better naming remove it; does it survive the code changing; would a competent reader be *wrong* without it (not merely "helped"). **Anything needing a paragraph is design rationale and belongs in `progress-tracker.md` or `library-docs.md`, never in the code** — a second copy in the code drifts out of sync and is the one nobody updates. `requireCronSecret.ts` is the house style. Prompted by Feature 37 shipping over-commented; the rule already existed and was simply not followed, so the three tests exist to make it concrete.
+- **The Feature 16 rating-consistency question.** Mostly moot since Feature 24 keeps `hotels.average_rating`/`review_count` in sync on every review write, but header vs. section numbers can still diverge for any pre-existing hotel whose stored rating was never backed by a real review row. Three remediation options are in that Completed Features entry.
+- **Confirm whether production Stripe is on test or live keys.** `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are unsynced secrets, so the blueprint does not say. Everything through Feature 22 was verified against **test-mode** keys including a real Payment Element checkout and a webhook-verified payment. Whichever mode is live, the webhook endpoint must point at `https://stayzy-api.shahim.dev/webhooks/stripe` and its signing secret must match that endpoint — a booking only ever confirms via the webhook, so a mismatch leaves every payment stuck in `pending_payment` with no visible error.
+- **`LANGSMITH_PROJECT` is `"satyzy"`** in the developer's local `agent/.env` — almost certainly a typo for `stayzy`. Flagged and deliberately left alone; traces from Features 50–51 are under that name.
+- **The Mapbox token has no POI data.** `geocodePlace` is shaped around it — street and address types excluded outright, relevance ≥ 0.8 required — so a POI landmark resolves to no anchor and the UI says so rather than anchoring on the wrong continent. Cities, neighbourhoods and districts resolve correctly; hotel names never touch the geocoder. A POI-enabled token would light up the landmark path with no code change.
+- **Dev-database leftovers (dev only).** The "Temp User 1" account and its 18 bookings are still in the local dev database, along with ~30 `agent.checkpoints` threads. **Production seeded clean and is unaffected** — this no longer blocks anything, but it will still skew anything run locally against real bookings.
 
-**Sequencing changed 2026-07-19:** the AI phase (Features 36–51) now runs **before** deployment; Phase 9's Features 31–35 move to Phase 16 and run last. Feature IDs are unchanged. Feature 49 was planned and then deleted (the checkpointer uses `PostgresSaver` from Feature 36 in every environment, so there is nothing to swap) — the number is retired, not reused.
-
-Also still open: the Feature 16 rating-consistency question (carried over across multiple sessions — see that Completed Features entry for the 3 remediation options); mostly moot going forward since Feature 24 keeps `hotels.average_rating`/`review_count` in sync on every review write, but the header vs. section numbers can still diverge for any pre-existing hotel whose stored rating was never backed by a real review row.
-
-**Blocking issues:** None outstanding. The OpenRouter key is live and confirmed working (Feature 38). Real S3 credentials confirmed working. Real Stripe test-mode keys confirmed working end-to-end including a real Payment Element checkout (Feature 21) and a real webhook-verified payment flow (Feature 22). `STRIPE_WEBHOOK_SECRET` is consumed by `/webhooks/stripe`. `CRON_SECRET` protects the cleanup endpoints (`/bookings/expire-stale`, `/bookings/complete-past`).
-
-**OpenRouter is live as of 2026-07-20 (Feature 38).** The developer supplied a real key; `agent/.env` no longer holds a placeholder. Both model slots remain `nvidia/nemotron-3-ultra-550b-a55b:free` and the slug is now **confirmed present in OpenRouter's catalog** and returning 200s at zero cost. The fast/smart split is retained in config so the chatbot's model can be raised without touching a call site.
-
-Two things learned from the first real calls, which every later AI feature inherits:
-
-- **This model reasons before it answers, and the reasoning is billed and buffered separately.** LangChain's `response.content` holds the clean answer; the thinking lands in a separate `reasoning` field. But with too low a token ceiling the reply is truncated *mid-thought* and `content` comes back **empty**, not short. `chains/summary/hotel_summary_chain.py` sets `MAX_TOKENS = 600` for this reason. Any new chain needs the same headroom, and any new caller must treat an empty string as failure rather than caching it.
-- **Latency is 4–14s per call and varies a lot** — the same prompt measured 4.2s direct and 13.8s through the full stack. Anything user-facing needs either a warm cache or a non-blocking design; a naive synchronous call will occasionally brush a 20s timeout.
-
-Still unresolved from Feature 27: the dev database has leftover test data (a "Temp User 1" account with several bookings against Hotel Marais Charme, dated around 2026-07-13) that Feature 26's session notes claimed was cleaned up but wasn't — flagged to the developer, not deleted without confirmation. **This now matters more than it did:** it will pollute any chatbot eval that reads real bookings (Features 46, 51). **Feature 45's verification confirmed it is still there** — "Temp User 1" holds 18 bookings — and `ListMyBookings` reads them, so a chatbot eval will surface them verbatim. Clear before Feature 46.
-
-**Hosting provider still undecided** ("will do later") — no longer blocking anything, since deployment moved to Phase 16.
-
-**Latest completed addition:** Feature 48 Chatbot UI — 2026-07-25. Phase 14 complete.
+**Latest completed addition:** Phase 16 Production Deployment — 2026-07-30. Build complete.
 
 ---
 
@@ -147,7 +136,7 @@ Still unresolved from Feature 27: the dev database has leftover test data (a "Te
 - [x] 29 Empty states
 - [x] 30 Responsive pass
 
-Core product complete. Execution order from here: Phases 10–15 (AI), then Phase 16 (deployment).
+Core product complete. Execution order from here was Phases 10–15 (AI), then Phase 16 (deployment) — both now done.
 
 ### Phase 10 — Agent Foundation
 
@@ -183,22 +172,50 @@ Planned in `ai-phase-plan.md`. Read that file, not `build-plan.md`, for every fe
 
 - ~~49~~ *retired — `PostgresSaver` is used from Feature 36, so there is nothing to swap*
 - [x] 50 Tracing + cost controls
-- [ ] 51 Eval pass
+- [x] 51 Eval pass
 
 ### Phase 16 — Production Deployment
 
 Moved from Phase 9 on 2026-07-19. Scope widened: `agent/` is a fourth deployable app, and Feature 31 must also cover its env vars.
 
-- [ ] 31 Environment variables
-- [ ] 32 Backend deployment
-- [ ] 33 User frontend deployment
-- [ ] 34 Admin frontend deployment
-- [ ] 35 Production smoke test (extended to the four AI features)
-- [ ] Agent service deployment
+- [x] 31 Environment variables
+- [x] 32 Backend deployment
+- [x] 33 User frontend deployment
+- [x] 34 Admin frontend deployment
+- [x] 35 Production smoke test (extended to the four AI features)
+- [x] Agent service deployment
+
+**All 16 phases complete. Stayzy is live — see Current Status for the URLs and the operating constraints.**
 
 ---
 
 ## Completed Features
+
+### ✅ Phase 16 Production Deployment (31–35 + agent) — completed 2026-07-30
+
+Notes: all four apps live on `shahim.dev` subdomains — `stayzy` and `stayzy-admin` on Vercel, `stayzy-api` and `stayzy-agent` on Render (Singapore, free), every record a **DNS-only** CNAME at Cloudflare. Both Render services are declared in the repo root's `render.yaml` Blueprint with `buildFilter` paths, so a `backend/` push does not rebuild `agent/`. Verified live: all four hosts answer 200, with `/health` returning `{"status":"ok"}` on the API and `{"status":"ok","service":"stayzy-agent"}` on the agent.
+
+Decision: **`INTERNAL_SERVICE_SECRET` is `generateValue: true` on `stayzy-api` and pulled into `stayzy-agent` via `fromService`.** The shared secret therefore exists in no file, no dashboard field either side typed by hand, and no commit — the one env var in the system that nobody has ever seen.
+
+Decision: **only `stayzy-api` is kept warm; `stayzy-agent` sleeps.** Render's free tier grants ~750 instance-hours/month workspace-wide against a ~730-hour month, so keeping both awake exhausts the allowance around day 15 and gets them suspended. The accepted cost is a single failed agent call after idle — a ~50s cold start against a 45s `AI_REQUEST_TIMEOUT_MS`. AI summaries are unaffected because they serve from the `hotel_ai_summaries` cache; only smart search, the widget and `/assistant` wake the agent.
+
+Decision: **Supabase's session-mode Supavisor pooler on `:5432`, not the transaction pooler and not the direct host.** Both alternatives are broken here rather than merely slower: `checkpointer.py` sets `prepare_threshold: 0`, which prepares every statement and collides across transaction-pooled backends, and the direct host is IPv6-only on free Supabase projects while Render's outbound is IPv4. Migrations, `seed` and `setup-checkpointer` were all run against the pooler before the first deploy.
+
+**Cloudflare's grey cloud is load-bearing.** Proxying (orange) would add an `X-Forwarded-For` hop that makes `TRUST_PROXY=1` wrong — silently disabling `aiRateLimit` or opening it to header forgery — stall certificate issuance, and buffer the SSE chat streams that both chat surfaces depend on.
+
+**Every env var was moved to `sync: false` after the first deploy**, once values had been added and tuned in the dashboard. The trigger was noticing that a blueprint sync overwrites any key carrying a literal `value:`, and that pushing `render.yaml` is itself what fires a sync — so editing this file for any reason would have reverted 15 hand-tuned values, `LANGSMITH_TRACING` among them. Four backend keys and three agent keys that had only ever existed in the dashboard (`ADMIN_SEED_EMAIL`/`PASSWORD`, `INTERNAL_RATE_LIMIT_MAX`/`WINDOW_MS`, and the three `LANGSMITH_*`) were declared at the same time, so a fresh apply prompts for them instead of booting without them.
+
+The trade accepted here: **the blueprint no longer records what anything is set to.** It defines the two services and names their inputs; `architecture.md`'s Production topology section is where the actual URLs, domains and constraints are written down.
+
+**Production seeded clean**, so the "Temp User 1" test bookings carried since Feature 27 exist only in the dev database and never reached production.
+
+### ✅ 51 Eval pass — completed 2026-07-30
+
+Notes: **closed by the Phase 16 production smoke test rather than as a separate exercise**, on the developer's call. The four AI surfaces — hotel summary, compare summary, smart search, and both chat surfaces — were exercised against the deployed stack alongside the core booking flow, and passed. Recorded honestly: **the fixed prompt set in `ai-phase-plan.md` was not run end to end as its own pass**, so the per-prompt guardrail cases (payment refusal, out-of-domain decline, flight request) have their Feature 46–48 verification behind them and no separate production run.
+
+That prompt set is not retired — it stays in `ai-phase-plan.md` as the regression checklist to re-run after any prompt or graph change, which is what Feature 51 was always for. The value it still holds is highest for the guardrails, since those are the cases where a prompt edit degrades behaviour without breaking anything a typecheck would catch.
+
+**Feature 50's verification gap is closed by consequence.** The run tree across a full tool loop and conversation grouping by `thread_id` were unproven at 50 because no turn had been driven over HTTP through `backend/ → agent/`; the smoke test drives exactly that path. Cost still renders blank in LangSmith — unchanged and expected, since no OpenRouter slug is priced in the console.
 
 ### ✅ 50 Tracing + cost controls — completed 2026-07-27
 
@@ -1129,8 +1146,8 @@ Status: [open / in progress / resolved]
 
 ### S3 credentials blank in this dev environment
 Feature: 07 Admin Hotel CRUD (also affects Feature 08's room type images)
-Description: `backend/.env`'s `S3_BUCKET`/`S3_REGION`/`S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY` are all empty. Image upload code is correct and fails cleanly (a descriptive 500, not a crash — see the `07 Admin Hotel CRUD` lazy-`S3Client` architecture decision), but was never exercised against a real bucket end-to-end.
-Status: open — fill in real credentials to actually test upload/reorder/delete against S3.
+Description: `backend/.env`'s `S3_BUCKET`/`S3_REGION`/`S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY` were all empty, so image upload was never exercised against a real bucket. The code was correct and failed cleanly (a descriptive 500, not a crash — see the `07 Admin Hotel CRUD` lazy-`S3Client` architecture decision).
+Status: **resolved.** Real credentials were supplied and confirmed working, and all four keys ship as unsynced secrets on `stayzy-api`.
 
 ---
 

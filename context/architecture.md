@@ -22,6 +22,7 @@ This repository is a single monorepo with independent, separately deployable app
 /
 ├── CLAUDE.md
 ├── context/
+├── render.yaml                 → Blueprint for the two Render services
 ├── backend/
 ├── frontend/
 ├── frontend-admin/
@@ -29,6 +30,25 @@ This repository is a single monorepo with independent, separately deployable app
 ```
 
 Each app has its own dependency manifest (`package.json`, or `pyproject.toml` for `agent/`) and its own deployment. **`backend/` is the only service any other app talks to** — the two frontends never call each other, never call `agent/`, and never share a database connection directly. `agent/` is reached only through `backend/`, and calls back only into `backend/`'s `internal/*` routes.
+
+### Production topology
+
+Live since 2026-07-30. All four apps sit on subdomains of one apex, which is what makes the shared session cookie possible:
+
+| App | Subdomain | Host |
+| --- | --- | --- |
+| `frontend/` | `stayzy` | Vercel |
+| `frontend-admin/` | `stayzy-admin` | Vercel |
+| `backend/` | `stayzy-api` | Render — Singapore, free |
+| `agent/` | `stayzy-agent` | Render — Singapore, free |
+
+Three constraints here are load-bearing rather than preferences, and each breaks something specific if changed:
+
+- **Cloudflare records stay DNS-only (grey cloud).** Proxying adds an `X-Forwarded-For` hop that makes `TRUST_PROXY=1` wrong, stalls certificate issuance, and buffers the SSE chat streams.
+- **Postgres is reached through Supabase's session-mode Supavisor pooler on `:5432`.** The transaction pooler on `:6543` collides with `checkpointer.py`'s `prepare_threshold: 0`, and the direct host is IPv6-only on free projects while Render's outbound is IPv4.
+- **Only `stayzy-api` is kept awake.** The free tier funds one continuously-running service, so `agent/` sleeps and the first call after idle fails on a cold start longer than `AI_REQUEST_TIMEOUT_MS`.
+
+`INTERNAL_SERVICE_SECRET` is generated on `stayzy-api` and pulled into `stayzy-agent` via the blueprint's `fromService`, so the secret behind the `internal/*` routes exists in no file and no commit.
 
 ---
 

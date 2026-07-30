@@ -350,6 +350,8 @@ New patterns (`ChatBubble`, action chip, tool-status chip, confirmation card, se
 
 **51. Eval pass** — the fixed prompt set below, re-run after any prompt or graph change so regressions are caught, not shipped.
 
+*Closed 2026-07-30 (Feature 51), by the Phase 16 production smoke test rather than as a separate pass.* The four AI surfaces were exercised against the deployed stack and passed. **The fixed prompt set below was not run end to end as its own exercise** — the guardrail cases rest on their Feature 46–48 verification. The set is not retired: it stays here as the regression checklist to re-run after any prompt or graph change, which is what this feature was always for. See the Feature 51 entry in `progress-tracker.md`.
+
 ### Phase 16 — Production Deployment
 
 Moved from `build-plan.md` Phase 9. One deployment covering the core product and the full AI phase together.
@@ -360,6 +362,8 @@ Moved from `build-plan.md` Phase 9. One deployment covering the core product and
 - **34.** Admin frontend deployment
 - **35.** Production smoke test — extended to cover the four AI features, not just the core booking flow.
 - **New: agent service deployment** — `agent/` is a fourth deployable app; document its hosting alongside the other three.
+
+*Shipped 2026-07-30.* All four apps live on `shahim.dev` subdomains — the two frontends on Vercel, `backend/` and `agent/` on Render (Singapore, free) from the repo root's `render.yaml` Blueprint, every record DNS-only at Cloudflare. `agent/`'s env vars needed no separate treatment beyond `AGENT_DATABASE_URL` and `OPENROUTER_API_KEY` as unsynced secrets: `INTERNAL_SERVICE_SECRET` is generated on `stayzy-api` and pulled across with `fromService`, so the shared secret is never typed anywhere. **Only `stayzy-api` is kept warm** — the free tier funds one continuously-awake service, so the agent sleeps and pays a one-off cold-start failure on first wake. See the Phase 16 entry in `progress-tracker.md` for the full set of constraints.
 
 ---
 

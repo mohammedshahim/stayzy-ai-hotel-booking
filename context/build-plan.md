@@ -405,9 +405,9 @@ Full responsive audit of both frontends at mobile, tablet, and desktop breakpoin
 
 ## Phase 9 — Deployment
 
-> **Resequenced 2026-07-19: this phase now runs last, as Phase 16.** The AI phase (Features 36–51) runs first. Features 31–35 were never executed, so there is nothing live to disrupt, and deploying once — after the product is feature-complete with AI included — avoids standing up production infrastructure twice. Feature ID numbers are unchanged; only execution order moved. See `ai-phase-plan.md`.
+> **Resequenced 2026-07-19: this phase ran last, as Phase 16, and is now complete (2026-07-30).** The AI phase (Features 36–51) ran first, so deployment happened once, with the product feature-complete and AI included, rather than standing up production infrastructure twice. Feature ID numbers are unchanged; only execution order moved.
 >
-> When this phase finally runs, its scope is wider than described below: `agent/` is a fourth deployable app, and Feature 31 must also cover its env vars. See `ai-phase-plan.md`'s Phase 16 section.
+> Its executed scope was wider than described below: `agent/` is a fourth deployable app, and Feature 31 also covered its env vars. **`ai-phase-plan.md`'s Phase 16 section and `progress-tracker.md`'s Phase 16 entry are authoritative for what actually shipped** — the descriptions below are the original plan, not the outcome.
 
 ### 31 Environment Variables
 
