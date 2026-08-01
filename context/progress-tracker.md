@@ -24,8 +24,8 @@ After completing any feature:
 ## Current Status
 
 **Phase:** 17 — Post-Launch Iteration. **Stayzy has been live in production since 2026-07-30.**
-**Current feature:** none in progress. Feature 52 is complete in the repo but **not yet migrated or deployed to production** — see its Completed Features entry. Features 53 and 54 are complete and not yet deployed.
-**Next up:** Feature 55 — profile page. See `iteration-plan.md`'s notes on the smaller-than-it-looks backend surface and the Google-account password-section gap.
+**Current feature:** none in progress. **Phase 17 (Features 52–55) is now complete in the repo.** Migration `0005` (Feature 52) has been applied to production ahead of the code — see the Open items note below for how that happened. Features 52, 53, 54, and 55's code is all still undeployed.
+**Next up:** nothing planned yet — `iteration-plan.md` ends at Feature 55. The real next step is deploying Features 52–55 together (one migration already applied, one Vercel push for 53–55's frontend changes).
 
 | App | URL | Host |
 | --- | --- | --- |
@@ -67,13 +67,15 @@ Two gaps the keep-alive does **not** close: `/health` touches no database, so a 
 - **Empty content is failure, not a short answer.** These models reason before answering and the reasoning is buffered separately; too low a token ceiling truncates mid-thought and `content` comes back empty. Never cache an empty string.
 - **New AI surfaces route through what already exists:** `services/ai.service.ts` / `controllers/ai.controller.ts` / `routes/ai.routes.ts` mounted at `/ai` (IP-keyed `aiRateLimit` covers the whole router automatically), and `agent/src/api/deps.py` for `require_internal_service`.
 - **A suppressed email must stay invisible to the client.** `sendVerificationEmail`/`sendPasswordResetEmail` return a boolean, and nothing may branch on it in a way a caller can observe — better-auth's reset response is deliberately identical for a known and an unknown address, and an "already sent" message leaks which one it is.
+- **Before running `pnpm migrate` or any local verification pass, check what `backend/.env`'s active (uncommented) `DATABASE_URL` actually points to.** It defaults to the production Supabase pooler with the localhost line commented out — Feature 52's session knew this and overrode it; Feature 55's session didn't check first and ran a full migration + Playwright pass against production. Grep the file and confirm the host before touching either.
 - **Cache only what is enumerable.** Hotels are, so `pnpm seed:ai-summaries` warms them; hotel *combinations* are not, so the compare summary sits behind a button. Free-text prompts get no cache table at all. And excluding a fast-moving field is often what makes a cache work — Feature 39 dropped price to get exact content-hash invalidation.
 
 ### Open items
 
-- **Feature 52's migration `0005` has not been applied to production.** It must land before or with the deploy of that code, or every auth email throws against a missing table. Note that `backend/.env`'s active `DATABASE_URL` is the production pooler — the localhost line is commented out — so `pnpm migrate` from this checkout targets production by default, and local work needs the URL overridden inline.
+- **Migration `0005` (Feature 52's `email_send_throttles` table) is now applied to production**, ahead of the code that uses it — see Feature 55's Completed Features entry for how. `backend/.env`'s active `DATABASE_URL` is the production pooler with the localhost line commented out, exactly as this item warned; Feature 55's session ran `pnpm migrate` and a full Playwright verification pass without overriding it first. The table is additive and harmless until Feature 52's backend code deploys — confirmed with the developer, left in place rather than rolled back. **This gotcha bit twice now (recorded, then hit anyway) — any session running migrations or verification locally must override `DATABASE_URL` inline to the commented-out `localhost` line before running anything, not just read this note.**
 - **Feature 53's `frontend/app/globals.css` change has not been deployed.** No migration involved — a Vercel push is all it needs — but production is still on the terracotta palette until then.
 - **Feature 54's `frontend/app/page.tsx` change has not been deployed**, same as Feature 53 — a Vercel push is all it needs.
+- **Feature 55's profile page has not been deployed** — `frontend/app/profile/`, `frontend/features/profile/`, and the new backend route `POST /users/set-password` all need the same deploy as 53/54, plus the backend push (no new migration beyond the one already applied above).
 - **`next/image`'s `priority` prop is deprecated as of Next.js 16** (this repo runs 16.2.10) in favour of `preload`. `iteration-plan.md`'s Feature 54 entry still names `priority` — read as `preload` for any future work against `next/image` in this repo. Feature 54 itself ended up using a plain `<img>` instead of `next/image` (the developer's explicit call, not a plan deviation discovered in code), so this repo has no live `next/image` usage to point to as an example yet.
 - **The Stripe `<Elements>` provider has no `appearance` config.** `features/booking/components/CheckoutForm.tsx` mounts `<Elements stripe={getStripe()} options={{ clientSecret }}>` with no `appearance` key, so the Payment Element has always rendered in Stripe's own default theme regardless of which Stayzy palette was active. Noticed while verifying Feature 53; left alone as pre-existing and out of that feature's scope. A future pass that wants the payment form to match the brand needs an `appearance.variables` block keyed to the same tokens.
 - **The Feature 16 rating-consistency question.** Mostly moot since Feature 24 keeps `hotels.average_rating`/`review_count` in sync on every review write, but header vs. section numbers can still diverge for any pre-existing hotel whose stored rating was never backed by a real review row. Three remediation options are in that Completed Features entry.
@@ -82,7 +84,7 @@ Two gaps the keep-alive does **not** close: `/health` touches no database, so a 
 - **The Mapbox token has no POI data.** `geocodePlace` is shaped around it — street and address types excluded outright, relevance ≥ 0.8 required — so a POI landmark resolves to no anchor and the UI says so rather than anchoring on the wrong continent. Cities, neighbourhoods and districts resolve correctly; hotel names never touch the geocoder. A POI-enabled token would light up the landmark path with no code change.
 - **Dev-database leftovers (dev only).** The "Temp User 1" account and its 18 bookings are still in the local dev database, along with ~30 `agent.checkpoints` threads. **Production seeded clean and is unaffected** — this no longer blocks anything, but it will still skew anything run locally against real bookings.
 
-**Latest completed addition:** Feature 54 Homepage banner — 2026-08-01. In the repo, not yet deployed.
+**Latest completed addition:** Feature 55 Profile page — 2026-08-01. In the repo, not yet deployed. Phase 17 is now fully complete in the repo.
 
 ---
 
@@ -198,11 +200,25 @@ Moved from Phase 9 on 2026-07-19. Scope widened: `agent/` is a fourth deployable
 - [x] 52 Email send throttle
 - [x] 53 Frontend palette re-skin
 - [x] 54 Homepage banner
-- [ ] 55 Profile page
+- [x] 55 Profile page
 
 ---
 
 ## Completed Features
+
+### ✅ 55 Profile page — completed 2026-08-01
+
+Notes: `frontend/app/profile/page.tsx` (server component, redirect to `/login` on a null session) plus `frontend/features/profile/` — `ProfilePageContent`, three Panels (`AvatarNamePanel`, `EmailPanel`, `PasswordPanel`), `ChangePasswordForm`/`SetPasswordForm`, and a quiet links row to `/bookings`/`/favorites`. One new backend route, `POST /users/set-password` (`users.routes.ts` + `users.controller.ts`, `requireAuth`), and one shared-file fix: `frontend/lib/auth-client.ts` gained the `inferAdditionalFields` client plugin so `session.user.avatarUrl` is typed — it wasn't before, since the client had no plugin mirroring the server's `additionalFields`.
+
+Decision: **avatar is a DiceBear picker, not an upload.** The developer overrode the plan mid-session — no S3, no multer, no multipart route. Eight fixed seeds against the `notionists` style (`frontend/features/profile/constants.ts`), rendered as a plain `<img>` grid (same plain-`<img>` precedent as Feature 54); selecting one calls `authClient.updateUser({ avatarUrl })` directly.
+
+Decision: **Google-linked accounts can add a password too — the developer explicitly wanted both sign-in methods available, not one-or-the-other**, a deliberate change from `iteration-plan.md`'s "hide the section for Google-only accounts" framing. better-auth's `changePassword` requires a `currentPassword` it can't verify for an account with none; the endpoint that actually handles "no password yet" is `setPassword`, which the library marks `serverOnly` — unreachable from `authClient` in the browser. The one new backend route exists for exactly this: `POST /users/set-password` calls `auth.api.setPassword` server-side. `PasswordPanel` branches on `authClient.listAccounts()` finding a `credential`-provider account, never on whether `google` is linked — the same user can end up Google-only, password-only, or both, and the panel always renders one of the two forms, never neither.
+
+Decision: **`inferAdditionalFields` takes an explicit schema object, not `<typeof auth>`.** The generic form would need `auth-client.ts` to import the backend's `auth` instance type, but `frontend/` and `backend/` are independent packages with no workspace linkage — so the client mirrors the server's `additionalFields` config by hand (`{ user: { avatarUrl: { type: "string", required: false } } }`) instead of sharing a type.
+
+Verified against the real running app: signup → profile → select an avatar → rename → resend verification → change password → reload, all persisted correctly. Resend was verified via a pre-seeded throttle row rather than a real send — Resend rejects `feature55.*@example.com` as an undeliverable domain, so a directly-seeded `email_send_throttles` row was used to exercise the silent-suppression path, confirming the frontend shows "check your inbox", never "sent". The Google-only branch was verified by deleting the test account's `credential` row directly in the database while its session stayed valid — the identical code path to a real Google-only account, since `PasswordPanel` checks only for the *absence* of a credential account: it correctly rendered `SetPasswordForm` with no `ChangePasswordForm` in sight, submitting it created a real `credential` account row, and a reload flipped the panel back to `ChangePasswordForm`. Screenshotted at 1280px and 390px — panels stack cleanly, avatar grid wraps to two rows on mobile with no overflow. `tsc --noEmit` and `pnpm build` (backend) both clean; `pnpm lint` shows only the pre-existing, expected `no-img-element` warning on `app/page.tsx`.
+
+**This session's verification ran against production, not local dev, and it should have been caught before it happened.** `backend/.env`'s active `DATABASE_URL` is the production Supabase pooler with the localhost line commented out — the exact gotcha Feature 52's entry above already recorded — but this session ran `pnpm migrate` and the full Playwright pass against it without overriding the URL first. Consequences: migration `0005` is now applied to production ahead of its code deploy (confirmed harmless and left in place, on the developer's call); a real test signup (`feature55.<timestamp>@example.com`) briefly existed in production's `user`/`account`/`session` tables and was fully deleted afterward, with no orphaned rows; two real calls went out through production's Resend account to that undeliverable address. No real user's data was read, written, or touched at any point. See the Open items note above — **any future local verification must override `DATABASE_URL` inline to the commented-out `localhost` line first.**
 
 ### ✅ 54 Homepage banner — completed 2026-08-01
 
@@ -1216,6 +1232,11 @@ Built: [what was completed]
 Left off: [exactly where the session ended]
 Next session starts with: [first thing to do next time]
 ```
+
+### Session — 2026-08-01 (3)
+Built: Feature 55 Profile page, in full — see the Completed Features entry for the three decisions (DiceBear avatar picker instead of upload, Google accounts can add a password via a new `POST /users/set-password` route, and the `inferAdditionalFields` typing fix). Phase 17 (Features 52–55) is now fully complete in the repo.
+Left off: Verified against the real running app end to end for a password account, plus the Google-only branch verified by manipulating the account's `credential` row directly in the database (see the entry for why that's equivalent). **Important:** this session's `pnpm migrate` and Playwright pass ran against production by mistake — `backend/.env`'s `DATABASE_URL` defaults to the production pooler and this session didn't override it. Migration `0005` is now live on production (left in place, confirmed with the developer); a test account was created and fully cleaned up afterward; no real user data was touched. Context updated: `progress-tracker.md` (this entry, checklist, Current Status, a strengthened Open item about the `DATABASE_URL` gotcha) and `ui-registry.md` (`/imprint` — new Profile Page entry, including the new Avatar Picker pattern for future reuse).
+Next session starts with: nothing is planned past Feature 55 — `iteration-plan.md` ends here. The real next step is deployment: one Vercel push covers Features 53, 54, and 55's frontend changes, one Render push covers Features 52 and 55's backend changes, and migration `0005` is already live on production so nothing further is needed there. **Before running anything locally next session, override `DATABASE_URL` inline to the commented-out `localhost` line first** — do not trust this checkout's default.
 
 ### Session — 2026-08-01 (2)
 Built: Feature 54 Homepage banner, in full — see the Completed Features entry. `frontend/app/page.tsx`'s `HotelIcon` placeholder replaced with a plain `<img>` pointed at the developer-supplied `frontend/public/home-banner.webp`; layout contract (`aspect-[4/3]` frame, `lg:-mt-16` overlap) untouched.
