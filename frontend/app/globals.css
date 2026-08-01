@@ -48,9 +48,9 @@
   --font-mono: var(--font-jetbrains-mono);
 
   /* Shadows */
-  --shadow-card: 0 1px 3px rgba(36, 29, 20, 0.08);
-  --shadow-elevated: 0 8px 24px rgba(36, 29, 20, 0.1);
-  --shadow-accent: 0 4px 14px rgba(194, 84, 45, 0.25);
+  --shadow-card: 0 1px 3px rgba(31, 41, 55, 0.08);
+  --shadow-elevated: 0 8px 24px rgba(31, 41, 55, 0.1);
+  --shadow-accent: 0 4px 14px rgba(15, 118, 110, 0.25);
 
   /* shadcn/ui semantic tokens, remapped to the Stayzy palette above */
   --color-sidebar-ring: var(--sidebar-ring);
@@ -95,45 +95,45 @@
 
 :root {
   /* Backgrounds */
-  --bg-base: #fbf6ef;
+  --bg-base: #fdfbf6;
   --bg-surface: #ffffff;
   --bg-elevated: #ffffff;
-  --bg-subtle: #f5eee1;
-  --bg-overlay: rgba(36, 29, 20, 0.45);
+  --bg-subtle: #f4f4f1;
+  --bg-overlay: rgba(31, 41, 55, 0.45);
 
   /* Borders */
-  --border-default: #e8e0d0;
-  --border-subtle: #d9ceb5;
-  --border-strong: #c7b896;
+  --border-default: #e5e7eb;
+  --border-subtle: #d1d5db;
+  --border-strong: #9ca3af;
 
   /* Text */
-  --text-primary: #241d14;
-  --text-secondary: #5c5240;
-  --text-muted: #8a7f6a;
-  --text-faint: #b7ac96;
+  --text-primary: #1f2937;
+  --text-secondary: #4b5563;
+  --text-muted: #6b7280;
+  --text-faint: #9ca3af;
 
   /* Accent */
-  --accent-primary: #c2542d;
-  --accent-hover: #a8461f;
-  --accent-dim: rgba(194, 84, 45, 0.1);
-  --accent-text: #96401f;
-  --accent-border: rgba(194, 84, 45, 0.25);
+  --accent-primary: #0f766e;
+  --accent-hover: #0b5f58;
+  --accent-dim: rgba(15, 118, 110, 0.1);
+  --accent-text: #115e59;
+  --accent-border: rgba(15, 118, 110, 0.25);
 
   /* Ratings */
-  --rating-star: #f2a93b;
-  --rating-star-empty: #e3dacb;
+  --rating-star: #c6a664;
+  --rating-star-empty: #dce0e5;
 
   /* Status */
-  --state-success: #1f9d63;
-  --state-success-dim: rgba(31, 157, 99, 0.1);
+  --state-success: #15803d;
+  --state-success-dim: rgba(21, 128, 61, 0.1);
   --state-error: #d64545;
   --state-error-dim: rgba(214, 69, 69, 0.1);
-  --state-warning: #c97a1b;
-  --state-warning-dim: rgba(201, 122, 27, 0.1);
+  --state-warning: #b45309;
+  --state-warning-dim: rgba(180, 83, 9, 0.1);
   --state-info: #2e7bc4;
   --state-info-dim: rgba(46, 123, 196, 0.1);
-  --state-neutral: #71695a;
-  --state-neutral-dim: rgba(113, 105, 90, 0.12);
+  --state-neutral: #6b7280;
+  --state-neutral-dim: rgba(107, 114, 128, 0.12);
 
   /* shadcn/ui semantic tokens — mapped onto the Stayzy palette, never shadcn's own defaults */
   --background: var(--bg-base);

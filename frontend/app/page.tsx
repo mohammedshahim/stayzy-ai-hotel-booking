@@ -1,5 +1,3 @@
-import { HotelIcon } from "lucide-react";
-
 import { Footer } from "@/components/layout/Footer";
 import { HeroSearchWidget } from "@/features/search/components/HeroSearchWidget";
 import { RecentSearches } from "@/features/recent-searches/components/RecentSearches";
@@ -20,9 +18,14 @@ export default function Home() {
             </p>
           </div>
           <div className="relative aspect-[4/3] overflow-hidden rounded-3xl bg-elevated">
-            <div className="absolute inset-0 flex items-center justify-center">
-              <HotelIcon className="h-16 w-16 text-text-faint" strokeWidth={1.5} />
-            </div>
+            <img
+              src="/home-banner.webp"
+              alt="A guest room styled for a relaxed coastal stay"
+              fetchPriority="high"
+              loading="eager"
+              decoding="async"
+              className="absolute inset-0 h-full w-full object-cover"
+            />
           </div>
         </div>
         <div className="relative z-10 mt-8 lg:-mt-16">

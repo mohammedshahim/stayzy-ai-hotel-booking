@@ -11,6 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | `context/progress-tracker.md` | **Start here every session.** Current phase, next feature, blocking issues, every decision made so far |
 | `context/build-plan.md` | The numbered feature list, Features 01–35 |
 | `context/ai-phase-plan.md` | The AI phase, Features 36–51 — authoritative for those features, not `build-plan.md` |
+| `context/iteration-plan.md` | Post-launch iteration, Features 52–55 — authoritative for those features, not `build-plan.md` |
 | `context/architecture.md` | Stack, folder structure, data flow, DB schema, and the **invariants** that must never be violated |
 | `context/code-standards.md` | Conventions for all four apps. Follow exactly |
 | `context/library-docs.md` | Project-specific rules for each third-party library |
@@ -32,7 +33,7 @@ Two other standing rules worth repeating here: **scope is sacred** (build only w
 
 ## Project
 
-Stayzy — a full-stack hotel booking platform. Users search, compare, book, and pay via Stripe; staff manage inventory through a separate admin panel. Phases 1–8 are complete (Features 01–30). Current work is the AI phase; production deployment comes last.
+Stayzy — a full-stack hotel booking platform. Users search, compare, book, and pay via Stripe; staff manage inventory through a separate admin panel. All 16 build phases are complete (Features 01–51) and the four apps have been live since 2026-07-30. Current work is Phase 17, post-launch iteration.
 
 ## Apps
 

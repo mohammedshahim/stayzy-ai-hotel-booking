@@ -1,51 +1,62 @@
-# Memory — Feature 50 LangSmith tracing, complete. Phase 15 half done.
+# Memory — Feature 55 Profile page, complete. Phase 17 fully done in repo.
 
-Last updated: 2026-07-27
+Last updated: 2026-08-01
 
 ## What was built
 
-**Feature 50 Tracing + cost controls — three lines of code.** Two commits:
+**Feature 55 Profile page** — `frontend/app/profile/page.tsx` (server component, redirects to `/login` on a null session, same pattern as `bookings/page.tsx`) plus a new `frontend/features/profile/`:
 
-- `a2ecda6` `feat(agent)` — **pushed** to `origin/main`.
-- `f858cba` `docs(context)` — committed, **not pushed** (`main` is ahead 1).
+- `constants.ts` — 8 fixed DiceBear (`notionists` style) seed URLs
+- `components/ProfilePageContent.tsx` — composes the three panels + a quiet links row to `/bookings`/`/favorites`
+- `components/AvatarNamePanel.tsx` — avatar picker grid (click → `authClient.updateUser({avatarUrl})`) + display-name field/save
+- `components/EmailPanel.tsx` — read-only email, Verified/Not-verified pill, throttle-aware resend ("check your inbox", never "sent")
+- `components/PasswordPanel.tsx` — calls `authClient.listAccounts()`, branches to `ChangePasswordForm` or `SetPasswordForm`
+- `components/ChangePasswordForm.tsx` — `authClient.changePassword({currentPassword, newPassword})`
+- `components/SetPasswordForm.tsx` — calls the new backend endpoint via `apiClient.post("/users/set-password", ...)`
 
-The three changes: `load_dotenv()` in `agent/src/main.py`, `stream_usage=True` in `agent/src/config/llm.py`, and the four `LANGSMITH_*` vars documented in `agent/.env.example`. No new dependency — `langsmith` is already a `langchain-core` dep and `python-dotenv` a `pydantic-settings` one. No new module, no table, no route, no UI.
+Backend: new `backend/src/routes/users.routes.ts` + `controllers/users.controller.ts` + `types/user.schemas.ts` — `POST /users/set-password` (`requireAuth` → `auth.api.setPassword`), mounted in `routes/index.ts`.
 
-The developer's own `agent/.env` has real LangSmith values set and tracing **on**. The key is valid and the file is gitignored — never commit it. Their `LANGSMITH_PROJECT` is `"satyzy"`, which is almost certainly a typo for `stayzy`; it was flagged and deliberately left alone. Traces from this session are in a project by that name.
+Shared fix: `frontend/lib/auth-client.ts` gained the `inferAdditionalFields` client plugin (explicit schema, `{user: {avatarUrl: {type: "string", required: false}}}`) so `session.user.avatarUrl` is typed — it wasn't before.
+
+**Nothing from this session is committed yet** — confirmed via `git log`, HEAD is still `bec4fe8` (Feature 54's memory-save commit). All of Feature 55's backend/frontend files plus the `progress-tracker.md`/`ui-registry.md` edits are sitting as uncommitted working-tree changes on `feature/52-email-send-throttle`. Not an oversight — the developer never asked for a commit this session, and the project rule is to only commit when explicitly asked. **Next session (or later this one): ask whether to commit, and if so split it the usual way — `feat(backend)`, `feat(frontend)`, `docs(context)`, per the one-commit-per-concern rule.**
 
 ## Decisions made
 
-- **The LangSmith dashboard is the entire surface.** No usage table in `backend/`, no admin page. A Postgres usage table is what a future per-user budget cap would need — it was explicitly considered and not started, because it is a real feature with a migration and a second source of truth for numbers LangSmith already holds.
-- **Full transcripts are traced; the switch is the privacy control, not redaction.** `LANGSMITH_HIDE_INPUTS`/`HIDE_OUTPUTS` exist and are deliberately unused — hiding the prompt hides the only evidence for the Feature 48 bug class (a tool docstring the model misread). Therefore **`LANGSMITH_TRACING` stays unset in production** until that call is made deliberately.
-- **Never add `LANGSMITH_*` to `Settings`.** The library reads `os.environ` directly; a typed copy on the settings object would be read by nothing and would drift. This is the one place `.env` is deliberately not routed through `Settings`.
-- **Cost is expected to render blank.** LangSmith cannot price an OpenRouter slug. Registering pricing is a console step, not code. Both slugs are free, so the honest figure is $0 regardless.
+- **Avatar is a DiceBear picker, not a file upload.** Developer overrode the original plan mid-session — no S3, no multer, no multipart route at all. Simpler than `iteration-plan.md` anticipated.
+- **Google-linked accounts can also set a password** — developer explicitly wants both sign-in methods available, not one-or-the-other. This meant adding the one new backend route: better-auth's `setPassword` (for the "no password yet" case) is marked `serverOnly` in the library and is unreachable from `authClient` in the browser, so a thin Express route calling `auth.api.setPassword` server-side was the only way. `PasswordPanel` branches on `authClient.listAccounts()` finding a `credential`-provider account — never on whether `google` is linked.
+- **`inferAdditionalFields` needed an explicit schema object**, not the generic `<typeof auth>` form — `frontend/` and `backend/` are independent packages with no workspace linkage, so there's no way to import the backend's `auth` instance type into the frontend.
 
 ## Problems solved
 
-- **`LANGSMITH_*` in `agent/.env` alone does nothing, silently.** `pydantic-settings` parses the file into `Settings` and never touches `os.environ`, which is the only place the library looks. Proven directly: `CHECKPOINTER_SCHEMA` loads into `settings` while `'CHECKPOINTER_SCHEMA' in os.environ` stays `False`, and `tracing_is_enabled()` returns `False` with every variable set. `load_dotenv()` is the bridge — **it looks redundant and deleting it turns tracing off with no error.**
-- **`stream_usage` is disabled whenever `base_url` is custom** (`langchain_openai/chat_models/base.py:1217-1236`). OpenRouter is a custom `base_url` and both chat graphs stream, so tracing without the explicit `stream_usage=True` reports every chat turn at **zero tokens** — cost observability that observes nothing on the two expensive surfaces. OpenRouter does honour `stream_options`: verified live at 22 in / 15 out / 37 total with `reasoning: 12` broken out.
-- **Attribution needed no code, and six planned call sites were deleted before being written.** `langchain_core/runnables/config.py:155-168` promotes every primitive `configurable` key into run metadata, excluding only `api_key`. Both graph routes already pass `thread_id` and `user_id`.
+- **better-auth's `setPassword` is `serverOnly`** — confirmed by reading `node_modules/better-auth/dist/api/routes/update-user.mjs`. Any future need for another `serverOnly` better-auth endpoint from the frontend should follow the same pattern: a thin Express route calling `auth.api.<endpoint>` directly.
+- **Resend rejects `@example.com` as undeliverable** — real signup/resend calls to a fake test address fail outright rather than silently no-op. To test the throttle's silent-suppression success path, a row was inserted directly into `email_send_throttles` rather than relying on two real sends.
+- **This sandbox's Playwright↔backend round-trips run ~15–20s slow** (Resend API latency, DB pooler latency, or both) — early verification scripts with 2–3s fixed waits reported false failures (looked like "Could not resend"/"stuck saving") that were actually just slow, not broken. Fixed by waiting on `page.waitForURL`/longer fixed waits and cross-checking against direct DB queries instead of trusting short timeouts.
+- **The better-auth version mismatch flagged in earlier sessions' memory appears resolved** — checked this session, both `frontend/node_modules/better-auth` and `backend/node_modules/better-auth` are `1.6.23`.
 
 ## Current state
 
-- **Phase 15 half done** — 50 complete, 51 (evals) is next. Checks green: `ruff check`, `ruff format --check`, both graphs compile.
-- **Tracing works end to end**: a live streamed OpenRouter call landed in LangSmith with `tokens: 37` matching exactly and `cost: None`.
-- **Not verified against the running app.** No turn was driven over HTTP through `backend/ → agent/`, so the run tree across a full tool loop and conversation grouping by `thread_id` are unproven. This gap is recorded in the Feature 50 tracker entry too.
-- Model is `nvidia/nemotron-3-ultra-550b-a55b:free` in both slots.
+**Phase 17 (Features 52–55) is now fully complete in the repo.** Nothing in the phase is deployed yet. `tsc --noEmit`/`pnpm build` (backend) clean; `pnpm lint` shows only the pre-existing expected `no-img-element` warning on `app/page.tsx`.
+
+**Important — this session ran verification against production by mistake.** `backend/.env`'s active (uncommented) `DATABASE_URL` defaults to the production Supabase pooler, not local dev — the localhost line is commented out. This session ran `pnpm migrate` and a full Playwright pass without overriding it first. Consequences, all confirmed and handled:
+- Migration `0005` (Feature 52's `email_send_throttles` table) is now live on **production**, ahead of its code deploying. Developer confirmed: leave it in place (additive, harmless until Feature 52's backend code ships).
+- A real test signup (`feature55.<timestamp>@example.com`) briefly existed in production's `user`/`account`/`session` tables — fully deleted afterward, verified no orphaned rows.
+- Two real calls went out through production's Resend account to that (undeliverable) address.
+- No real user's data was read, written, or touched.
+
+`progress-tracker.md` now has a standing rule about checking `DATABASE_URL` before running migrations or verification locally — **read it and override the URL inline before touching either next session.**
+
+Verified working end-to-end: avatar select, name change, resend-verification throttle copy, password change (persisted across reload/re-login), and the Google-only branch (tested by deleting the test account's `credential` row directly while the session stayed valid — same code path a real Google-only account hits). Screenshotted at 1280px and 390px, no layout issues.
 
 ## Next session starts with
 
-**Push `f858cba`** (`git push origin main`), then either close the verification gap — bring up `backend/` + `agent/`, drive one real chatbot turn, confirm the run tree and thread grouping — or start **Feature 51, the eval pass** (`ai-phase-plan.md` holds the fixed prompt set). Then Phase 16 (deployment, Features 31–35).
+**Nothing is planned past Feature 55** — `iteration-plan.md` ends here, so there's no pre-written next feature. Options to raise with the developer:
+
+1. **Commit this session's work** — nothing is committed yet (see Current state). Split per the usual convention before anything else happens on this branch.
+2. **Deploy Phase 17.** One Vercel push covers Features 53/54/55's frontend changes; one Render push covers Features 52/55's backend changes; migration `0005` is already live on production so no migration step is needed at deploy time.
+3. Ask the developer what Phase 18 (if any) should cover, since no context file defines one yet.
 
 ## Open questions
 
-- **Test data still not cleared — asked six times now.** "Temp User 1" holds **18 bookings** and `agent.checkpoints` ~48 threads. `ListMyBookings` reads them verbatim into any Feature 51 eval, so this now blocks meaningful evals rather than merely being untidy. A `test room test` hotel is also in search results.
-- **Feature 51 should decide whether evals run with tracing on.** Tracing is a switch, not a habit — an eval run that wants traces has to enable it.
-- **Two reverted fixes worth reconsidering**, both model-independent: the just-in-time notice when `MAX_TOOL_LOOPS` unbinds tools (unbinding is what makes a model type tool calls out as raw text), and the `"null"`-argument guard. Also **`chat_widget_routes.py` still has no empty-turn guard** — the chatbot route has one.
-- **This model handles 12 tools, not 14.** Anything added to the chatbot must be re-tested against favourites first.
-- **`useAssistantStream` is 334 lines** with 13 state slots; the `useAssistantSessions` split was discussed and not done. Three noted defects: a `return` inside `finally`, `runTurn`'s `finally` doing four unrelated jobs, three overlapping booleans.
-- `main.py:28` has a pre-existing Pylance deprecation — `asynccontextmanager` wants `AsyncGenerator`, not `AsyncIterator`. Harmless, untouched.
-- Minor `ui-registry.md` inconsistencies unfixed: `ChatComposer` is `p-3` in the widget, `p-4` on the page; the retry affordance uses `border-error/40` where other error surfaces use flat tokens.
-- Should `seed.ts` call `recalculateHotelRatingStats` after inserting reviews? Aggregate logic itself is fine — only the post-seed call is missing.
-- Feature 16's rating-scale inconsistency is still open (1–5 stored, 0–10 displayed). Features 45–50 all sidestepped it.
-- Standing: `trust proxy` must be settled at deployment or the IP-keyed `aiRateLimit` is disabled in production (Phase 16).
+- Whether the developer wants a proper local-only `DATABASE_URL` set up (e.g. uncommented by default, prod one commented instead) to stop this mistake from recurring a third time.
+- Everything else carried from Features 52/53's memory that's still genuinely open: the 20-minute throttle window's tunability, missing env vars in `code-standards.md`'s table, whether `--border-strong`/`--rating-star-empty` are exactly right, whether success/warning read right stacked against `--state-info`. None of these were touched this session.
+- Whether `next/image` should be reconsidered later now that the `priority`→`preload` deprecation is on record (still no live `next/image` usage anywhere in `frontend/` to point to as a corrected example) — not raised again this session.

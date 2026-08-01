@@ -1002,6 +1002,23 @@ This is the display source of truth. The LangGraph checkpointer holds the same m
 
 **The column is `actions_json`, not the plan's `tool_calls_json`** (deviation recorded in `progress-tracker.md`'s Feature 44 entry). It holds only the **final** action chips the model settled on for a reply — `navigate` / `open_hotel` / `compare`, each with a resolved `hotelId` or filter names, plus `checkout` (a relative `/checkout/<id>` path) once Feature 47 wired the chatbot through this path — never the progress chips or intermediate tool calls a turn emits and retracts. Write ownership is split: `backend/` inserts the user message at turn start (once the stream is confirmed open); `agent/` inserts the assistant message at turn end via `POST /internal/chat/messages`, because only it knows which reply survived a `drop` and which chips were final.
 
+### `email_send_throttles` (Feature 52)
+
+| Column       | Type        | Notes                                                                      |
+| ------------ | ----------- | -------------------------------------------------------------------------- |
+| id           | uuid        |                                                                              |
+| recipient    | text        | the **lowercased** email address, not a user id                              |
+| purpose      | text        | `email_verification` \| `password_reset`                                     |
+| last_sent_at | timestamptz | the last **successful** send; a suppressed attempt never moves it            |
+
+One row per `(recipient, purpose)`, enforced by a composite unique constraint and upserted in place, so the table is bounded at two rows per address and never needs pruning. The window is `EMAIL_THROTTLE_WINDOW_MINUTES`, compared in `email.service.ts` rather than in SQL — the query returns the timestamp, the service owns the rule.
+
+**No FK to `user`**, for the same reason `compare_ai_summaries` has none: the key is an address, not an entity in another table. That keeps the throttle working for any future non-user recipient and independent of account deletion. The address is lowercased before it becomes a key so case variants share one row.
+
+The two purposes carry **independent clocks** — a fresh verification email does not delay a password reset. This is why the throttle wraps an opt-in path instead of `sendEmail` itself: gating the shared helper would silently give a booking-confirmation email a 20-minute cooldown, so a user who books twice would get one email.
+
+Ordering is read → send → record. A send that throws records nothing, so a provider outage never costs a user their window; the accepted cost is a race the width of the Resend call, in which two interleaved requests both send. The unique constraint bounds that to a duplicate email, never a broken row.
+
 ---
 
 ## PostGIS
@@ -1085,6 +1102,7 @@ Rules Claude must never violate:
 - `favorites` and `recent_searches` rows have exactly one of `user_id` / `session_token` set, never both, never neither.
 - Guest-to-account merge (favorites, recent searches) happens once, at login/signup, inside `favorite.service.ts` / the equivalent search-history service — never repeated on every request.
 - Admin accounts live only in the admin better-auth tables — never in the user-facing `user` table, and vice versa.
+- **A throttled transactional email is suppressed silently.** `sendVerificationEmail` / `sendPasswordResetEmail` return a boolean, and nothing may branch on it in a way the client can observe. better-auth's password-reset response is deliberately identical for a known and an unknown address, so a visible "already sent" leaks which one it is — and throwing turns a working suppression into an API error. A suppressed send returns normally and logs server-side.
 - `frontend/features/*` and `frontend-admin/features/*` never import another feature's internal components or hooks directly — shared UI goes through `components/`.
 - All admin API calls go through RTK Query in `frontend-admin/` — no ad hoc `fetch` calls in components.
 - No hardcoded hex values or raw Tailwind color classes anywhere — always the CSS variable token classes from `ui-tokens.md`.
