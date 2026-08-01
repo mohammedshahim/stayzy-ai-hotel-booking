@@ -1,52 +1,62 @@
-# Memory — Feature 54 Homepage banner, complete. Phase 17 open.
+# Memory — Feature 55 Profile page, complete. Phase 17 fully done in repo.
 
 Last updated: 2026-08-01
 
 ## What was built
 
-**Feature 54 Homepage banner** — replaced the `HotelIcon` placeholder in `frontend/app/page.tsx` with the developer-supplied `frontend/public/home-banner.webp`, using a plain `<img>` (not `next/image`). Two commits on branch **`feature/52-email-send-throttle`** (stacked on Features 52 and 53, per `iteration-plan.md`'s 52→53→54→55 order), none on `main`, nothing pushed:
+**Feature 55 Profile page** — `frontend/app/profile/page.tsx` (server component, redirects to `/login` on a null session, same pattern as `bookings/page.tsx`) plus a new `frontend/features/profile/`:
 
-- `9fab3ce` `feat(frontend)` — the page change + the new binary asset, 8 lines across 2 files
-- `1644ff0` `docs(context)` — `progress-tracker.md` closed out, 19 lines
+- `constants.ts` — 8 fixed DiceBear (`notionists` style) seed URLs
+- `components/ProfilePageContent.tsx` — composes the three panels + a quiet links row to `/bookings`/`/favorites`
+- `components/AvatarNamePanel.tsx` — avatar picker grid (click → `authClient.updateUser({avatarUrl})`) + display-name field/save
+- `components/EmailPanel.tsx` — read-only email, Verified/Not-verified pill, throttle-aware resend ("check your inbox", never "sent")
+- `components/PasswordPanel.tsx` — calls `authClient.listAccounts()`, branches to `ChangePasswordForm` or `SetPasswordForm`
+- `components/ChangePasswordForm.tsx` — `authClient.changePassword({currentPassword, newPassword})`
+- `components/SetPasswordForm.tsx` — calls the new backend endpoint via `apiClient.post("/users/set-password", ...)`
 
-The `<img>` carries `src="/home-banner.webp"`, a real `alt`, `fetchPriority="high"`, `loading="eager"`, `decoding="async"`, and `className="absolute inset-0 h-full w-full object-cover"` inside the pre-existing `relative aspect-[4/3] overflow-hidden rounded-3xl bg-elevated` frame. `next.config.ts` untouched — a local file under `public/` needs no `images` block.
+Backend: new `backend/src/routes/users.routes.ts` + `controllers/users.controller.ts` + `types/user.schemas.ts` — `POST /users/set-password` (`requireAuth` → `auth.api.setPassword`), mounted in `routes/index.ts`.
+
+Shared fix: `frontend/lib/auth-client.ts` gained the `inferAdditionalFields` client plugin (explicit schema, `{user: {avatarUrl: {type: "string", required: false}}}`) so `session.user.avatarUrl` is typed — it wasn't before.
+
+**Nothing from this session is committed yet** — confirmed via `git log`, HEAD is still `bec4fe8` (Feature 54's memory-save commit). All of Feature 55's backend/frontend files plus the `progress-tracker.md`/`ui-registry.md` edits are sitting as uncommitted working-tree changes on `feature/52-email-send-throttle`. Not an oversight — the developer never asked for a commit this session, and the project rule is to only commit when explicitly asked. **Next session (or later this one): ask whether to commit, and if so split it the usual way — `feat(backend)`, `feat(frontend)`, `docs(context)`, per the one-commit-per-concern rule.**
 
 ## Decisions made
 
-- **Plain `<img>`, not `next/image` — the developer's explicit instruction**, overriding `iteration-plan.md`'s Feature 54 entry (written before this session, which named `next/image` with `priority`). I had started implementing with `next/image` before the correction landed. LCP intent is now expressed via `fetchPriority="high"` + `loading="eager"`, the native-`<img>` equivalents of what `next/image`'s `preload` prop would set.
-- **`sizes` attribute deliberately omitted** — it only affects `srcset` generation, and a plain `<img>` with a single static `src` has no `srcset` to affect. Included once, then removed as dead weight.
-- **`next/image`'s `priority` prop is deprecated as of Next.js 16** (confirmed against `node_modules/next/dist/docs/.../image.md` — this repo runs 16.2.10) in favor of `preload`. `iteration-plan.md`'s wording predates this and is now stale for any future `next/image` usage in this repo. Recorded as an Open item in `progress-tracker.md` since this repo still has zero live `next/image` usage to point to as a corrected example.
+- **Avatar is a DiceBear picker, not a file upload.** Developer overrode the original plan mid-session — no S3, no multer, no multipart route at all. Simpler than `iteration-plan.md` anticipated.
+- **Google-linked accounts can also set a password** — developer explicitly wants both sign-in methods available, not one-or-the-other. This meant adding the one new backend route: better-auth's `setPassword` (for the "no password yet" case) is marked `serverOnly` in the library and is unreachable from `authClient` in the browser, so a thin Express route calling `auth.api.setPassword` server-side was the only way. `PasswordPanel` branches on `authClient.listAccounts()` finding a `credential`-provider account — never on whether `google` is linked.
+- **`inferAdditionalFields` needed an explicit schema object**, not the generic `<typeof auth>` form — `frontend/` and `backend/` are independent packages with no workspace linkage, so there's no way to import the backend's `auth` instance type into the frontend.
 
 ## Problems solved
 
-Nothing repo-breaking this session — the only friction was the `next/image` → plain `<img>` pivot above, corrected before any broken state was verified or committed.
+- **better-auth's `setPassword` is `serverOnly`** — confirmed by reading `node_modules/better-auth/dist/api/routes/update-user.mjs`. Any future need for another `serverOnly` better-auth endpoint from the frontend should follow the same pattern: a thin Express route calling `auth.api.<endpoint>` directly.
+- **Resend rejects `@example.com` as undeliverable** — real signup/resend calls to a fake test address fail outright rather than silently no-op. To test the throttle's silent-suppression success path, a row was inserted directly into `email_send_throttles` rather than relying on two real sends.
+- **This sandbox's Playwright↔backend round-trips run ~15–20s slow** (Resend API latency, DB pooler latency, or both) — early verification scripts with 2–3s fixed waits reported false failures (looked like "Could not resend"/"stuck saving") that were actually just slow, not broken. Fixed by waiting on `page.waitForURL`/longer fixed waits and cross-checking against direct DB queries instead of trusting short timeouts.
+- **The better-auth version mismatch flagged in earlier sessions' memory appears resolved** — checked this session, both `frontend/node_modules/better-auth` and `backend/node_modules/better-auth` are `1.6.23`.
 
 ## Current state
 
-`npx tsc --noEmit` clean. `pnpm lint` gives exactly one expected warning, `@next/next/no-img-element` on `frontend/app/page.tsx` — deliberate, given the plain-`<img>` decision — and nothing else. Working tree clean; both commits already made.
+**Phase 17 (Features 52–55) is now fully complete in the repo.** Nothing in the phase is deployed yet. `tsc --noEmit`/`pnpm build` (backend) clean; `pnpm lint` shows only the pre-existing expected `no-img-element` warning on `app/page.tsx`.
 
-Verified against the real running app on `localhost` (local backend, local dev DB): a Playwright pass screenshotted mobile (390px), tablet (834px), and desktop (1440px). Image reports `naturalWidth: 1200, naturalHeight: 896, complete: true` and fills the `aspect-[4/3]` frame at all three widths. The `lg:-mt-16` overlap between the image and `HeroSearchWidget` only activates at the desktop breakpoint (grid stacks to one column below `lg`, so tablet/mobile show the widget below the image with no overlap, unchanged from before this feature) — at desktop, the white search card sits over the bottom of the banner and stays fully legible against it.
+**Important — this session ran verification against production by mistake.** `backend/.env`'s active (uncommented) `DATABASE_URL` defaults to the production Supabase pooler, not local dev — the localhost line is commented out. This session ran `pnpm migrate` and a full Playwright pass without overriding it first. Consequences, all confirmed and handled:
+- Migration `0005` (Feature 52's `email_send_throttles` table) is now live on **production**, ahead of its code deploying. Developer confirmed: leave it in place (additive, harmless until Feature 52's backend code ships).
+- A real test signup (`feature55.<timestamp>@example.com`) briefly existed in production's `user`/`account`/`session` tables — fully deleted afterward, verified no orphaned rows.
+- Two real calls went out through production's Resend account to that (undeliverable) address.
+- No real user's data was read, written, or touched.
 
-Both dev servers (backend `:4000`, frontend `:3000`) were stopped after verification. Playwright was installed `--no-save` into a job-scratch scratch dir, not into the project — consistent with prior sessions.
+`progress-tracker.md` now has a standing rule about checking `DATABASE_URL` before running migrations or verification locally — **read it and override the URL inline before touching either next session.**
 
-Context updated: `progress-tracker.md` only (checklist, Current Status feature/next-up lines, Completed Features entry, session log, two new Open items — Feature 54 undeployed, and the `next/image` `priority`→`preload` deprecation note).
+Verified working end-to-end: avatar select, name change, resend-verification throttle copy, password change (persisted across reload/re-login), and the Google-only branch (tested by deleting the test account's `credential` row directly while the session stayed valid — same code path a real Google-only account hits). Screenshotted at 1280px and 390px, no layout issues.
 
 ## Next session starts with
 
-**Feature 55 — profile page.** `frontend/app/profile/page.tsx` (server component, redirect to `/login` on a null session) plus a new `frontend/features/profile/`. Four sections: display name and avatar (editable), email (read-only, verification state + resend), change password, quiet links to Bookings and Favorites. Read `iteration-plan.md`'s notes first:
+**Nothing is planned past Feature 55** — `iteration-plan.md` ends here, so there's no pre-written next feature. Options to raise with the developer:
 
-- **Backend surface is smaller than it looks** — better-auth already provides `updateUser` (covers `avatarUrl`), `changePassword`, `sendVerificationEmail`. The one genuine gap is avatar upload itself (multipart, needs a real route behind `requireAuth`); `multerUpload.ts` + `upload.service.ts` (`uploadImage(file, "avatars")`, `deleteImageByUrl`) already do the work.
-- **A Google-only account has no password** — the change-password section must be absent, not disabled, for it. `account.providerId` distinguishes.
-- **The resend button meets Feature 52's throttle** — a second resend inside the 20-minute window is silently suppressed by design, so its success copy must say "check your inbox," never "sent."
-- `ui-rules.md` and `ui-registry.md` govern the UI; `/imprint` runs after building it.
-
-Carry-overs, unchanged from last two sessions:
-
-1. **Apply migration `0005` to production** before or with deploying Feature 52's code.
-2. **Feature 53's CSS change and Feature 54's page change are both still undeployed** — one Vercel push covers both, no migration involved.
-3. **Decide what happens to `feature/52-email-send-throttle`.** Now carries Features 52, 53, and 54; still one merge away from `main`.
+1. **Commit this session's work** — nothing is committed yet (see Current state). Split per the usual convention before anything else happens on this branch.
+2. **Deploy Phase 17.** One Vercel push covers Features 53/54/55's frontend changes; one Render push covers Features 52/55's backend changes; migration `0005` is already live on production so no migration step is needed at deploy time.
+3. Ask the developer what Phase 18 (if any) should cover, since no context file defines one yet.
 
 ## Open questions
 
-- Everything carried from Feature 52 and 53's memory (20-minute window tunability, the accepted send race, the `better-auth` version mismatch between `backend`/`frontend`, missing env vars in `code-standards.md`'s table, whether `--border-strong`/`--rating-star-empty` are exactly right, whether success/warning read right stacked against `--state-info`) — untouched this session, still open.
-- Whether the developer wants `next/image` reconsidered for this image later (e.g. if the banner needs responsive variants), now that the `priority`→`preload` deprecation is on record — not raised again this session after the explicit plain-`<img>` call.
+- Whether the developer wants a proper local-only `DATABASE_URL` set up (e.g. uncommented by default, prod one commented instead) to stop this mistake from recurring a third time.
+- Everything else carried from Features 52/53's memory that's still genuinely open: the 20-minute throttle window's tunability, missing env vars in `code-standards.md`'s table, whether `--border-strong`/`--rating-star-empty` are exactly right, whether success/warning read right stacked against `--state-info`. None of these were touched this session.
+- Whether `next/image` should be reconsidered later now that the `priority`→`preload` deprecation is on record (still no live `next/image` usage anywhere in `frontend/` to point to as a corrected example) — not raised again this session.
