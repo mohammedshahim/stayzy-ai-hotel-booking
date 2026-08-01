@@ -24,8 +24,8 @@ After completing any feature:
 ## Current Status
 
 **Phase:** 17 — Post-Launch Iteration. **Stayzy has been live in production since 2026-07-30.**
-**Current feature:** none in progress. Feature 52 is complete in the repo but **not yet migrated or deployed to production** — see its Completed Features entry. Feature 53 is complete and not yet deployed.
-**Next up:** Feature 54 — homepage banner. `frontend/public/home-banner.webp` already exists in the repo, so the developer-supplied-asset blocker `iteration-plan.md` describes is cleared.
+**Current feature:** none in progress. Feature 52 is complete in the repo but **not yet migrated or deployed to production** — see its Completed Features entry. Features 53 and 54 are complete and not yet deployed.
+**Next up:** Feature 55 — profile page. See `iteration-plan.md`'s notes on the smaller-than-it-looks backend surface and the Google-account password-section gap.
 
 | App | URL | Host |
 | --- | --- | --- |
@@ -73,6 +73,8 @@ Two gaps the keep-alive does **not** close: `/health` touches no database, so a 
 
 - **Feature 52's migration `0005` has not been applied to production.** It must land before or with the deploy of that code, or every auth email throws against a missing table. Note that `backend/.env`'s active `DATABASE_URL` is the production pooler — the localhost line is commented out — so `pnpm migrate` from this checkout targets production by default, and local work needs the URL overridden inline.
 - **Feature 53's `frontend/app/globals.css` change has not been deployed.** No migration involved — a Vercel push is all it needs — but production is still on the terracotta palette until then.
+- **Feature 54's `frontend/app/page.tsx` change has not been deployed**, same as Feature 53 — a Vercel push is all it needs.
+- **`next/image`'s `priority` prop is deprecated as of Next.js 16** (this repo runs 16.2.10) in favour of `preload`. `iteration-plan.md`'s Feature 54 entry still names `priority` — read as `preload` for any future work against `next/image` in this repo. Feature 54 itself ended up using a plain `<img>` instead of `next/image` (the developer's explicit call, not a plan deviation discovered in code), so this repo has no live `next/image` usage to point to as an example yet.
 - **The Stripe `<Elements>` provider has no `appearance` config.** `features/booking/components/CheckoutForm.tsx` mounts `<Elements stripe={getStripe()} options={{ clientSecret }}>` with no `appearance` key, so the Payment Element has always rendered in Stripe's own default theme regardless of which Stayzy palette was active. Noticed while verifying Feature 53; left alone as pre-existing and out of that feature's scope. A future pass that wants the payment form to match the brand needs an `appearance.variables` block keyed to the same tokens.
 - **The Feature 16 rating-consistency question.** Mostly moot since Feature 24 keeps `hotels.average_rating`/`review_count` in sync on every review write, but header vs. section numbers can still diverge for any pre-existing hotel whose stored rating was never backed by a real review row. Three remediation options are in that Completed Features entry.
 - **Confirm whether production Stripe is on test or live keys.** `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are unsynced secrets, so the blueprint does not say. Everything through Feature 22 was verified against **test-mode** keys including a real Payment Element checkout and a webhook-verified payment. Whichever mode is live, the webhook endpoint must point at `https://stayzy-api.shahim.dev/webhooks/stripe` and its signing secret must match that endpoint — a booking only ever confirms via the webhook, so a mismatch leaves every payment stuck in `pending_payment` with no visible error.
@@ -80,7 +82,7 @@ Two gaps the keep-alive does **not** close: `/health` touches no database, so a 
 - **The Mapbox token has no POI data.** `geocodePlace` is shaped around it — street and address types excluded outright, relevance ≥ 0.8 required — so a POI landmark resolves to no anchor and the UI says so rather than anchoring on the wrong continent. Cities, neighbourhoods and districts resolve correctly; hotel names never touch the geocoder. A POI-enabled token would light up the landmark path with no code change.
 - **Dev-database leftovers (dev only).** The "Temp User 1" account and its 18 bookings are still in the local dev database, along with ~30 `agent.checkpoints` threads. **Production seeded clean and is unaffected** — this no longer blocks anything, but it will still skew anything run locally against real bookings.
 
-**Latest completed addition:** Feature 53 Frontend palette re-skin — 2026-08-01. In the repo, not yet deployed.
+**Latest completed addition:** Feature 54 Homepage banner — 2026-08-01. In the repo, not yet deployed.
 
 ---
 
@@ -195,12 +197,20 @@ Moved from Phase 9 on 2026-07-19. Scope widened: `agent/` is a fourth deployable
 
 - [x] 52 Email send throttle
 - [x] 53 Frontend palette re-skin
-- [ ] 54 Homepage banner
+- [x] 54 Homepage banner
 - [ ] 55 Profile page
 
 ---
 
 ## Completed Features
+
+### ✅ 54 Homepage banner — completed 2026-08-01
+
+Notes: `frontend/app/page.tsx`'s `HotelIcon` placeholder block replaced with `frontend/public/home-banner.webp` (developer-supplied). The `aspect-[4/3] overflow-hidden rounded-3xl bg-elevated` frame and the `lg:-mt-16` negative margin pulling `HeroSearchWidget` up over the section were both left untouched. `next.config.ts` needed no change — a local file under `public/` needs no `images` config either way.
+
+Decision: **plain `<img>`, not `next/image`** — the developer's explicit instruction, overriding `iteration-plan.md`'s Feature 54 entry (written before this session, naming `next/image` with `priority`). `pnpm lint` surfaces the expected `@next/next/no-img-element` warning and nothing else; no `tsc`/build errors. LCP priority is expressed as `fetchPriority="high"` + `loading="eager"` (the native-`<img>` equivalents of what `next/image`'s `preload` prop would set) rather than the plan's `priority`, which is also moot now — see the `next/image` deprecation note under Current Status.
+
+Verified against the real running app on `localhost` (local backend, local dev DB): screenshotted mobile (390px), tablet (834px), desktop (1440px) via Playwright. Image loads and fills the frame at all three widths (`naturalWidth`/`naturalHeight` 1200×896, `complete: true`). The `lg:-mt-16` overlap only activates at the desktop breakpoint — at that width the search widget's white card sits over the bottom of the banner and stays fully legible; at tablet/mobile the grid stacks to one column and the widget sits below the image with no overlap, unchanged from before this feature.
 
 ### ✅ 53 Frontend palette re-skin — completed 2026-08-01
 
@@ -1206,6 +1216,11 @@ Built: [what was completed]
 Left off: [exactly where the session ended]
 Next session starts with: [first thing to do next time]
 ```
+
+### Session — 2026-08-01 (2)
+Built: Feature 54 Homepage banner, in full — see the Completed Features entry. `frontend/app/page.tsx`'s `HotelIcon` placeholder replaced with a plain `<img>` pointed at the developer-supplied `frontend/public/home-banner.webp`; layout contract (`aspect-[4/3]` frame, `lg:-mt-16` overlap) untouched.
+Left off: Verified against the real running app on `localhost` (local backend, local dev DB) — Playwright screenshots at mobile/tablet/desktop confirmed the image loads and fills the frame at all three, and that the desktop-only overlap with `HeroSearchWidget` stays legible. `npx tsc --noEmit` clean; `pnpm lint` gives one expected `no-img-element` warning (plain `<img>` was a deliberate developer call, not `next/image`) and nothing else. Context updated in this file only: the plain-`<img>` decision and its rationale, and a `next/image` `priority`→`preload` deprecation note (Next 16.2.10) for any future feature that does reach for `next/image`.
+Next session starts with: Feature 55 Profile page. Read `iteration-plan.md`'s notes on the smaller-than-it-looks backend surface (better-auth already covers `updateUser`/`changePassword`/`sendVerificationEmail`; the one gap is avatar upload, which `multerUpload.ts`/`upload.service.ts` already support) and the Google-account password-section gap (`account.providerId` distinguishes). Neither Feature 53 nor Feature 54 has been deployed yet; both are repo-only, alongside Feature 52's undeployed migration.
 
 ### Session — 2026-08-01
 Built: Feature 53 Frontend palette re-skin, in full — see the Completed Features entry for the four decisions. `frontend/app/globals.css` moved from Warm Hospitality to Coastal Hospitality (teal accent, gold ratings, cool text/borders on a cream page); `frontend-admin/` untouched.
