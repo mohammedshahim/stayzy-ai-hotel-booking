@@ -24,8 +24,8 @@ After completing any feature:
 ## Current Status
 
 **Phase:** 17 — Post-Launch Iteration. **Stayzy has been live in production since 2026-07-30.**
-**Current feature:** none in progress. Feature 52 is complete in the repo but **not yet migrated or deployed to production** — see its Completed Features entry.
-**Next up:** Feature 53 — frontend palette re-skin. Planned in `iteration-plan.md`, one feature per session, in order.
+**Current feature:** none in progress. Feature 52 is complete in the repo but **not yet migrated or deployed to production** — see its Completed Features entry. Feature 53 is complete and not yet deployed.
+**Next up:** Feature 54 — homepage banner. `frontend/public/home-banner.webp` already exists in the repo, so the developer-supplied-asset blocker `iteration-plan.md` describes is cleared.
 
 | App | URL | Host |
 | --- | --- | --- |
@@ -72,13 +72,15 @@ Two gaps the keep-alive does **not** close: `/health` touches no database, so a 
 ### Open items
 
 - **Feature 52's migration `0005` has not been applied to production.** It must land before or with the deploy of that code, or every auth email throws against a missing table. Note that `backend/.env`'s active `DATABASE_URL` is the production pooler — the localhost line is commented out — so `pnpm migrate` from this checkout targets production by default, and local work needs the URL overridden inline.
+- **Feature 53's `frontend/app/globals.css` change has not been deployed.** No migration involved — a Vercel push is all it needs — but production is still on the terracotta palette until then.
+- **The Stripe `<Elements>` provider has no `appearance` config.** `features/booking/components/CheckoutForm.tsx` mounts `<Elements stripe={getStripe()} options={{ clientSecret }}>` with no `appearance` key, so the Payment Element has always rendered in Stripe's own default theme regardless of which Stayzy palette was active. Noticed while verifying Feature 53; left alone as pre-existing and out of that feature's scope. A future pass that wants the payment form to match the brand needs an `appearance.variables` block keyed to the same tokens.
 - **The Feature 16 rating-consistency question.** Mostly moot since Feature 24 keeps `hotels.average_rating`/`review_count` in sync on every review write, but header vs. section numbers can still diverge for any pre-existing hotel whose stored rating was never backed by a real review row. Three remediation options are in that Completed Features entry.
 - **Confirm whether production Stripe is on test or live keys.** `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are unsynced secrets, so the blueprint does not say. Everything through Feature 22 was verified against **test-mode** keys including a real Payment Element checkout and a webhook-verified payment. Whichever mode is live, the webhook endpoint must point at `https://stayzy-api.shahim.dev/webhooks/stripe` and its signing secret must match that endpoint — a booking only ever confirms via the webhook, so a mismatch leaves every payment stuck in `pending_payment` with no visible error.
 - **`LANGSMITH_PROJECT` is `"satyzy"`** in the developer's local `agent/.env` — almost certainly a typo for `stayzy`. Flagged and deliberately left alone; traces from Features 50–51 are under that name.
 - **The Mapbox token has no POI data.** `geocodePlace` is shaped around it — street and address types excluded outright, relevance ≥ 0.8 required — so a POI landmark resolves to no anchor and the UI says so rather than anchoring on the wrong continent. Cities, neighbourhoods and districts resolve correctly; hotel names never touch the geocoder. A POI-enabled token would light up the landmark path with no code change.
 - **Dev-database leftovers (dev only).** The "Temp User 1" account and its 18 bookings are still in the local dev database, along with ~30 `agent.checkpoints` threads. **Production seeded clean and is unaffected** — this no longer blocks anything, but it will still skew anything run locally against real bookings.
 
-**Latest completed addition:** Feature 52 Email send throttle — 2026-07-30. Code and migration in the repo, production migration still to run.
+**Latest completed addition:** Feature 53 Frontend palette re-skin — 2026-08-01. In the repo, not yet deployed.
 
 ---
 
@@ -191,14 +193,30 @@ Moved from Phase 9 on 2026-07-19. Scope widened: `agent/` is a fourth deployable
 
 ### Phase 17 — Post-Launch Iteration
 
-- [ ] 52 Email send throttle
-- [ ] 53 Frontend palette re-skin
+- [x] 52 Email send throttle
+- [x] 53 Frontend palette re-skin
 - [ ] 54 Homepage banner
 - [ ] 55 Profile page
 
 ---
 
 ## Completed Features
+
+### ✅ 53 Frontend palette re-skin — completed 2026-08-01
+
+Notes: `frontend/app/globals.css`'s `:root` and the three `--shadow-*` in `@theme inline` moved from Warm Hospitality (warm ivory, terracotta accent, warm brown text) to Coastal Hospitality (cream page, teal `#0F766E` accent, cool slate `#1F2937` text). A grep swept `app`, `components`, `features`, and `lib` for hex literals, `rgba()`, and raw Tailwind palette classes before starting — zero matches outside `globals.css`, confirming the token layer held and this was genuinely a single-file change. `frontend-admin/` was not touched. `next tsc --noEmit` and `pnpm build` both clean; `git diff --stat` confirms exactly one file, 26 lines.
+
+Decision: **gold becomes the rating color, not a separate brand-surface token.** The developer's second anchor color, `#C6A664`, had no token home in the plan and collided with the existing `--rating-star` (`#F2A93B`) — both gold, both now near the same hue family. Rather than add a new `--gold-*` family (which would have pushed the feature into component edits), `--rating-star` became `#C6A664` directly and `--rating-star-empty` moved to a cool neutral (`#DCE0E5`). This dissolves the collision instead of routing around it: gold no longer sits next to a warm brand accent, because the brand accent is teal now, so `ui-tokens.md`'s "gold is deliberately separate from the brand accent" argument holds automatically rather than needing to be maintained by hand.
+
+Decision: **`--bg-subtle` needed its own value, not a straight warm→cool port.** First pass set it to a same-family warm cream (`#F5F1E8`), matching `--bg-base`'s move. Rendered in the running app, every input on the site (auth forms, search box, filters — 98 call sites) reads as `border-border-default bg-subtle`, i.e. a warm fill inside a now-cool border, and it was the one thing on screen that still looked like the old palette. Three candidates were screenshotted side by side on the login form; `#F4F4F1` — a near-neutral with a whisper of warmth — was the only one that agreed with both the cream page and the cool border at once. Caught by looking at the real app, not by reading the diff.
+
+Decision: **success and warning were retuned, not hue-preserved.** `#1F9D63` (success) and `#C97A1B` (warning) were chosen under the old palette for distance from *terracotta*; under teal that reasoning doesn't transfer. Success moved to a greener `#15803D` so a Confirmed badge can't read as the same family as a teal primary CTA — verified on `/bookings` with a test booking manually set to all five statuses (`pending_payment`, `confirmed`, `completed`, `cancelled`, `failed`) side by side. Warning moved to `#B45309` so it doesn't collide with the new rating gold. Error and info were left alone — both sit far enough from teal.
+
+Assumption confirmed with the developer: the theme is renamed **Coastal Hospitality** in `ui-tokens.md`.
+
+Verified against the real running app on `localhost`, not by reading the CSS: signed in as a seeded local user with bookings manually distributed across all five statuses, four favorites, and a saved compare set (localStorage), then walked home, search (mobile/desktop), hotel details, bookings, favorites, compare, checkout, `/assistant`, the chat widget, and login/signup at mobile/tablet/desktop widths. A Playwright pass additionally scanned every element's computed styles on each page for any of the old palette's 17 warm RGB values — zero hits anywhere, on every route, both before and after the `--bg-subtle` fix. `frontend-admin/` confirmed unchanged by inspection and by the one-file diff stat.
+
+Found and left alone, out of scope: the Stripe `<Elements>` provider in `CheckoutForm.tsx` has no `appearance` config, so the Payment Element has always rendered in Stripe's own default theme under both palettes — not a regression from this feature. Logged as an Open item.
 
 ### ✅ 52 Email send throttle — completed 2026-07-30
 
@@ -1188,6 +1206,11 @@ Built: [what was completed]
 Left off: [exactly where the session ended]
 Next session starts with: [first thing to do next time]
 ```
+
+### Session — 2026-08-01
+Built: Feature 53 Frontend palette re-skin, in full — see the Completed Features entry for the four decisions. `frontend/app/globals.css` moved from Warm Hospitality to Coastal Hospitality (teal accent, gold ratings, cool text/borders on a cream page); `frontend-admin/` untouched.
+Left off: Verified against the real running app — local backend against the local dev DB (not production, which seeded clean and has no bookings to look at), a fresh sign-up wired to bookings across all five statuses and four favorites, walked every route at mobile/tablet/desktop via Playwright, plus a computed-style scan for old-palette RGB values that came back clean. `pnpm build` and `npx tsc --noEmit` both clean. Context updated in `ui-tokens.md` (full re-derivation, the `--bg-subtle` and status-color rationale, the now-separate-palettes framing, and a pre-existing shadow-placement doc bug fixed while in there) and this file. `iteration-plan.md` and `build-plan.md` deliberately untouched, same reasoning as Feature 52's entry.
+Next session starts with: Feature 54 Homepage banner. `frontend/public/home-banner.webp` already exists in the repo — the developer-supplied-asset blocker `iteration-plan.md` describes for this feature is cleared. Neither Feature 53 nor Feature 52 has been deployed yet; both are repo-only.
 
 ### Session — 2026-07-30 (2)
 Built: Feature 52 Email send throttle, in full — see the Completed Features entry for the four decisions and what each trades away. New `email_send_throttles` table, migration `0005` with its down file, `queries/email-throttle.queries.ts`, a `sendThrottledEmail` path in `email.service.ts`, and `EMAIL_THROTTLE_WINDOW_MINUTES` declared in `env.ts`, `.env.example` and `render.yaml`.
